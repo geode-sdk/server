@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use actix_web::{get, web, App, HttpServer, Responder, ResponseError};
-use serde::Serialize;
 
 mod endpoints;
 mod types;
@@ -28,14 +27,6 @@ impl Display for Error {
 }
 
 impl ResponseError for Error {}
-
-#[derive(Serialize)]
-struct Mod {
-    id: String,
-    name: String,
-    developer: String,
-    download_url: Option<String>,
-}
 
 #[get("/")]
 async fn health() -> Result<impl Responder, Error> {
