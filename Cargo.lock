@@ -1443,6 +1443,7 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "futures",
+ "log",
  "serde",
  "sqlx",
  "tokio",
