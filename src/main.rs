@@ -31,9 +31,9 @@ impl ResponseError for Error {}
 
 #[derive(Serialize)]
 struct Mod {
-    id: Option<String>,
-    name: Option<String>,
-    developer: Option<String>,
+    id: String,
+    name: String,
+    developer: String,
     download_url: Option<String>,
 }
 
