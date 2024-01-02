@@ -33,6 +33,7 @@ struct Mod {
     id: Option<String>,
     name: Option<String>,
     developer: Option<String>,
+    download_url: Option<String>,
 }
 
 #[get("/v1/mods")]
@@ -75,6 +76,11 @@ async fn publish_mod(id: String, data: web::Data<AppData>, mut geode_file: web::
     Ok(web::Json(None::<()>))
 }
 
+#[get("/")]
+async fn hello_index() -> Result<impl Responder, Error> {
+    Ok("Hi! :D")
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     // Load .env
@@ -83,8 +89,10 @@ async fn main() -> anyhow::Result<()> {
     // Set up logger
     // env_logger::init();
 
+    let db_url = dotenvy::var("DATABASE_URL")?;
+
     // Connect to the index database
-    let pool = sqlx::SqlitePool::connect("../db/geode-index.db").await?;
+    let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
     Ok(
         HttpServer::new(move || {
@@ -93,8 +101,9 @@ async fn main() -> anyhow::Result<()> {
                 .service(list_mods)
                 .service(get_mod_by_id)
                 .service(publish_mod)
+                .service(hello_index)
         })
-            .bind(("127.0.0.1", 8080))?
+            .bind(("127.0.0.1", dotenvy::var("PORT").map_or(8080, |x| x.parse::<u16>().unwrap())))?
             .run()
             .await?
     )

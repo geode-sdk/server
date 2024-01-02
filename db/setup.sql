@@ -3,7 +3,7 @@ CREATE TABLE mods (
     id TEXT PRIMARY KEY,
     name TEXT,
     developer TEXT,
-    download_url TEXT,
+    download_url TEXT
 );
 
 CREATE TABLE mods_access (

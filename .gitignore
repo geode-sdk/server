@@ -1,2 +1,3 @@
 /target
-/db/geode-index.db
+*.db
+.env
