@@ -33,7 +33,7 @@ async fn health() -> Result<impl Responder, Error> {
     Ok(web::Json("The Geode Index is running"))
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env
     dotenvy::dotenv()?;
