@@ -3,6 +3,7 @@ use actix_web::{get, web, App, HttpServer, Responder, ResponseError};
 
 mod endpoints;
 mod types;
+
 struct AppData {
     db: sqlx::SqlitePool,
 }
@@ -35,8 +36,6 @@ async fn health() -> Result<impl Responder, Error> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    // Load .env
-    dotenvy::dotenv()?;
 
     // Set up logger
     // env_logger::init();
