@@ -3,7 +3,8 @@ use std::io::Write;
 use actix_web::{get, web, Responder, post};
 use futures::StreamExt;
 
-use crate::{AppData, Error, Mod};
+use crate::{AppData, Error};
+use crate::types::models::Mod;
 
 #[get("/v1/mods")]
 pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, Error> {
