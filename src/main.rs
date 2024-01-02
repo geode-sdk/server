@@ -1,8 +1,9 @@
-use std::{fmt::Display, io::Write};
-use futures::StreamExt;
-use actix_web::{get, web, App, HttpServer, Responder, ResponseError, post};
+use std::fmt::Display;
+use actix_web::{get, web, App, HttpServer, Responder, ResponseError};
 use serde::Serialize;
 
+mod endpoints;
+mod types;
 struct AppData {
     db: sqlx::SqlitePool,
 }
@@ -36,49 +37,9 @@ struct Mod {
     download_url: Option<String>,
 }
 
-#[get("/v1/mods")]
-async fn list_mods(data: web::Data<AppData>) -> Result<impl Responder, Error> {
-    let mut pool = data.db.acquire().await.or(Err(Error::DbAcquireError))?;
-    let mods = sqlx::query_as!(Mod, "SELECT * FROM mods")
-        .fetch_all(&mut *pool)
-        .await.or(Err(Error::DbError))?;
-
-    Ok(web::Json(mods))
-}
-
-#[get("/v1/mods/{id}")]
-async fn get_mod_by_id(id: String, data: web::Data<AppData>) -> Result<impl Responder, Error> {
-    let mut pool = data.db.acquire().await.or(Err(Error::DbAcquireError))?;
-    let res = sqlx::query_as!(Mod, r#"SELECT * FROM mods WHERE id = ?"#, id)
-        .fetch_one(&mut *pool)
-        .await.or(Err(Error::DbError))?;
-
-    Ok(web::Json(res))
-}
-
-#[post("/v1/mods/{id}")]
-async fn publish_mod(id: String, data: web::Data<AppData>, mut geode_file: web::Payload) -> Result<impl Responder, Error> {
-    // todo: authenticate
-    let mut file = std::fs::File::open(format!("db/temp_{id}.geode")).or(Err(Error::FsError))?;
-    //                                                   ^ todo: sanitize
-    let mut written = 0usize;
-    while let Some(chunk) = geode_file.next().await {
-        let chunk = chunk.map_err(|e| Error::UploadError(e.to_string()))?;
-        written += chunk.len();
-        if written > 262_144 {
-            return Err(Error::UploadError("file too large".to_string()));
-        }
-        file.write_all(&chunk).or(Err(Error::FsError))?;
-    }
-
-    // todo: load info from geode file and add to database
-
-    Ok(web::Json(None::<()>))
-}
-
 #[get("/")]
-async fn hello_index() -> Result<impl Responder, Error> {
-    Ok("Hi! :D")
+async fn health() -> Result<impl Responder, Error> {
+    Ok(web::Json("The Geode Index is running"))
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -93,18 +54,20 @@ async fn main() -> anyhow::Result<()> {
 
     // Connect to the index database
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
+    let addr = "127.0.0.1";
+    let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
 
-    Ok(
-        HttpServer::new(move || {
-            App::new()
-                .app_data(web::Data::new(AppData { db: pool.clone() }))
-                .service(list_mods)
-                .service(get_mod_by_id)
-                .service(publish_mod)
-                .service(hello_index)
-        })
-            .bind(("127.0.0.1", dotenvy::var("PORT").map_or(8080, |x| x.parse::<u16>().unwrap())))?
-            .run()
-            .await?
-    )
+    println!("Starting server on {}:{}", addr, port);
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(AppData { db: pool.clone() }))
+            .service(endpoints::mods::index)
+            .service(endpoints::mods::get)
+            .service(endpoints::mods::create)
+            .service(health)
+    })
+        .bind((addr, port))?
+        .run()
+        .await?;
+    anyhow::Ok(())
 }
