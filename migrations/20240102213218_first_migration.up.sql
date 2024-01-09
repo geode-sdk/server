@@ -1,4 +1,5 @@
 -- Add up migration script here
+CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');
 
 CREATE TABLE mods (
     id TEXT PRIMARY KEY NOT NULL,
@@ -31,7 +32,7 @@ CREATE TABLE dependencies (
     dependent_id TEXT NOT NULL,
     dependency_id TEXT NOT NULL,
     compare TEXT NOT NULL,
-    importance TEXT NOT NULL,
+    importance mod_importance NOT NULL,
     PRIMARY KEY (dependent_id, dependency_id),
     FOREIGN KEY (dependent_id) REFERENCES mods(id),
     FOREIGN KEY (dependency_id) REFERENCES mods(id)
@@ -52,5 +53,3 @@ CREATE TABLE mods_developers (
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)
 );
-
-CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');
