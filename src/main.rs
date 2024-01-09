@@ -5,6 +5,7 @@ use env_logger::Env;
 
 mod endpoints;
 mod types;
+
 struct AppData {
     db: sqlx::SqlitePool,
 }
@@ -37,8 +38,6 @@ async fn health() -> Result<impl Responder, Error> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load .env
-    dotenvy::dotenv()?;
 
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
