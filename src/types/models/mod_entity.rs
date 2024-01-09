@@ -23,7 +23,7 @@ impl Mod {
         let limit = per_page;
         let offset = (page - 1) * per_page;
         let query_string = format!("%{query}%");
-        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
+        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE validated = true AND id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
             .fetch_all(&mut *pool)
             .await.or(Err(Error::DbError))?;
         let count = sqlx::query_scalar!("SELECT COUNT(*) FROM mods")
