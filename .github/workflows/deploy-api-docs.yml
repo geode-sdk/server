@@ -15,7 +15,7 @@ jobs:
         uses: Legion2/swagger-ui-action@v1
         with:
           output: swagger-ui
-          spec-file: spec.yml
+          spec-file: ./spec.yml
           
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
