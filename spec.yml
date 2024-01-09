@@ -7,17 +7,17 @@ info:
 
 tags: 
   - name: mods
-    description: Geode mods endpoints
+    description: Access to Index mods 
 
   - name: user
-    description: User endpoints
+    description: User management 
 
 paths:
   /mods:
     get:
       tags:
         - mods
-      summary: Search all mods
+      summary: Search all mods, paginated
 
       parameters:
         - name: query
@@ -26,6 +26,8 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/GeodeVersionQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
 
       responses:
         '200':
@@ -257,3 +259,19 @@ components:
       required: false
       schema:
         $ref: '#/components/schemas/ModVersion'
+    
+    Page:
+      name: page
+      in: query
+      description: Page number (default 1)
+      required: false
+      schema:
+        type: int
+    
+    PerPage:
+      name: per_page 
+      in: query
+      description: Number of elements to fetch per page (default 10) 
+      required: false
+      schema:
+        type: int

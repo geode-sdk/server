@@ -4,7 +4,6 @@ use actix_web::{get, web, Responder, post};
 use futures::StreamExt;
 use serde::Deserialize;
 
-use crate::types::api::PaginatedData;
 use crate::{AppData, Error};
 use crate::types::models::mod_entity::Mod;
 
