@@ -11,6 +11,7 @@ use crate::types::models::mod_entity::Mod;
 struct IndexQueryParams {
     page: Option<i64>,
     per_page: Option<i64>,
+    query: Option<String>
 }
 
 #[get("/v1/mods")]
@@ -18,8 +19,9 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let mut pool = data.db.acquire().await.or(Err(Error::DbAcquireError))?;
     let page = query.page.unwrap_or(1);
     let per_page = query.per_page.unwrap_or(10);
+    let query = query.query.clone().unwrap_or("".to_string());
 
-    let result = Mod::get_index(&mut pool, page, per_page).await?;
+    let result = Mod::get_index(&mut pool, page, per_page, query).await?;
     Ok(web::Json(result))
 }
 

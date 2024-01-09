@@ -12,7 +12,7 @@ pub struct Mod {
 }
 
 impl Mod {
-    pub async fn get_index(pool: &mut PgConnection, page: i64, per_page: i64) -> Result<PaginatedData<Mod>, Error> {
+    pub async fn get_index(pool: &mut PgConnection, page: i64, per_page: i64, query: String) -> Result<PaginatedData<Mod>, Error> {
     #[derive(Debug)]
     struct ModRecord {
         id: String,
@@ -22,7 +22,10 @@ impl Mod {
     }
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, "SELECT * FROM mods LIMIT $1 OFFSET $2", limit, offset)
+        let mut query_string = "%".to_owned();
+        query_string.push_str(query.as_str());
+        query_string.push_str("%");
+        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
             .fetch_all(&mut *pool)
             .await.or(Err(Error::DbError))?;
         let count = sqlx::query_scalar!("SELECT COUNT(*) FROM mods")
