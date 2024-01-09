@@ -1,5 +1,4 @@
 openapi: 3.0.0
-swagger: 2.0
 
 info:
   title: Geode Index
@@ -216,7 +215,7 @@ components:
       type: object
       properties:
         id:
-          type: int
+          type: integer
         name:
           type: string
           examples:
