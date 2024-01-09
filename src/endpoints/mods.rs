@@ -26,7 +26,7 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let mods = sqlx::query_as!(Mod, "SELECT * FROM mods LIMIT ? OFFSET ?", limit, offset).fetch_all(&mut *pool).await.or(Err(Error::DbError))?;
 
     let count = sqlx::query_scalar!("SELECT COUNT(*) as count FROM mods").fetch_one(&mut *pool).await.or(Err(Error::DbError))?;
-    Ok(web::Json(PaginatedData{ data: mods, page: 1, count }))
+    Ok(web::Json(PaginatedData{ data: mods, page, count }))
 }
 
 #[get("/v1/mods/{id}")]
