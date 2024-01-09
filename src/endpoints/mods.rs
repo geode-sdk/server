@@ -10,8 +10,8 @@ use crate::types::models::Mod;
 
 #[derive(Deserialize)]
 struct IndexQueryParams {
-    page: Option<u32>,
-    per_page: Option<u32>,
+    page: Option<i64>,
+    per_page: Option<i64>,
 }
 
 #[get("/v1/mods")]
@@ -23,16 +23,18 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let limit = per_page;
     let offset = (page - 1) * per_page;
 
-    let mods = sqlx::query_as!(Mod, "SELECT * FROM mods LIMIT ? OFFSET ?", limit, offset).fetch_all(&mut *pool).await.or(Err(Error::DbError))?;
+    let mods = sqlx::query_as!(Mod, r#"SELECT * FROM mods LIMIT $1 OFFSET $2"#, limit, offset)
+        .fetch_all(&mut *pool)
+        .await.or(Err(Error::DbError))?;
 
-    let count = sqlx::query_scalar!("SELECT COUNT(*) as count FROM mods").fetch_one(&mut *pool).await.or(Err(Error::DbError))?;
-    Ok(web::Json(PaginatedData{ data: mods, page, count }))
+    let count: Option<i64> = sqlx::query_scalar!("SELECT COUNT(*) as count FROM mods").fetch_one(&mut *pool).await.or(Err(Error::DbError))?;
+    Ok(web::Json(PaginatedData{ data: mods, count: count.unwrap_or(0) }))
 }
 
 #[get("/v1/mods/{id}")]
 pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder, Error> {
     let mut pool = data.db.acquire().await.or(Err(Error::DbAcquireError))?;
-    let res = sqlx::query_as!(Mod, r#"SELECT * FROM mods WHERE id = ?"#, id)
+    let res = sqlx::query_as!(Mod, r#"SELECT * FROM mods WHERE id = $1"#, id)
         .fetch_one(&mut *pool)
         .await.or(Err(Error::DbError))?;
 

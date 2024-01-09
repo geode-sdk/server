@@ -8,7 +8,7 @@ CREATE TABLE mods (
 );
 
 CREATE TABLE mod_versions (
-    id INT PRIMARY KEY NOT NULL,
+    id BIGINT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
     version TEXT NOT NULL,
@@ -28,8 +28,8 @@ CREATE UNIQUE INDEX idx_version_id
 ON mod_versions(version, mod_id);
 
 CREATE TABLE dependencies (
-    dependent_id INT NOT NULL,
-    dependency_id INT NOT NULL,
+    dependent_id TEXT NOT NULL,
+    dependency_id TEXT NOT NULL,
     compare TEXT NOT NULL,
     importance TEXT NOT NULL,
     PRIMARY KEY (dependent_id, dependency_id),
@@ -38,17 +38,19 @@ CREATE TABLE dependencies (
 );
 
 CREATE TABLE developers (
-    id INT PRIMARY KEY NOT NULL,
+    id BIGINT PRIMARY KEY NOT NULL,
     username TEXT NOT NULL,
     display_name TEXT NOT NULL,
     verified BOOLEAN NOT NULL,
-    github_user_id INT NOT NULL
+    github_user_id BIGINT NOT NULL
 );
 
 CREATE TABLE mods_developers (
     mod_id TEXT NOT NULL,
-    developer_id INT NOT NULL,
+    developer_id BIGINT NOT NULL,
     PRIMARY KEY (mod_id, developer_id),
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)
 );
+
+CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');

@@ -7,7 +7,7 @@ mod endpoints;
 mod types;
 
 struct AppData {
-    db: sqlx::SqlitePool,
+    db: sqlx::postgres::PgPool,
 }
 
 #[derive(Debug)]
@@ -41,9 +41,10 @@ async fn main() -> anyhow::Result<()> {
 
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    let db_url = dotenvy::var("DATABASE_URL")?;
+    let env_url = dotenvy::var("DATABASE_URL")?;
 
-    let pool = sqlx::SqlitePool::connect(&db_url).await?;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect(&env_url).await?;
     let addr = "127.0.0.1";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
 

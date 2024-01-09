@@ -24,3 +24,11 @@ pub struct ModVersion {
     pub ios: bool,
     pub mod_id: String
 }
+
+#[derive(sqlx::Type)]
+#[sqlx(type_name = "mood", rename_all = "lowercase")]
+pub enum ModImportance {
+    Required,
+    Recommended,
+    Suggested
+}
