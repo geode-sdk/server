@@ -26,7 +26,7 @@ impl Mod {
         let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE validated = true AND id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
             .fetch_all(&mut *pool)
             .await.or(Err(Error::DbError))?;
-        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM mods")
+        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM mods WHERE validated = true")
             .fetch_one(&mut *pool)
             .await.or(Err(Error::DbError))?.unwrap_or(0);
 
