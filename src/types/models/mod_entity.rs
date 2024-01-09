@@ -22,9 +22,7 @@ impl Mod {
     }
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let mut query_string = "%".to_owned();
-        query_string.push_str(query.as_str());
-        query_string.push_str("%");
+        let query_string = format!("%{query}%");
         let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
             .fetch_all(&mut *pool)
             .await.or(Err(Error::DbError))?;
