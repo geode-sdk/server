@@ -2,6 +2,16 @@
 
 WIP new Geode index, hosted on its own server rather than a Github repository. Uses Actix, SQLite and SQLX in Rust.
 
+## Checklist
+
+- [ ] Mod adding and updating
+- [ ] Support for multiple developers per mod
+- [ ] Finish the openapi spec
+- [ ] Finish the database structure
+- [ ] Github OAuth
+- [ ] A token system for authenticating the CLI
+- [ ] Dependencies
+
 To test, run `setup.sh` to create a test database.
 
 If you want to contribute to this project, please do so! I have no bloody clue how to write a web server.

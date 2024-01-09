@@ -114,7 +114,7 @@ paths:
                   id:
                     $ref: '#/components/schemas/ModID'
                   version:
-                    $ref: '#/components/schemas/ModVersion'
+                    $ref: '#/components/schemas/ModVersionString'
 
       responses:
         '200':
@@ -201,33 +201,16 @@ components:
           examples:
             - 'https://github.com/geode-sdk/geode'
         latest_version:
-          $ref: '#/components/schemas/ModVersion'
+          $ref: '#/components/schemas/ModVersionString'
         validated:
           type: boolean
         versions:
           type: array
           items:
             $ref: '#/components/schemas/ModVersion'
-        # developers:
-        #   type: array
-        #   minItems: 1
-        #   items:
-        #     $ref: '#/components/schemas/UserSimple'
-        # tags:
-        #   type: array
-        #   items:
-        #     type: string
-        #     examples: 
-        #       - Gameplay
-        #       - Editor
-        #       - Optimization
       required:
         - id
         - latest_version
-        # - name
-        # - developers
-        # - description
-        # - tags
 
     ModVersion:
       type: object
@@ -241,9 +224,9 @@ components:
         description:
           type: string
         geode_version:
-          $ref: '#/components/schemas/ModVersion'
+          $ref: '#/components/schemas/ModVersionString'
         version:
-          $ref: '#/components/schemas/ModVersion'
+          $ref: '#/components/schemas/ModVersionString'
         download_link:
           type: string
           examples:
@@ -278,7 +261,7 @@ components:
       in: path
       required: true
       schema:
-        $ref: '#/components/schemas/ModVersion'
+        $ref: '#/components/schemas/ModVersionString'
 
     GeodeVersionQuery:
       name: geode
@@ -286,7 +269,7 @@ components:
       description: Geode version being used
       required: false
       schema:
-        $ref: '#/components/schemas/ModVersion'
+        $ref: '#/components/schemas/ModVersionString'
     
     Page:
       name: page
