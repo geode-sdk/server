@@ -195,36 +195,44 @@ components:
       properties: 
         id:
           $ref: '#/components/schemas/ModID'
-        geode:
-          $ref: '#/components/schemas/ModVersion'
-        version:
-          $ref: '#/components/schemas/ModVersion'
-        name:
+        repository:
           type: string
           examples:
-            - Devtools
-        developers:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/UserSimple'
-        description:
-          type: string
-        tags:
-          type: array
-          items:
-            type: string
-            examples: 
-              - Gameplay
-              - Editor
-              - Optimization
+            - 'https://github.com/geode-sdk/geode'
+        latest_version:
+          $ref: '#/components/schemas/ModVersion'
+        validated:
+          type: boolean
+        # geode:
+        #   $ref: '#/components/schemas/ModVersion'
+        # version:
+        #   $ref: '#/components/schemas/ModVersion'
+        # name:
+        #   type: string
+        #   examples:
+        #     - Devtools
+        # developers:
+        #   type: array
+        #   minItems: 1
+        #   items:
+        #     $ref: '#/components/schemas/UserSimple'
+        # description:
+        #   type: string
+        # tags:
+        #   type: array
+        #   items:
+        #     type: string
+        #     examples: 
+        #       - Gameplay
+        #       - Editor
+        #       - Optimization
       required:
         - id
-        - version
-        - name
-        - developers
-        - description
-        - tags
+        - latest_version
+        # - name
+        # - developers
+        # - description
+        # - tags
       
     Platform:
       type: string
