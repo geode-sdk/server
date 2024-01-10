@@ -6,12 +6,12 @@ use env_logger::Env;
 mod endpoints;
 mod types;
 
-struct AppData {
+pub struct AppData {
     db: sqlx::postgres::PgPool,
 }
 
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     FsError,
     DbAcquireError,
     DbError,

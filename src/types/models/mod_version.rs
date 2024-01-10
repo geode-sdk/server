@@ -48,7 +48,11 @@ struct ModVersionRecord {
 }
 
 impl ModVersion {
-    pub async fn get_versions_for_mods(pool: &mut PgConnection, ids: Vec<&str>) -> Result<HashMap<String, Vec<ModVersion>>, Error> {
+    pub async fn get_versions_for_mods(pool: &mut PgConnection, ids: &[&str]) -> Result<HashMap<String, Vec<ModVersion>>, Error> {
+        if ids.is_empty() {
+            return Ok(Default::default());
+        }
+
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT * FROM mod_versions WHERE mod_id IN ("
         );
@@ -85,6 +89,6 @@ impl ModVersion {
                 Entry::Occupied(mut e) => { e.get_mut().push(version) }
             }
         }
-        return Ok(ret);
+        Ok(ret)
     }
 }
