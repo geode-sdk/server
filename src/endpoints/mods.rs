@@ -8,7 +8,7 @@ use crate::{AppData, Error};
 use crate::types::models::mod_entity::Mod;
 
 #[derive(Deserialize)]
-struct IndexQueryParams {
+pub struct IndexQueryParams {
     page: Option<i64>,
     per_page: Option<i64>,
     query: Option<String>
