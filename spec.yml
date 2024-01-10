@@ -39,11 +39,11 @@ paths:
                 items:
                   $ref: '#/components/schemas/Mod'
   
-  /mods/{id}:
+  /mods/{id}/latest:
     get:
       tags:
         - mods
-      summary: Get info for a mod
+      summary: Get info for the latest version of a mod
       description: Returns info for the current latest version of the mod
       parameters: 
         - $ref: '#/components/parameters/ModID'
@@ -54,7 +54,7 @@ paths:
           content:
             application/json: 
               schema:
-                $ref: '#/components/schemas/Mod'
+                $ref: '#/components/schemas/ModVersion'
 
   /mods/{id}/versions:
     get:
@@ -69,7 +69,7 @@ paths:
           content: 
             application/json: 
               schema:
-                type: string
+                $ref: '#/components/schemas/Mod'
     
   /mods/{id}/{version}:
     get:
@@ -85,7 +85,7 @@ paths:
           content: 
             application/json: 
               schema:
-                type: string
+                $ref: '#/components/schemas/ModVersion'
 
   /mods/updates:
     post:
@@ -276,7 +276,7 @@ components:
       description: Page number (default 1)
       required: false
       schema:
-        type: int
+        type: integer
     
     PerPage:
       name: per_page 
@@ -284,4 +284,4 @@ components:
       description: Number of elements to fetch per page (default 10) 
       required: false
       schema:
-        type: int
+        type: integer
