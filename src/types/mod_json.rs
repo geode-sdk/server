@@ -18,15 +18,15 @@ pub struct ModJson {
     pub issues: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
     pub settings: Option<serde_json::Value>,
-    #[serde(default="bool::default")]
+    #[serde(default)]
     pub windows: bool,
-    #[serde(default="bool::default")]
+    #[serde(default)]
     pub ios: bool,
-    #[serde(default="bool::default")]
+    #[serde(default)]
     pub android32: bool,
-    #[serde(default="bool::default")]
+    #[serde(default)]
     pub android64: bool,
-    #[serde(default="bool::default")]
+    #[serde(default)]
     pub mac: bool
 }
 
