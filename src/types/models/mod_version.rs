@@ -3,7 +3,7 @@ use std::{collections::{HashMap, hash_map::Entry}, vec};
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 
-use crate::Error;
+use crate::types::api::ApiError;
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -48,7 +48,7 @@ struct ModVersionRecord {
 }
 
 impl ModVersion {
-    pub async fn get_versions_for_mods(pool: &mut PgConnection, ids: &[&str]) -> Result<HashMap<String, Vec<ModVersion>>, Error> {
+    pub async fn get_versions_for_mods(pool: &mut PgConnection, ids: &[&str]) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
@@ -61,7 +61,10 @@ impl ModVersion {
             separated.push_bind(id);
         }
         separated.push_unseparated(")");
-        let records = query_builder.build_query_as::<ModVersionRecord>().fetch_all(pool).await.or(Err(Error::DbError))?;
+        let records = query_builder.build_query_as::<ModVersionRecord>()
+            .fetch_all(pool)
+            .await
+            .or(Err(ApiError::DbError))?;
         let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
         
         for x in records.iter() {

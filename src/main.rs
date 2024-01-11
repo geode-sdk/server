@@ -1,7 +1,8 @@
-use std::fmt::Display;
-use actix_web::{get, web, App, HttpServer, Responder, ResponseError, middleware::Logger};
+use actix_web::{get, web, App, HttpServer, Responder, middleware::Logger};
 use log::info;
 use env_logger::Env;
+
+use crate::types::api::ApiError;
 
 mod endpoints;
 mod types;
@@ -10,29 +11,8 @@ pub struct AppData {
     db: sqlx::postgres::PgPool,
 }
 
-#[derive(Debug)]
-pub enum Error {
-    FsError,
-    DbAcquireError,
-    DbError,
-    UploadError(String),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FsError => write!(f, "server filesystem error"),
-            Self::DbAcquireError => write!(f, "database busy"),
-            Self::DbError => write!(f, "database error"),
-            Self::UploadError(msg) => write!(f, "upload error: {msg}"),
-        }
-    }
-}
-
-impl ResponseError for Error {}
-
 #[get("/")]
-async fn health() -> Result<impl Responder, Error> {
+async fn health() -> Result<impl Responder, ApiError> {
     Ok(web::Json("The Geode Index is running"))
 }
 
