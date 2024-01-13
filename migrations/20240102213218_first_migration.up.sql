@@ -9,7 +9,7 @@ CREATE TABLE mods (
 );
 
 CREATE TABLE mod_versions (
-    id BIGINT PRIMARY KEY NOT NULL,
+    id SERIAL PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
     version TEXT NOT NULL,
