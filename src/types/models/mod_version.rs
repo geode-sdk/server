@@ -119,16 +119,14 @@ impl ModVersion {
         separated.push_bind(&json.ios);
         separated.push_bind(&json.id);
         separated.push_unseparated(")");
-        info!("mod version sql {}", builder.sql());
         let result = builder 
             .build()
             .execute(&mut *pool)
             .await;
         if result.is_err() {
-            info!("{:?}", result.err().unwrap());
+            log::error!("{:?}", result.err().unwrap());
             return Err(ApiError::DbError);
         }
-        info!("success!");
         Ok(())
     }
 

@@ -129,9 +129,8 @@ impl Mod {
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        info!("{:?}", res);
         if !res.is_none() {
-            return Err(ApiError::BadRequest(format!("Mod id {} already exists, consider creating a new version", json.id)));
+            return Err(ApiError::BadRequest(format!("Mod {} already exists, consider creating a new version", json.id)));
         }
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mods (");
         if json.repository.is_some() {
