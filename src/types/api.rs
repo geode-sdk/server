@@ -21,9 +21,9 @@ pub enum ApiError {
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::FilesystemError => write!(f, "filesystem error"),
-            Self::DbAcquireError => write!(f, "database busy"),
-            Self::DbError => write!(f, "database error"),
+            Self::FilesystemError => write!(f, "Unknown filesystem error"),
+            Self::DbAcquireError => write!(f, "Database is busy"),
+            Self::DbError => write!(f, "Unknown database error"),
             Self::BadRequest(message) => write!(f, "{}", message),
             Self::NotFound(message) => write!(f, "{}", message)
         }
