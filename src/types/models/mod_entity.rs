@@ -71,7 +71,7 @@ impl Mod {
         Ok(PaginatedData{ data: ret, count })
     }
 
-    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Mod, ApiError> {
+    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordWithVersions> = sqlx::query_as!(ModRecordWithVersions, 
             "SELECT
                 m.id, m.repository, m.latest_version, m.validated,
@@ -86,9 +86,8 @@ impl Mod {
             .await
             .or(Err(ApiError::DbError))?;
         if records.len() == 0 {
-            return Err(ApiError::NotFound(format!("Mod {} not found", id)))
+            return Ok(None);
         }
-        info!("{:?}", records);
         let versions = records.iter().map(|x| {
             ModVersion {
                 id: x.version_id,
@@ -113,7 +112,7 @@ impl Mod {
             validated: records[0].validated,
             versions
         };
-        Ok(mod_entity)
+        Ok(Some(mod_entity))
     }
 
     pub async fn from_json(json: &ModJson, new_mod: bool, pool: &mut PgConnection) -> Result<(), ApiError> {

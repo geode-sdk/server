@@ -1,4 +1,4 @@
-use actix_web::{get, web, Responder, post};
+use actix_web::{get, web, Responder, post, HttpResponse};
 use serde::Deserialize;
 use sqlx::Acquire;
 use log::info;
@@ -35,7 +35,10 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
 pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
-    Ok(web::Json(found))
+    match found {
+        Some(m) => Ok(web::Json(m)),
+        None => Err(ApiError::NotFound("".into()))
+    }
 }
 
 #[post("/v1/mods")]
@@ -55,5 +58,5 @@ pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryPara
         info!("{:?}", tr_res);
     }
     let _ = tokio::fs::remove_file(file_path).await;
-    Ok(web::Json(1))
+    Ok(HttpResponse::NoContent())
 }
