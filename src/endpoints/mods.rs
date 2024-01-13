@@ -28,7 +28,7 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let query = query.query.clone().unwrap_or("".to_string());
 
     let result = Mod::get_index(&mut pool, page, per_page, query).await?;
-    Ok(web::Json(ApiResponse {message: "".into(), payload: result}))
+    Ok(web::Json(ApiResponse {error: "".into(), data: result}))
 }
 
 #[get("/v1/mods/{id}")]
@@ -36,7 +36,7 @@ pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder,
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
     match found {
-        Some(m) => Ok(web::Json(ApiResponse {message: "".into(), payload: m})),
+        Some(m) => Ok(web::Json(ApiResponse {error: "".into(), data: m})),
         None => Err(ApiError::NotFound("".into()))
     }
 }

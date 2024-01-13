@@ -20,8 +20,8 @@ pub enum ApiError {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiResponse<T> {
-    pub message: String,
-    pub payload: T
+    pub error: String,
+    pub data: T
 }
 
 impl Display for ApiError {
@@ -40,7 +40,7 @@ impl actix_web::ResponseError for ApiError {
     fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
         HttpResponse::build(self.status_code())
             .append_header(ContentType::json())
-            .json(ApiResponse {message: self.to_string(), payload: "".to_string()})
+            .json(ApiResponse {error: self.to_string(), data: "".to_string()})
     }
     fn status_code(&self) -> StatusCode {
         match self {
