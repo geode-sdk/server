@@ -122,6 +122,38 @@ impl Mod {
         Ok(())
     }
 
+    pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let result = sqlx::query!("SELECT latest_version, validated FROM mods WHERE id = $1", json.id)
+            .fetch_optional(&mut *pool)
+            .await
+            .or(Err(ApiError::DbError))?;
+        let result = match result {
+            Some(r) => r,
+            None => return Err(ApiError::NotFound(format!("Mod {} doesn't exist", &json.id)))
+        };
+        if !result.validated {
+            return Err(ApiError::BadRequest("Cannot update an unverified mod. Please contact the Geode team for more details.".into()));
+        }
+        let version = semver::Version::parse(result.latest_version.trim_start_matches("v")).unwrap();
+        let new_version = match semver::Version::parse(json.version.trim_start_matches("v")) {
+            Ok(v) => v,
+            Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", json.version)))
+        };
+        if new_version.le(&version) {
+            return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
+        }
+        ModVersion::from_json(json, pool).await?;
+        let result = sqlx::query!("UPDATE mods SET latest_version = $1 WHERE id = $2", json.version, json.id)
+            .execute(&mut *pool)
+            .await
+            .or(Err(ApiError::DbError))?;
+        if result.rows_affected() == 0 {
+            log::error!("{:?}", result);
+            return Err(ApiError::DbError);
+        }
+        Ok(())
+    }
+
     async fn create(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
         let res = sqlx::query!("SELECT id FROM mods WHERE id = $1", json.id)
             .fetch_optional(&mut *pool)

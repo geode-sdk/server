@@ -1,4 +1,4 @@
-use actix_web::{get, web, Responder, post, HttpResponse};
+use actix_web::{get, web, Responder, post, HttpResponse, patch};
 use serde::Deserialize;
 use sqlx::Acquire;
 use log::info;
@@ -57,6 +57,23 @@ pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryPara
     if tr_res.is_err() {
         info!("{:?}", tr_res);
     }
+    let _ = tokio::fs::remove_file(file_path).await;
+    Ok(HttpResponse::NoContent())
+}
+
+#[patch("/v1/mods")]
+pub async fn update(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let file_path = download_geode_file(&payload.download_url).await?;
+    let json = ModJson::from_zip(&file_path, payload.download_url.as_str()).or(Err(ApiError::FilesystemError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let result = Mod::new_version(&json, &mut transaction).await;
+    if result.is_err() {
+        let _ = transaction.rollback().await;
+        let _ = tokio::fs::remove_file(file_path).await;
+        return Err(result.err().unwrap());
+    }
+    let _ = transaction.commit().await;
     let _ = tokio::fs::remove_file(file_path).await;
     Ok(HttpResponse::NoContent())
 }
