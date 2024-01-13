@@ -40,7 +40,6 @@ impl ModJson {
         let file = File::open(&file_path).or(Err(ApiError::FilesystemError))?;
         let path = Path::new(file_path);
         let hash = sha256::try_digest(path).or(Err(ApiError::FilesystemError))?;
-        info!("hash: {:?}", hash);
         let reader = BufReader::new(file);
         let archive_res = zip::ZipArchive::new(reader);
         if archive_res.is_err() {

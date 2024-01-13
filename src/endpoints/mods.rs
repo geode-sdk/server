@@ -36,20 +36,15 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
 
 #[get("/v1/mods/{id}")]
 pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
-    // let pool = data.db.acquire().await.or(Err(Error::DbAcquireError))?;
-    // let res = sqlx::query_as!(Mod, r#"SELECT * FROM mods WHERE id = $1"#, id)
-    //     .fetch_one(&mut *pool)
-    //     .await.or(Err(Error::DbError))?;
-
-    Ok(web::Json(""))
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let found = Mod::get_one(&id, &mut pool).await?;
+    Ok(web::Json(found))
 }
 
 #[post("/v1/mods")]
 pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    info!("starting download...");
     let file_path = download_geode_file(&payload.download_url).await?;
-    info!("downloaded!");
     let json = ModJson::from_zip(&file_path, payload.download_url.as_str()).or(Err(ApiError::FilesystemError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
     let result = Mod::from_json(&json, true, &mut transaction).await;
@@ -63,23 +58,5 @@ pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryPara
         info!("{:?}", tr_res);
     }
     let _ = tokio::fs::remove_file(file_path).await;
-
-    // // todo: authenticate
-    // let mut file = std::fs::File::open(format!("db/temp_{id}.geode")).or(Err(Error::FsError))?;
-    // //                                                   ^ todo: sanitize
-    // let mut written = 0usize;
-    // while let Some(chunk) = geode_file.next().await {
-    //     let chunk = chunk.map_err(|e| Error::UploadError(e.to_string()))?;
-    //     written += chunk.len();
-    //     if written > 262_144 {
-    //         return Err(Error::UploadError("file too large".to_string()));
-    //     }
-    //     file.write_all(&chunk).or(Err(Error::FsError))?;
-    // }
-
-    
-
-    // todo: load info from geode file and add to database
-
     Ok(web::Json(1))
 }
