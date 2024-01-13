@@ -3,7 +3,7 @@ CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');
 
 CREATE TABLE mods (
     id TEXT PRIMARY KEY NOT NULL,
-    repository TEXT NOT NULL,
+    repository TEXT,
     latest_version TEXT NOT NULL,
     validated BOOLEAN NOT NULL
 );
