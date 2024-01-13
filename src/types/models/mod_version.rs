@@ -2,8 +2,9 @@ use std::{collections::{HashMap, hash_map::Entry}, vec};
 
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
+use log::info;
 
-use crate::types::api::ApiError;
+use crate::types::{api::ApiError, mod_json::ModJson};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -93,5 +94,56 @@ impl ModVersion {
             }
         }
         Ok(ret)
+    }
+
+    pub async fn from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+        // If someone finds a way to use macros with optional parameters you can impl it here
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
+        if json.description.is_some() {
+            builder.push("description, ");
+        }
+        builder.push("name, version, download_link, hash, geode_version, windows, android32, android64, mac, ios, mod_id) VALUES (");
+        let mut separated = builder.separated(", ");
+        if json.description.is_some() {
+            separated.push_bind(&json.description);
+        }
+        separated.push_bind(&json.name);
+        separated.push_bind(&json.version);
+        separated.push_bind(&json.download_url);
+        separated.push_bind(&json.hash);
+        separated.push_bind(&json.geode);
+        separated.push_bind(&json.windows);
+        separated.push_bind(&json.android32);
+        separated.push_bind(&json.android64);
+        separated.push_bind(&json.mac);
+        separated.push_bind(&json.ios);
+        separated.push_bind(&json.id);
+        separated.push_unseparated(")");
+        info!("mod version sql {}", builder.sql());
+        let result = builder 
+            .build()
+            .execute(&mut *pool)
+            .await;
+        if result.is_err() {
+            info!("{:?}", result.err().unwrap());
+            return Err(ApiError::DbError);
+        }
+        info!("success!");
+        Ok(())
+    }
+
+    pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
+        let result = sqlx::query_as!(
+            ModVersion,
+            "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
+            id, version
+        ).fetch_optional(&mut *pool)
+        .await
+        .or(Err(ApiError::DbError))?;
+        
+        match result {
+            Some(version) => Ok(version),
+            None => Err(ApiError::NotFound(format!("Mod {}, version {} not found", id, version)))
+        }
     }
 }

@@ -1,7 +1,7 @@
 use serde::Serialize;
-use sqlx::{PgConnection, QueryBuilder, Postgres};
+use sqlx::{PgConnection, QueryBuilder, Postgres, postgres::any::AnyConnectionBackend};
 use uuid::Uuid;
-use std::io::Cursor;
+use std::{io::Cursor, any::Any};
 use crate::types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson};
 use log::info;
 
@@ -20,6 +20,27 @@ struct ModRecord {
     repository: Option<String>,
     latest_version: String,
     validated: bool,
+}
+
+#[derive(Debug)]
+struct ModRecordWithVersions {
+    id: String,
+    repository: Option<String>,
+    latest_version: String,
+    validated: bool,
+    version_id: i64,
+    name: String,
+    description: Option<String>,
+    version: String,
+    download_link: String,
+    hash: String,
+    geode_version: String,
+    windows: bool,
+    android32: bool,
+    android64: bool,
+    mac: bool,
+    ios: bool,
+    mod_id: String
 }
 
 impl Mod {
@@ -50,30 +71,68 @@ impl Mod {
         Ok(PaginatedData{ data: ret, count })
     }
 
-    // Not done yet
-    // pub async fn get_one(id: String, pool: &mut PgConnection) -> Result<Mod, ApiError> {
-    //     let record: Option<ModRecord> = sqlx::query_as!(ModRecord, 
-    //         "SELECT
-    //             id, repository, latest_version,
-
-    //         FROM mods WHERE id = $1",
-    //         id
-    //     ).fetch_optional(&mut *pool)
-    //         .await
-    //         .or(Err(ApiError::DbError))?;
-    //     let record = match record {
-    //         Some(result) => result,
-    //         None => return Err(ApiError::NotFound(format!("Mod {} not found!", id)))
-    //     };
-        
-    // }
+    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Mod, ApiError> {
+        let records: Vec<ModRecordWithVersions> = sqlx::query_as!(ModRecordWithVersions, 
+            "SELECT
+                m.id, m.repository, m.latest_version, m.validated,
+                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
+                mv.hash, mv.geode_version, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
+                mv.mod_id
+            FROM mods m
+            LEFT JOIN mod_versions mv ON m.id = mv.mod_id
+            WHERE m.id = $1",
+            id
+        ).fetch_all(&mut *pool)
+            .await
+            .or(Err(ApiError::DbError))?;
+        if records.len() == 0 {
+            return Err(ApiError::NotFound(format!("Mod {} not found", id)))
+        }
+        info!("{:?}", records);
+        let versions = records.iter().map(|x| {
+            ModVersion {
+                id: x.version_id,
+                name: x.name.clone(),
+                description: x.description.clone(),
+                version: x.version.clone(),
+                download_link: x.download_link.clone(),
+                hash: x.hash.clone(),
+                geode_version: x.geode_version.clone(),
+                windows: x.windows,
+                android32: x.android32,
+                android64: x.android64,
+                mac: x.mac,
+                ios: x.ios,
+                mod_id: x.mod_id.clone()
+            }
+        }).collect();
+        let mod_entity = Mod {
+            id: records[0].id.clone(),
+            repository: records[0].repository.clone(),
+            latest_version: records[0].latest_version.clone(),
+            validated: records[0].validated,
+            versions
+        };
+        Ok(mod_entity)
+    }
 
     pub async fn from_json(json: &ModJson, new_mod: bool, pool: &mut PgConnection) -> Result<(), ApiError> {
-        Mod::create(json, pool).await?;
+        if new_mod {
+            Mod::create(json, pool).await?;
+        }
+        ModVersion::from_json(json, pool).await?;
         Ok(())
     }
 
     async fn create(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let res = sqlx::query!("SELECT id FROM mods WHERE id = $1", json.id)
+            .fetch_optional(&mut *pool)
+            .await
+            .or(Err(ApiError::DbError))?;
+        info!("{:?}", res);
+        if !res.is_none() {
+            return Err(ApiError::BadRequest(format!("Mod id {} already exists, consider creating a new version", json.id)));
+        }
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mods (");
         if json.repository.is_some() {
             query_builder.push("repository, ");
@@ -88,14 +147,11 @@ impl Mod {
         separated.push_bind(false);
         separated.push_unseparated(")");
         
-        let result = query_builder
+        let _ = query_builder
             .build()
             .execute(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        if result.rows_affected() == 0 {
-            return Err(ApiError::DbError);
-        }
         Ok(())
     }
 }

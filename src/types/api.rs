@@ -8,7 +8,7 @@ pub struct PaginatedData<T> {
     pub count: i64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ApiError {
     FilesystemError,
     DbAcquireError,

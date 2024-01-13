@@ -1,6 +1,10 @@
+use std::backtrace;
+
 use actix_web::{get, web, Responder, post};
 use serde::Deserialize;
 use sqlx::Acquire;
+use sqlx::postgres::any::AnyConnectionBackend;
+use log::{info, trace};
 
 use crate::types::api::ApiError;
 use crate::AppData;
@@ -43,11 +47,22 @@ pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder,
 #[post("/v1/mods")]
 pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    info!("starting download...");
     let file_path = download_geode_file(&payload.download_url).await?;
-    let json = ModJson::from_zip(&file_path).or(Err(ApiError::FilesystemError))?;
-    pool.begin();
-    Mod::from_json(&json, true, &mut pool).await?;
-    _ = tokio::fs::remove_file(file_path);
+    info!("downloaded!");
+    let json = ModJson::from_zip(&file_path, payload.download_url.as_str()).or(Err(ApiError::FilesystemError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let result = Mod::from_json(&json, true, &mut transaction).await;
+    if result.is_err() {
+        let _ = transaction.rollback().await;
+        let _ = tokio::fs::remove_file(file_path).await;
+        return Err(result.err().unwrap());
+    }
+    let tr_res = transaction.commit().await;
+    if tr_res.is_err() {
+        info!("{:?}", tr_res);
+    }
+    let _ = tokio::fs::remove_file(file_path).await;
 
     // // todo: authenticate
     // let mut file = std::fs::File::open(format!("db/temp_{id}.geode")).or(Err(Error::FsError))?;
@@ -66,5 +81,5 @@ pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryPara
 
     // todo: load info from geode file and add to database
 
-    Ok(web::Json(None::<()>))
+    Ok(web::Json(1))
 }

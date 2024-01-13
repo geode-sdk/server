@@ -1,5 +1,6 @@
-use std::fs::File;
+use std::{fs::{File, self}, io::Read, path::Path};
 
+use log::info;
 use serde::Deserialize;
 use zip::read::ZipFile;
 use std::io::BufReader;
@@ -27,12 +28,19 @@ pub struct ModJson {
     #[serde(default)]
     pub android64: bool,
     #[serde(default)]
-    pub mac: bool
+    pub mac: bool,
+    #[serde(default)]
+    pub download_url: String,
+    #[serde(default)]
+    pub hash: String
 }
 
 impl ModJson {
-    pub fn from_zip(file_path: &String) -> Result<ModJson, ApiError> {
+    pub fn from_zip(file_path: &String, download_url: &str) -> Result<ModJson, ApiError> {
         let file = File::open(&file_path).or(Err(ApiError::FilesystemError))?;
+        let path = Path::new(file_path);
+        let hash = sha256::try_digest(path).or(Err(ApiError::FilesystemError))?;
+        info!("hash: {:?}", hash);
         let reader = BufReader::new(file);
         let archive_res = zip::ZipArchive::new(reader);
         if archive_res.is_err() {
@@ -42,6 +50,8 @@ impl ModJson {
         let json_file = archive.by_name("mod.json").or(Err(ApiError::BadRequest(String::from("mod.json not found"))))?;
         let mut json = serde_json::from_reader::<ZipFile, ModJson>(json_file)
             .or(Err(ApiError::BadRequest(String::from("Invalid mod.json"))))?;
+        json.hash = hash;
+        json.download_url = download_url.to_string();
 
         for i in 0..archive.len() {
             if let Some(file) = archive.by_index(i).ok() {
