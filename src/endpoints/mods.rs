@@ -3,7 +3,7 @@ use serde::Deserialize;
 use sqlx::Acquire;
 use log::info;
 
-use crate::types::api::ApiError;
+use crate::types::api::{ApiError, ApiResponse};
 use crate::AppData;
 use crate::types::models::mod_entity::{Mod, download_geode_file};
 use crate::types::mod_json::ModJson;
@@ -28,7 +28,7 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let query = query.query.clone().unwrap_or("".to_string());
 
     let result = Mod::get_index(&mut pool, page, per_page, query).await?;
-    Ok(web::Json(result))
+    Ok(web::Json(ApiResponse {message: "".into(), payload: result}))
 }
 
 #[get("/v1/mods/{id}")]
@@ -36,7 +36,7 @@ pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder,
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
     match found {
-        Some(m) => Ok(web::Json(m)),
+        Some(m) => Ok(web::Json(ApiResponse {message: "".into(), payload: m})),
         None => Err(ApiError::NotFound("".into()))
     }
 }

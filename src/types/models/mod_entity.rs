@@ -3,7 +3,6 @@ use sqlx::{PgConnection, QueryBuilder, Postgres};
 use uuid::Uuid;
 use std::io::Cursor;
 use crate::types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson};
-use log::info;
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {

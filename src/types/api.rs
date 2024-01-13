@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, web, http::header::ContentType};
+use actix_web::{HttpResponse, http::header::ContentType};
 use serde::{Serialize, Deserialize};
 use std::fmt::Display;
 use reqwest::StatusCode;
@@ -18,6 +18,12 @@ pub enum ApiError {
     NotFound(String)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiResponse<T> {
+    pub message: String,
+    pub payload: T
+}
+
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -34,7 +40,7 @@ impl actix_web::ResponseError for ApiError {
     fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
         HttpResponse::build(self.status_code())
             .append_header(ContentType::json())
-            .body(web::Json(self.to_string()).to_string())
+            .json(ApiResponse {message: self.to_string(), payload: "".to_string()})
     }
     fn status_code(&self) -> StatusCode {
         match self {
