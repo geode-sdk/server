@@ -1,7 +1,7 @@
 use serde::Serialize;
-use sqlx::{PgConnection, QueryBuilder, Postgres, postgres::any::AnyConnectionBackend};
+use sqlx::{PgConnection, QueryBuilder, Postgres};
 use uuid::Uuid;
-use std::{io::Cursor, any::Any};
+use std::io::Cursor;
 use crate::types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson};
 use log::info;
 

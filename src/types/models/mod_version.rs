@@ -2,7 +2,6 @@ use std::{collections::{HashMap, hash_map::Entry}, vec};
 
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
-use log::info;
 
 use crate::types::{api::ApiError, mod_json::ModJson};
 
@@ -130,6 +129,7 @@ impl ModVersion {
         Ok(())
     }
 
+    // This will be used in GET /v1/mods/versions/{version}
     pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
             ModVersion,

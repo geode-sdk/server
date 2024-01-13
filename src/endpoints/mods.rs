@@ -1,10 +1,7 @@
-use std::backtrace;
-
 use actix_web::{get, web, Responder, post};
 use serde::Deserialize;
 use sqlx::Acquire;
-use sqlx::postgres::any::AnyConnectionBackend;
-use log::{info, trace};
+use log::info;
 
 use crate::types::api::ApiError;
 use crate::AppData;

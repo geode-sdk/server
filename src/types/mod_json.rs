@@ -1,6 +1,5 @@
-use std::{fs::{File, self}, io::Read, path::Path};
+use std::{fs::File, path::Path};
 
-use log::info;
 use serde::Deserialize;
 use zip::read::ZipFile;
 use std::io::BufReader;
