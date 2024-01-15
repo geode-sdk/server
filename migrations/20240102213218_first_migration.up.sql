@@ -21,6 +21,8 @@ CREATE TABLE mod_versions (
     android64 BOOLEAN NOT NULL,
     mac BOOLEAN NOT NULL,
     ios BOOLEAN NOT NULL,
+    early_load BOOLEAN NOT NULL,
+    is_api_mod BOOLEAN NOT NULL,
     mod_id TEXT NOT NULL,
     FOREIGN KEY (mod_id) REFERENCES mods(id)
 );
@@ -28,18 +30,37 @@ CREATE TABLE mod_versions (
 CREATE UNIQUE INDEX idx_version_id
 ON mod_versions(version, mod_id);
 
+CREATE TABLE mod_tags (
+    id SERIAL PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE mods_mod_tags (
+    mod_id INTEGER NOT NULL REFERENCES mod_versions(id),
+    tag_id INTEGER NOT NULL REFERENCES mod_tags(id)
+);
+
 CREATE TABLE dependencies (
-    dependent_id TEXT NOT NULL,
-    dependency_id TEXT NOT NULL,
+    dependent_id INTEGER NOT NULL,
+    dependency_id INTEGER NOT NULL,
     compare TEXT NOT NULL,
     importance mod_importance NOT NULL,
     PRIMARY KEY (dependent_id, dependency_id),
-    FOREIGN KEY (dependent_id) REFERENCES mods(id),
-    FOREIGN KEY (dependency_id) REFERENCES mods(id)
+    FOREIGN KEY (dependent_id) REFERENCES mod_versions(id),
+    FOREIGN KEY (dependency_id) REFERENCES mod_versions(id)
+);
+
+CREATE TABLE incompatibilities (
+    mod_id INTEGER NOT NULL,
+    incompatibility_id INTEGER NOT NULL,
+    compare TEXT NOT NULL,
+    importance mod_importance NOT NULL,
+    PRIMARY KEY (mod_id, incompatibility_id),
+    FOREIGN KEY (mod_id) REFERENCES mod_versions(id)
 );
 
 CREATE TABLE developers (
-    id BIGINT PRIMARY KEY NOT NULL,
+    id SERIAL PRIMARY KEY NOT NULL,
     username TEXT NOT NULL,
     display_name TEXT NOT NULL,
     verified BOOLEAN NOT NULL,
@@ -48,7 +69,7 @@ CREATE TABLE developers (
 
 CREATE TABLE mods_developers (
     mod_id TEXT NOT NULL,
-    developer_id BIGINT NOT NULL,
+    developer_id INTEGER NOT NULL,
     PRIMARY KEY (mod_id, developer_id),
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)

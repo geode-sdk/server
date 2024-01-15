@@ -120,7 +120,7 @@ impl Mod {
         };
 
         if semver::Version::parse(json.geode.trim_start_matches("v")).is_err() {
-            return Err(ApiError::BadRequest(format!("Invalid geode version  semver {}", json.geode)));
+            return Err(ApiError::BadRequest(format!("Invalid geode version semver {}", json.geode)));
         };
 
         if new_mod {
