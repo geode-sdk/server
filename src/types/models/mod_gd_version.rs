@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, QueryBuilder, Postgres};
@@ -24,6 +24,7 @@ pub enum GDVersionEnum {
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[sqlx(type_name = "gd_ver_platform", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum VerPlatform {
     Android,
     Ios,
@@ -31,7 +32,7 @@ pub enum VerPlatform {
     Win
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Clone, Copy, Debug, Serialize)]
 pub struct ModGDVersion {
     id: i32,
     mod_id: i32,
@@ -49,18 +50,23 @@ impl ModGDVersion {
             Ok(_) => ()
         };
 
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_gd_versions (gd, platform) VALUES");
-        for i in 1..json.len() - 1 {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_gd_versions (gd, platform, mod_id) VALUES ");
+        let mut i = 0;
+        for current in json.iter() {
             builder.push("(");
             let mut separated = builder.separated(", ");
-            let current = &json[i];
+            log::info!("current: {:?}", current);
             separated.push_bind(current.gd as GDVersionEnum);
             separated.push_bind(current.platform as VerPlatform);
+            separated.push_bind(mod_version_id);
             separated.push_unseparated(")");
+            i += 1;
             if i != json.len() {
                 separated.push_unseparated(", ");
             }
         }
+
+        log::info!("{}", builder.sql());
 
         let result = builder.
             build()
@@ -97,6 +103,39 @@ impl ModGDVersion {
         }
         ModGDVersion::create_from_json(platforms_arg, mod_version_id, pool).await?;
         Ok(())
+    }
+
+    pub async fn get_for_mod_versions(versions: Vec<i32>, pool: &mut PgConnection) -> Result<HashMap<i32, Vec<ModGDVersion>>, ApiError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM mod_gd_versions WHERE mod_id IN (");
+        let mut separated = builder.separated(", ");
+        for i in versions {
+            separated.push_bind(i);
+        }
+        separated.push_unseparated(")");
+
+        let result = builder.build_query_as::<ModGDVersion>()
+            .fetch_all(&mut *pool)
+            .await;
+        let result = match result {
+            Err(e) => {
+                log::info!("{:?}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => r
+        };
+
+        let mut ret: HashMap<i32, Vec<ModGDVersion>> = HashMap::new();
+        for i in result {
+            match ret.entry(i.mod_id) {
+                Entry::Vacant(e) => {
+                    let vec: Vec<ModGDVersion> = vec![i];
+                    e.insert(vec);
+                },
+                Entry::Occupied(mut e) => { e.get_mut().push(i) }
+            }
+        }
+
+        Ok(ret)
     }
 }
 

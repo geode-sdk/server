@@ -93,6 +93,7 @@ impl ModJson {
                 }
             }
         }
+        log::info!("{:?}", json);
         return Ok(json);
     }
 }

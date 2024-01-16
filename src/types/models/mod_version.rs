@@ -1,6 +1,5 @@
 use std::{collections::{HashMap, hash_map::Entry}, vec};
 
-use log::info;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
@@ -10,7 +9,7 @@ use super::mod_gd_version::ModGDVersion;
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
-    pub id: i64,
+    pub id: i32,
     pub name: String,
     pub description: Option<String>,
     pub version: String,
@@ -24,7 +23,8 @@ pub struct ModVersion {
     pub ios: bool,
     pub early_load: bool,
     pub api: bool,
-    pub mod_id: String 
+    pub mod_id: String,
+    pub gd: Vec<ModGDVersion>
 }
 
 #[derive(sqlx::Type, Debug)]
@@ -37,7 +37,7 @@ pub enum ModImportance {
 
 #[derive(sqlx::FromRow)]
 struct ModVersionRecord {
-    id: i64,
+    id: i32,
     name: String,
     description: Option<String>,
     version: String,
@@ -70,8 +70,15 @@ impl ModVersion {
         separated.push_unseparated(")");
         let records = query_builder.build_query_as::<ModVersionRecord>()
             .fetch_all(pool)
-            .await
-            .or(Err(ApiError::DbError))?;
+            .await;
+        let records = match records {
+            Err(e) => {
+                log::info!("{:?}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => r
+        };
+
         let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
         
         for x in records.iter() {
@@ -91,7 +98,8 @@ impl ModVersion {
                 ios: x.ios,
                 early_load: x.early_load,
                 api: x.api,
-                mod_id: x.mod_id.clone()
+                mod_id: x.mod_id.clone(),
+                gd: vec![]
             };
             match ret.entry(mod_id) {
                 Entry::Vacant(e) => {
@@ -152,18 +160,18 @@ impl ModVersion {
     }
 
     // This will be used in GET /v1/mods/versions/{version}
-    pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
-        let result = sqlx::query_as!(
-            ModVersion,
-            "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
-            id, version
-        ).fetch_optional(&mut *pool)
-        .await
-        .or(Err(ApiError::DbError))?;
+    // pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
+    //     let result = sqlx::query_as!(
+    //         ModVersionRecord,
+    //         "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
+    //         id, version
+    //     ).fetch_optional(&mut *pool)
+    //     .await
+    //     .or(Err(ApiError::DbError))?;
         
-        match result {
-            Some(version) => Ok(version),
-            None => Err(ApiError::NotFound(format!("Mod {}, version {} not found", id, version)))
-        }
-    }
+    //     match result {
+    //         Some(version) => Ok(version),
+    //         None => Err(ApiError::NotFound(format!("Mod {}, version {} not found", id, version)))
+    //     }
+    // }
 }

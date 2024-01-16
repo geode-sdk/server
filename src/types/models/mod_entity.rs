@@ -4,6 +4,8 @@ use uuid::Uuid;
 use std::io::Cursor;
 use crate::types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson};
 
+use super::mod_gd_version::ModGDVersion;
+
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
     pub id: String,
@@ -22,12 +24,12 @@ struct ModRecord {
 }
 
 #[derive(Debug)]
-struct ModRecordWithVersions {
+struct ModRecordGetOne {
     id: String,
     repository: Option<String>,
     latest_version: String,
     validated: bool,
-    version_id: i64,
+    version_id: i32,
     name: String,
     description: Option<String>,
     version: String,
@@ -58,9 +60,20 @@ impl Mod {
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
         let versions = ModVersion::get_versions_for_mods(pool, &ids).await?;
+        let mut mod_version_ids: Vec<i32> = vec![];
+        for i in &versions {
+            let mut version_ids: Vec<_> = i.1.iter().map(|x| { x.id }).collect();
+            mod_version_ids.append(&mut version_ids);
+        }
+
+        let gd_versions = ModGDVersion::get_for_mod_versions(mod_version_ids, pool).await?;
 
         let ret = records.into_iter().map(|x| {
-            let version_vec = versions.get(&x.id).cloned().unwrap_or_default();
+            let mut version_vec = versions.get(&x.id).cloned().unwrap_or_default();
+            for i in &mut version_vec {
+                let gd_ver = gd_versions.get(&i.id).cloned().unwrap_or_default();
+                i.gd = gd_ver;
+            }
             Mod {
                 id: x.id.clone(),
                 repository: x.repository.clone(),
@@ -73,7 +86,7 @@ impl Mod {
     }
 
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
-        let records: Vec<ModRecordWithVersions> = sqlx::query_as!(ModRecordWithVersions, 
+        let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
                 m.id, m.repository, m.latest_version, m.validated,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
@@ -105,7 +118,8 @@ impl Mod {
                 ios: x.ios,
                 early_load: x.early_load,
                 api: x.api,
-                mod_id: x.mod_id.clone()
+                mod_id: x.mod_id.clone(),
+                gd: vec![]
             }
         }).collect();
         let mod_entity = Mod {
