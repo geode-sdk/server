@@ -39,6 +39,8 @@ struct ModRecordWithVersions {
     android64: bool,
     mac: bool,
     ios: bool,
+    early_load: bool,
+    api: bool,
     mod_id: String
 }
 
@@ -76,7 +78,7 @@ impl Mod {
                 m.id, m.repository, m.latest_version, m.validated,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode_version, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
-                mv.mod_id
+                mv.early_load, mv.api, mv.mod_id
             FROM mods m
             LEFT JOIN mod_versions mv ON m.id = mv.mod_id
             WHERE m.id = $1",
@@ -101,6 +103,8 @@ impl Mod {
                 android64: x.android64,
                 mac: x.mac,
                 ios: x.ios,
+                early_load: x.early_load,
+                api: x.api,
                 mod_id: x.mod_id.clone()
             }
         }).collect();
@@ -126,7 +130,7 @@ impl Mod {
         if new_mod {
             Mod::create(json, pool).await?;
         }
-        ModVersion::from_json(json, pool).await?;
+        ModVersion::create_from_json(json, pool).await?;
         Ok(())
     }
 
@@ -150,7 +154,7 @@ impl Mod {
         if new_version.le(&version) {
             return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
         }
-        ModVersion::from_json(json, pool).await?;
+        ModVersion::create_from_json(json, pool).await?;
         let result = sqlx::query!("UPDATE mods SET latest_version = $1 WHERE id = $2", json.version, json.id)
             .execute(&mut *pool)
             .await

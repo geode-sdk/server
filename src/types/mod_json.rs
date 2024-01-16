@@ -4,7 +4,7 @@ use serde::Deserialize;
 use zip::read::ZipFile;
 use std::io::BufReader;
 
-use super::api::ApiError;
+use super::{api::ApiError, models::mod_gd_version::{GDVersionEnum, VerPlatform}};
 
 #[derive(Debug, Deserialize)]
 pub struct ModJson {
@@ -31,7 +31,25 @@ pub struct ModJson {
     #[serde(default)]
     pub download_url: String,
     #[serde(default)]
-    pub hash: String
+    pub hash: String,
+    #[serde(default, rename = "early-load")]
+    pub early_load: bool,
+    #[serde(default)]
+    pub api: bool,
+    pub gd: Option<ModJsonGDVersionType>
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonGDVersionType {
+    VersionStr(GDVersionEnum),
+    VersionObj(Vec<ModJsonGDVersion>)
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ModJsonGDVersion {
+    pub gd: GDVersionEnum,
+    pub platform: VerPlatform,
 }
 
 impl ModJson {

@@ -1,9 +1,12 @@
 use std::{collections::{HashMap, hash_map::Entry}, vec};
 
+use log::info;
 use serde::Serialize;
-use sqlx::{PgConnection, QueryBuilder, Postgres};
+use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
-use crate::types::{api::ApiError, mod_json::ModJson};
+use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
+
+use super::mod_gd_version::ModGDVersion;
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -19,11 +22,13 @@ pub struct ModVersion {
     pub android64: bool,
     pub mac: bool,
     pub ios: bool,
+    pub early_load: bool,
+    pub api: bool,
     pub mod_id: String 
 }
 
 #[derive(sqlx::Type, Debug)]
-#[sqlx(type_name = "mood", rename_all = "lowercase")]
+#[sqlx(type_name = "mod_importance", rename_all = "lowercase")]
 pub enum ModImportance {
     Required,
     Recommended,
@@ -44,6 +49,8 @@ struct ModVersionRecord {
     android64: bool,
     mac: bool,
     ios: bool,
+    early_load: bool,
+    api: bool,
     mod_id: String 
 }
 
@@ -82,6 +89,8 @@ impl ModVersion {
                 android64: x.android64,
                 mac: x.mac,
                 ios: x.ios,
+                early_load: x.early_load,
+                api: x.api,
                 mod_id: x.mod_id.clone()
             };
             match ret.entry(mod_id) {
@@ -95,13 +104,13 @@ impl ModVersion {
         Ok(ret)
     }
 
-    pub async fn from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn create_from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
             builder.push("description, ");
         }
-        builder.push("name, version, download_link, hash, geode_version, windows, android32, android64, mac, ios, mod_id) VALUES (");
+        builder.push("name, version, download_link, hash, geode_version, windows, android32, android64, mac, ios, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -116,15 +125,28 @@ impl ModVersion {
         separated.push_bind(&json.android64);
         separated.push_bind(&json.mac);
         separated.push_bind(&json.ios);
+        separated.push_bind(&json.early_load);
+        separated.push_bind(&json.api);
         separated.push_bind(&json.id);
-        separated.push_unseparated(")");
+        separated.push_unseparated(") RETURNING id");
         let result = builder 
             .build()
-            .execute(&mut *pool)
+            .fetch_one(&mut *pool)
             .await;
-        if result.is_err() {
-            log::error!("{:?}", result.err().unwrap());
-            return Err(ApiError::DbError);
+        let result = match result {
+            Err(e) => {
+                log::error!("{:?}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(row) => row
+        };
+        let id = result.get::<i32, &str>("id");
+        match json.gd.as_ref() {
+            Some(gd) => match gd {
+                ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(*ver, id, pool).await?,
+                ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_vec(), id, pool).await?
+            },
+            None => ()
         }
         Ok(())
     }

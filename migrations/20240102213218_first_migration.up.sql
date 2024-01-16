@@ -1,5 +1,7 @@
 -- Add up migration script here
 CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');
+CREATE TYPE gd_version as ENUM ('*', '2.113', '2.200', '2.203');
+CREATE TYPE gd_ver_platform as ENUM ('android', 'ios', 'mac', 'win');
 
 CREATE TABLE mods (
     id TEXT PRIMARY KEY NOT NULL,
@@ -21,8 +23,8 @@ CREATE TABLE mod_versions (
     android64 BOOLEAN NOT NULL,
     mac BOOLEAN NOT NULL,
     ios BOOLEAN NOT NULL,
-    early_load BOOLEAN NOT NULL,
-    is_api_mod BOOLEAN NOT NULL,
+    early_load BOOLEAN NOT NULL DEFAULT false,
+    api BOOLEAN NOT NULL DEFAULT false,
     mod_id TEXT NOT NULL,
     FOREIGN KEY (mod_id) REFERENCES mods(id)
 );
@@ -38,6 +40,13 @@ CREATE TABLE mod_tags (
 CREATE TABLE mods_mod_tags (
     mod_id INTEGER NOT NULL REFERENCES mod_versions(id),
     tag_id INTEGER NOT NULL REFERENCES mod_tags(id)
+);
+
+CREATE TABLE mod_gd_versions (
+    id SERIAL PRIMARY KEY NOT NULL,
+    mod_id INTEGER NOT NULL REFERENCES mod_versions(id),
+    gd gd_version NOT NULL,
+    platform gd_ver_platform NOT NULL
 );
 
 CREATE TABLE dependencies (
