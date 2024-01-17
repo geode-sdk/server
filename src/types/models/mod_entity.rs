@@ -2,7 +2,7 @@ use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 use uuid::Uuid;
 use std::io::Cursor;
-use crate::types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson};
+use crate::{types::{models::{mod_version::ModVersion, mod_gd_version::GDVersionEnum}, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
 use super::mod_gd_version::ModGDVersion;
 
@@ -47,19 +47,34 @@ struct ModRecordGetOne {
 }
 
 impl Mod {
-    pub async fn get_index(pool: &mut PgConnection, page: i64, per_page: i64, query: String) -> Result<PaginatedData<Mod>, ApiError> {
+    pub async fn get_index(pool: &mut PgConnection, query: IndexQueryParams) -> Result<PaginatedData<Mod>, ApiError> {
+        let page = query.page.unwrap_or(1);
+        let per_page = query.per_page.unwrap_or(10);
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let query_string = format!("%{query}%");
-        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT * FROM mods WHERE validated = true AND id LIKE $1 LIMIT $2 OFFSET $3"#, query_string, limit, offset)
+        let query_string = format!("%{}%", query.query.unwrap_or("".to_string()));
+        log::info!("{}", query_string);
+        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT DISTINCT 
+                m.* FROM mods m
+                INNER JOIN mod_versions mv ON m.id = mv.mod_id 
+                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2
+                LIMIT $3 OFFSET $4"#, 
+            query_string, query.gd as GDVersionEnum, limit, offset)
             .fetch_all(&mut *pool)
             .await.or(Err(ApiError::DbError))?;
-        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM mods WHERE validated = true")
+
+        let count = sqlx::query_scalar!("SELECT COUNT(*) 
+                FROM mods m
+                INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2", 
+            query_string, query.gd as GDVersionEnum)
             .fetch_one(&mut *pool)
             .await.or(Err(ApiError::DbError))?.unwrap_or(0);
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
-        let versions = ModVersion::get_versions_for_mods(pool, &ids).await?;
+        let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for i in &versions {
             let mut version_ids: Vec<_> = i.1.iter().map(|x| { x.id }).collect();
@@ -82,7 +97,7 @@ impl Mod {
                 versions: version_vec
             }
         }).collect();
-        Ok(PaginatedData{ data: ret, count })
+        Ok(PaginatedData{ payload: ret, count })
     }
 
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {

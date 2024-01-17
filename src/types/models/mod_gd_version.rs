@@ -55,7 +55,6 @@ impl ModGDVersion {
         for current in json.iter() {
             builder.push("(");
             let mut separated = builder.separated(", ");
-            log::info!("current: {:?}", current);
             separated.push_bind(current.gd as GDVersionEnum);
             separated.push_bind(current.platform as VerPlatform);
             separated.push_bind(mod_version_id);
@@ -65,8 +64,6 @@ impl ModGDVersion {
                 separated.push_unseparated(", ");
             }
         }
-
-        log::info!("{}", builder.sql());
 
         let result = builder.
             build()
@@ -105,13 +102,33 @@ impl ModGDVersion {
         Ok(())
     }
 
+    // to be used for GET mods/{id}/version/{version}
+    pub async fn get_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<Vec<ModGDVersion>, ApiError> {
+        let result = sqlx::query_as!(ModGDVersion, r#"SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1"#, id)
+            .fetch_all(&mut *pool)
+            .await;
+        let result = match result {
+            Err(e) => {
+                log::info!("{:?}", e);
+                return Err(ApiError::DbError)
+            },
+            Ok(r) => r
+        };
+
+        Ok(result)
+    }
+
     pub async fn get_for_mod_versions(versions: Vec<i32>, pool: &mut PgConnection) -> Result<HashMap<i32, Vec<ModGDVersion>>, ApiError> {
+        if versions.len() == 0 {
+            return Err(ApiError::DbError);
+        }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT * FROM mod_gd_versions WHERE mod_id IN (");
         let mut separated = builder.separated(", ");
         for i in versions {
             separated.push_bind(i);
         }
         separated.push_unseparated(")");
+        log::info!("{}", builder.sql());
 
         let result = builder.build_query_as::<ModGDVersion>()
             .fetch_all(&mut *pool)

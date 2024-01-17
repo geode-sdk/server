@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::mod_gd_version::ModGDVersion;
+use super::mod_gd_version::{ModGDVersion, GDVersionEnum};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -36,7 +36,7 @@ pub enum ModImportance {
 }
 
 #[derive(sqlx::FromRow)]
-struct ModVersionRecord {
+struct ModVersionGetOne {
     id: i32,
     name: String,
     description: Option<String>,
@@ -54,22 +54,50 @@ struct ModVersionRecord {
     mod_id: String 
 }
 
+impl ModVersionGetOne {
+    pub fn into_mod_version(&self) -> ModVersion {
+        ModVersion {
+            id: self.id,
+            name: self.name.clone(),
+            description: self.description.clone(),
+            version: self.version.clone(),
+            download_link: self.download_link.clone(),
+            hash: self.hash.clone(),
+            geode_version: self.geode_version.clone(),
+            windows: self.windows,
+            android32: self.android32,
+            android64: self.android64,
+            mac: self.mac,
+            ios: self.ios,
+            early_load: self.early_load,
+            api: self.api,
+            mod_id: self.mod_id.clone(),
+            gd: vec![]
+        }
+    }
+}
+
 impl ModVersion {
-    pub async fn get_versions_for_mods(pool: &mut PgConnection, ids: &[&str]) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: GDVersionEnum) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT * FROM mod_versions WHERE mod_id IN ("
+            r#"SELECT mv.* FROM mod_versions mv 
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            INNER JOIN mods m ON m.id = mv.mod_id
+            WHERE mv.version = m.latest_version AND mgv.gd = "#
         );
+        query_builder.push_bind(gd as GDVersionEnum);
+        query_builder.push(" AND mv.mod_id IN (");
         let mut separated = query_builder.separated(",");
         for id in ids.iter() {
             separated.push_bind(id);
         }
         separated.push_unseparated(")");
-        let records = query_builder.build_query_as::<ModVersionRecord>()
-            .fetch_all(pool)
+        let records = query_builder.build_query_as::<ModVersionGetOne>()
+            .fetch_all(&mut *pool)
             .await;
         let records = match records {
             Err(e) => {
@@ -83,24 +111,7 @@ impl ModVersion {
         
         for x in records.iter() {
             let mod_id = x.mod_id.clone();
-            let version = ModVersion {
-                id: x.id,
-                name: x.name.clone(),
-                description: x.description.clone(),
-                version: x.version.clone(),
-                download_link: x.download_link.clone(),
-                hash: x.hash.clone(),
-                geode_version: x.geode_version.clone(),
-                windows: x.windows,
-                android32: x.android32,
-                android64: x.android64,
-                mac: x.mac,
-                ios: x.ios,
-                early_load: x.early_load,
-                api: x.api,
-                mod_id: x.mod_id.clone(),
-                gd: vec![]
-            };
+            let version = x.into_mod_version();
             match ret.entry(mod_id) {
                 Entry::Vacant(e) => {
                     let vector: Vec<ModVersion> = vec![version];

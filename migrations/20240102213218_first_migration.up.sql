@@ -38,15 +38,19 @@ CREATE TABLE mod_tags (
 );
 
 CREATE TABLE mods_mod_tags (
-    mod_id INTEGER NOT NULL REFERENCES mod_versions(id),
-    tag_id INTEGER NOT NULL REFERENCES mod_tags(id)
+    mod_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    PRIMARY KEY (mod_id, tag_id),
+    FOREIGN KEY (mod_id) REFERENCES mod_versions(id),
+    FOREIGN KEY (tag_id) REFERENCES mod_tags(id)
 );
 
 CREATE TABLE mod_gd_versions (
     id SERIAL PRIMARY KEY NOT NULL,
-    mod_id INTEGER NOT NULL REFERENCES mod_versions(id),
+    mod_id INTEGER NOT NULL,
     gd gd_version NOT NULL,
-    platform gd_ver_platform NOT NULL
+    platform gd_ver_platform NOT NULL,
+    FOREIGN KEY (mod_id) REFERENCES mod_versions(id)
 );
 
 CREATE TABLE dependencies (
@@ -65,7 +69,8 @@ CREATE TABLE incompatibilities (
     compare TEXT NOT NULL,
     importance mod_importance NOT NULL,
     PRIMARY KEY (mod_id, incompatibility_id),
-    FOREIGN KEY (mod_id) REFERENCES mod_versions(id)
+    FOREIGN KEY (mod_id) REFERENCES mod_versions(id),
+    FOREIGN KEY (incompatibility_id) REFERENCES mod_versions(id)
 );
 
 CREATE TABLE developers (
