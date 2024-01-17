@@ -103,7 +103,7 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.id, m.repository, m.latest_version, m.validated,
+                m.*,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode_version, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
                 mv.early_load, mv.api, mv.mod_id

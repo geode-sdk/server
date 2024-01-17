@@ -8,8 +8,16 @@ pub struct Dependency {
     importance: DependencyImportance
 } 
 
+#[derive(sqlx::FromRow)]
+pub struct Incompatibility {
+    mod_id: i32,
+    incompatibility_id: i32,
+    compare: ModVersionCompare,
+    importance: DependencyImportance
+}
+
 #[derive(sqlx::Type, Debug, Deserialize, Serialize)]
-#[sqlx(type_name = "dependency_importance")]
+#[sqlx(type_name = "version_compare")]
 pub enum ModVersionCompare {
     #[serde(rename = "=")]
     #[sqlx(rename = "=")]

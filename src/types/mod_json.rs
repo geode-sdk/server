@@ -4,7 +4,7 @@ use serde::Deserialize;
 use zip::read::ZipFile;
 use std::io::BufReader;
 
-use super::{api::ApiError, models::mod_gd_version::{GDVersionEnum, VerPlatform}};
+use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, VerPlatform}, dependency::DependencyImportance}};
 
 #[derive(Debug, Deserialize)]
 pub struct ModJson {
@@ -36,7 +36,18 @@ pub struct ModJson {
     pub early_load: bool,
     #[serde(default)]
     pub api: bool,
-    pub gd: Option<ModJsonGDVersionType>
+    pub gd: Option<ModJsonGDVersionType>,
+    pub dependencies: Option<Vec<ModJsonDependency>>,
+    pub incompatibilities: Option<Vec<ModJsonDependency>>
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonDependency {
+    pub id: String,
+    pub version: String,
+    pub importance: DependencyImportance,
+    // This should throw a deprecated error
+    pub required: Option<bool>
 }
 
 #[derive(Deserialize, Debug)]
@@ -69,6 +80,27 @@ impl ModJson {
         json.hash = hash;
         json.download_url = download_url.to_string();
 
+        if json.dependencies.is_some() {
+            for i in json.dependencies.as_ref().unwrap() {
+                if !validate_dependency_version_str(&i.version) {
+                    return Err(ApiError::BadRequest(format!("Invalid dependency version {} for mod {}", i.version, i.id)));
+                }
+                if i.required.is_some() {
+                    return Err(ApiError::BadRequest(format!("'required' key for dependencies is deprecated! Found at dependency id {}.", i.id)));
+                }
+            }
+        }
+        if json.incompatibilities.is_some() {
+            for i in json.incompatibilities.as_ref().unwrap() {
+                if !validate_dependency_version_str(&i.version) {
+                    return Err(ApiError::BadRequest(format!("Invalid dependency version {} for mod {}", i.version, i.id)));
+                }
+                if i.required.is_some() {
+                    return Err(ApiError::BadRequest(format!("'required' key for dependencies is deprecated! Found at dependency id {}.", i.id)));
+                }
+            }
+        }
+
         for i in 0..archive.len() {
             if let Some(file) = archive.by_index(i).ok() {
                 if file.name().ends_with(".dll") {
@@ -93,7 +125,25 @@ impl ModJson {
                 }
             }
         }
-        log::info!("{:?}", json);
         return Ok(json);
     }
+}
+
+fn validate_dependency_version_str(ver: &str) -> bool {
+    let mut copy = ver.to_string();
+    if ver.starts_with("<=") {
+        copy = copy.trim_start_matches("<=").to_string();
+    } else if ver.starts_with(">=") {
+        copy = copy.trim_start_matches(">=").to_string();
+    } else if ver.starts_with("=") {
+        copy = copy.trim_start_matches("=").to_string();
+    } else if ver.starts_with("<") {
+        copy = copy.trim_start_matches("<").to_string();
+    } else if ver.starts_with(">") {
+        copy = copy.trim_start_matches(">").to_string();
+    }
+    copy = copy.trim_start_matches("v").to_string();
+
+    let result = semver::Version::parse(&copy);
+    result.is_ok()
 }

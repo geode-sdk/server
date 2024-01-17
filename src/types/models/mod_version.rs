@@ -27,14 +27,6 @@ pub struct ModVersion {
     pub gd: Vec<ModGDVersion>
 }
 
-#[derive(sqlx::Type, Debug)]
-#[sqlx(type_name = "mod_importance", rename_all = "lowercase")]
-pub enum ModImportance {
-    Required,
-    Recommended,
-    Suggested
-}
-
 #[derive(sqlx::FromRow)]
 struct ModVersionGetOne {
     id: i32,

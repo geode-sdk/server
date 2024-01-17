@@ -1,5 +1,6 @@
 -- Add up migration script here
-CREATE TYPE mod_importance AS ENUM ('required', 'recommended', 'suggested');
+CREATE TYPE dependency_importance AS ENUM ('required', 'recommended', 'suggested');
+CREATE TYPE version_compare AS ENUM ('=', '>', '<', '>=', '=<');
 CREATE TYPE gd_version as ENUM ('*', '2.113', '2.200', '2.203');
 CREATE TYPE gd_ver_platform as ENUM ('android', 'ios', 'mac', 'win');
 
@@ -56,8 +57,8 @@ CREATE TABLE mod_gd_versions (
 CREATE TABLE dependencies (
     dependent_id INTEGER NOT NULL,
     dependency_id INTEGER NOT NULL,
-    compare TEXT NOT NULL,
-    importance mod_importance NOT NULL,
+    compare version_compare NOT NULL,
+    importance dependency_importance NOT NULL,
     PRIMARY KEY (dependent_id, dependency_id),
     FOREIGN KEY (dependent_id) REFERENCES mod_versions(id),
     FOREIGN KEY (dependency_id) REFERENCES mod_versions(id)
@@ -66,8 +67,8 @@ CREATE TABLE dependencies (
 CREATE TABLE incompatibilities (
     mod_id INTEGER NOT NULL,
     incompatibility_id INTEGER NOT NULL,
-    compare TEXT NOT NULL,
-    importance mod_importance NOT NULL,
+    compare version_compare NOT NULL,
+    importance dependency_importance NOT NULL,
     PRIMARY KEY (mod_id, incompatibility_id),
     FOREIGN KEY (mod_id) REFERENCES mod_versions(id),
     FOREIGN KEY (incompatibility_id) REFERENCES mod_versions(id)
