@@ -18,7 +18,7 @@ CREATE TABLE mod_versions (
     version TEXT NOT NULL,
     download_link TEXT NOT NULL,
     hash TEXT NOT NULL,
-    geode_version TEXT NOT NULL,
+    geode TEXT NOT NULL,
     windows BOOLEAN NOT NULL,
     android32 BOOLEAN NOT NULL,
     android64 BOOLEAN NOT NULL,

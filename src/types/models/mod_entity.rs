@@ -35,7 +35,7 @@ struct ModRecordGetOne {
     version: String,
     download_link: String,
     hash: String,
-    geode_version: String,
+    geode: String,
     windows: bool,
     android32: bool,
     android64: bool,
@@ -105,7 +105,7 @@ impl Mod {
             "SELECT
                 m.*,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
-                mv.hash, mv.geode_version, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
+                mv.hash, mv.geode, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
                 mv.early_load, mv.api, mv.mod_id
             FROM mods m
             LEFT JOIN mod_versions mv ON m.id = mv.mod_id
@@ -125,7 +125,7 @@ impl Mod {
                 version: x.version.clone(),
                 download_link: x.download_link.clone(),
                 hash: x.hash.clone(),
-                geode_version: x.geode_version.clone(),
+                geode: x.geode.clone(),
                 windows: x.windows,
                 android32: x.android32,
                 android64: x.android64,
@@ -147,7 +147,7 @@ impl Mod {
         Ok(Some(mod_entity))
     }
 
-    pub async fn from_json(json: &ModJson, new_mod: bool, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
         if semver::Version::parse(json.version.trim_start_matches("v")).is_err() {
             return Err(ApiError::BadRequest(format!("Invalid mod version semver {}", json.version)));
         };
@@ -156,9 +156,7 @@ impl Mod {
             return Err(ApiError::BadRequest(format!("Invalid geode version semver {}", json.geode)));
         };
 
-        if new_mod {
-            Mod::create(json, pool).await?;
-        }
+        Mod::create(json, pool).await?;
         ModVersion::create_from_json(json, pool).await?;
         Ok(())
     }

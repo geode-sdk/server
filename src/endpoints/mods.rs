@@ -46,7 +46,7 @@ pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryPara
     let file_path = download_geode_file(&payload.download_url).await?;
     let json = ModJson::from_zip(&file_path, payload.download_url.as_str())?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
-    let result = Mod::from_json(&json, true, &mut transaction).await;
+    let result = Mod::from_json(&json, &mut transaction).await;
     if result.is_err() {
         let _ = transaction.rollback().await;
         let _ = tokio::fs::remove_file(file_path).await;
