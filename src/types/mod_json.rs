@@ -6,7 +6,7 @@ use sqlx::PgConnection;
 use zip::read::ZipFile;
 use std::io::BufReader;
 
-use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, DetailedGDVersion}, dependency::{DependencyImportance, ModVersionCompare, DependencyCreate, IncompatibilityCreate, IncompatibilityImportance}}};
+use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, DetailedGDVersion}, dependency::{DependencyImportance, ModVersionCompare, DependencyCreate}, incompatibility::{IncompatibilityImportance, IncompatibilityCreate}}};
 
 #[derive(Debug, Deserialize)]
 pub struct ModJson {

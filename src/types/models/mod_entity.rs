@@ -135,7 +135,8 @@ impl Mod {
                 api: x.api,
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
-                dependencies: None
+                dependencies: None,
+                incompatibilities: None
             }
         }).collect();
         let ids = versions.iter().map(|x| {x.id}).collect();

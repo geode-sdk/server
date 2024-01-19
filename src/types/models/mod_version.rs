@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, dependency::{Dependency, Incompatibility, ResponseDependency}};
+use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, dependency::{Dependency, ResponseDependency}, incompatibility::{Incompatibility, ResponseIncompatibility}};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -26,6 +26,7 @@ pub struct ModVersion {
     pub mod_id: String,
     pub gd: DetailedGDVersion,
     pub dependencies: Option<Vec<ResponseDependency>>,
+    pub incompatibilities: Option<Vec<ResponseIncompatibility>>
 }
 
 #[derive(sqlx::FromRow)]
@@ -66,7 +67,8 @@ impl ModVersionGetOne {
             api: self.api,
             mod_id: self.mod_id.clone(),
             gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
-            dependencies: None
+            dependencies: None,
+            incompatibilities: None
         }
     }
 }
@@ -200,6 +202,14 @@ impl ModVersion {
         let deps = Dependency::get_for_mod_version(version.id, pool).await?;
         version.dependencies = Some(deps.into_iter().map(|x| {
             ResponseDependency {
+                mod_id: x.mod_id.clone(),
+                version: format!("{}{}", x.compare.to_string(), x.version.trim_start_matches("v")),
+                importance: x.importance
+            }
+        }).collect());
+        let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
+        version.incompatibilities = Some(incompat.into_iter().map(|x| {
+            ResponseIncompatibility {
                 mod_id: x.mod_id.clone(),
                 version: format!("{}{}", x.compare.to_string(), x.version.trim_start_matches("v")),
                 importance: x.importance
