@@ -108,7 +108,7 @@ impl Mod {
                 mv.hash, mv.geode, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
                 mv.early_load, mv.api, mv.mod_id
             FROM mods m
-            LEFT JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
             WHERE m.id = $1",
             id
         ).fetch_all(&mut *pool)
@@ -117,7 +117,7 @@ impl Mod {
         if records.len() == 0 {
             return Ok(None);
         }
-        let versions = records.iter().map(|x| {
+        let mut versions: Vec<ModVersion> = records.iter().map(|x| {
             ModVersion {
                 id: x.version_id,
                 name: x.name.clone(),
@@ -134,9 +134,19 @@ impl Mod {
                 early_load: x.early_load,
                 api: x.api,
                 mod_id: x.mod_id.clone(),
-                gd: vec![]
+                gd: vec![],
             }
         }).collect();
+        let ids = versions.iter().map(|x| {x.id}).collect();
+        let mut gd = ModGDVersion::get_for_mod_versions(ids, pool).await?;
+        for (id, gd_versions) in &mut gd {
+            for i in &mut versions {
+                if i.id == *id {
+                    i.gd.append(gd_versions);
+                } 
+            }
+        }
+
         let mod_entity = Mod {
             id: records[0].id.clone(),
             repository: records[0].repository.clone(),

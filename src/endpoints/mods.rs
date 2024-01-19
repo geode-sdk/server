@@ -31,7 +31,7 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
 }
 
 #[get("/v1/mods/{id}")]
-pub async fn get(id: String, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
+pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
     match found {

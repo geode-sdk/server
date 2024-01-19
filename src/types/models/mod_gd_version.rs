@@ -133,7 +133,6 @@ impl ModGDVersion {
             separated.push_bind(i);
         }
         separated.push_unseparated(")");
-        log::info!("{}", builder.sql());
 
         let result = builder.build_query_as::<ModGDVersion>()
             .fetch_all(&mut *pool)
