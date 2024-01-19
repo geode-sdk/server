@@ -4,13 +4,13 @@ WIP version of the new Geode Index, hosted on its own server rather than a Githu
 
 ## Checklist
 
-- [ ] Mod adding and updating
+- [x] Mod adding and updating
+- [x] Dependencies
 - [ ] Support for multiple developers per mod
 - [ ] Finish the openapi spec
 - [ ] Finish the database structure
 - [ ] Github OAuth
 - [ ] A token system for authenticating the CLI
-- [ ] Dependencies
 
 If you want to contribute to this project, please do so! I have no bloody clue how to write a web server.
 
