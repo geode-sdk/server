@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::mod_gd_version::{ModGDVersion, GDVersionEnum};
+use super::{mod_gd_version::{ModGDVersion, GDVersionEnum}, dependency::{Dependency, Incompatibility}};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -121,7 +121,7 @@ impl ModVersion {
         if json.description.is_some() {
             builder.push("description, ");
         }
-        builder.push("name, version, download_link, hash, geode_version, windows, android32, android64, mac, ios, early_load, api, mod_id) VALUES (");
+        builder.push("name, version, download_link, hash, geode, windows, android32, android64, mac, ios, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -155,9 +155,21 @@ impl ModVersion {
         match json.gd.as_ref() {
             Some(gd) => match gd {
                 ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(*ver, id, pool).await?,
-                ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_vec(), id, pool).await?
+                ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_create_payload(), id, pool).await?
             },
             None => ()
+        }
+        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) { 
+            let dependencies = json.query_dependencies(pool).await?;
+            if !dependencies.is_empty() {
+                Dependency::create_for_mod_version(id, dependencies, pool).await?;
+            }
+        }
+        if json.incompatibilities.as_ref().is_some_and(|x| !x.is_empty()) {
+            let incompat = json.query_incompatibilities(pool).await?;
+            if !incompat.is_empty() {
+                Incompatibility::create_for_mod_version(id, incompat, pool).await?;
+            }
         }
         Ok(())
     }

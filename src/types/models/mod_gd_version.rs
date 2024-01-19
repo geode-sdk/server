@@ -3,7 +3,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 
-use crate::types::{mod_json::ModJsonGDVersion, api::ApiError};
+use crate::types::api::ApiError;
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
 #[sqlx(type_name = "gd_version")]
@@ -17,9 +17,9 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.200")]
     #[sqlx(rename = "2.200")]
     GD2200,
-    #[serde(rename = "2.203")]
-    #[sqlx(rename = "2.203")]
-    GD2203,
+    #[serde(rename = "2.204")]
+    #[sqlx(rename = "2.204")]
+    GD2204,
 }
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,8 +40,13 @@ pub struct ModGDVersion {
     platform: VerPlatform
 }
 
+pub struct ModGDVersionCreate {
+    pub gd: GDVersionEnum,
+    pub platform: VerPlatform
+}
+
 impl ModGDVersion {
-    pub async fn create_from_json(json: Vec<ModJsonGDVersion>, mod_version_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn create_from_json(json: Vec<ModGDVersionCreate>, mod_version_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         if json.len() == 0 {
             return Err(ApiError::BadRequest("mod.json gd version array has no elements".to_string()));
         }
@@ -85,18 +90,18 @@ impl ModGDVersion {
             .fetch_one(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        let mut platforms_arg: Vec<ModJsonGDVersion> = vec![];
+        let mut platforms_arg: Vec<ModGDVersionCreate> = vec![];
         if platforms.android32 || platforms.android64 {
-            platforms_arg.push(ModJsonGDVersion { gd: version, platform: VerPlatform::Android })
+            platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Android })
         }
         if platforms.windows {
-            platforms_arg.push(ModJsonGDVersion { gd: version, platform: VerPlatform::Win})
+            platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Win})
         }
         if platforms.mac {
-            platforms_arg.push(ModJsonGDVersion { gd: version, platform: VerPlatform::Mac})
+            platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Mac})
         }
         if platforms.ios {
-            platforms_arg.push(ModJsonGDVersion { gd: version, platform: VerPlatform::Ios})
+            platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Ios})
         }
         ModGDVersion::create_from_json(platforms_arg, mod_version_id, pool).await?;
         Ok(())
@@ -156,7 +161,7 @@ impl ModGDVersion {
     }
 }
 
-fn check_for_duplicate_platforms(versions: &Vec<ModJsonGDVersion>) -> Result<(), String> {
+fn check_for_duplicate_platforms(versions: &Vec<ModGDVersionCreate>) -> Result<(), String> {
     let mut found: HashMap<VerPlatform, GDVersionEnum> = HashMap::new();
     for i in versions {
         match found.get(&i.platform) {

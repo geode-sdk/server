@@ -17,3 +17,4 @@ DROP TYPE IF EXISTS dependency_importance;
 DROP TYPE IF EXISTS version_compare;
 DROP TYPE IF EXISTS gd_version;
 DROP TYPE IF EXISTS gd_ver_platform;
+DROP TYPE IF EXISTS incompatibility_importance;

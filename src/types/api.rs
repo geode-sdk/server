@@ -14,6 +14,7 @@ pub enum ApiError {
     FilesystemError,
     DbAcquireError,
     DbError,
+    InternalError,
     BadRequest(String),
     NotFound(String)
 }
@@ -31,7 +32,8 @@ impl Display for ApiError {
             Self::DbAcquireError => write!(f, "Database is busy"),
             Self::DbError => write!(f, "Unknown database error"),
             Self::BadRequest(message) => write!(f, "{}", message),
-            Self::NotFound(message) => write!(f, "{}", message)
+            Self::NotFound(message) => write!(f, "{}", message),
+            Self::InternalError => write!(f, "{}", "Internal server error")
         }
     }
 }
@@ -48,7 +50,8 @@ impl actix_web::ResponseError for ApiError {
             Self::DbAcquireError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::DbError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) => StatusCode::NOT_FOUND
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR
         }
     }
 }
