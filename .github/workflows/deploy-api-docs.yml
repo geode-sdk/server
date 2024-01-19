@@ -16,7 +16,7 @@ jobs:
         with:
           version: "5.11.0"
           output: swagger-ui
-          spec-file: ./spec.yml
+          spec-file: ./openapi.yml
           
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
