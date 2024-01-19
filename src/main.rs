@@ -1,44 +1,24 @@
-use std::fmt::Display;
-use actix_web::{get, web, App, HttpServer, Responder, ResponseError, middleware::Logger};
+use actix_web::{get, web, App, HttpServer, Responder, middleware::Logger};
 use log::info;
 use env_logger::Env;
+
+use crate::types::api::ApiError;
 
 mod endpoints;
 mod types;
 
 pub struct AppData {
     db: sqlx::postgres::PgPool,
+    debug: bool
 }
-
-#[derive(Debug)]
-pub enum Error {
-    FsError,
-    DbAcquireError,
-    DbError,
-    UploadError(String),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FsError => write!(f, "server filesystem error"),
-            Self::DbAcquireError => write!(f, "database busy"),
-            Self::DbError => write!(f, "database error"),
-            Self::UploadError(msg) => write!(f, "upload error: {msg}"),
-        }
-    }
-}
-
-impl ResponseError for Error {}
 
 #[get("/")]
-async fn health() -> Result<impl Responder, Error> {
+async fn health() -> Result<impl Responder, ApiError> {
     Ok(web::Json("The Geode Index is running"))
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let env_url = dotenvy::var("DATABASE_URL")?;
@@ -47,19 +27,27 @@ async fn main() -> anyhow::Result<()> {
         .connect(&env_url).await?;
     let addr = "127.0.0.1";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
+    let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
 
     info!("Starting server on {}:{}", addr, port);
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppData { db: pool.clone() }))
+            .app_data(web::Data::new(AppData { db: pool.clone(), debug }))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
             .service(endpoints::mods::get)
             .service(endpoints::mods::create)
+            .service(endpoints::mods::update)
+            .service(endpoints::mod_versions::get_one)
             .service(health)
-    })
-        .bind((addr, port))?
-        .run()
-        .await?;
+    }).bind((addr, port))?;
+
+    if debug {
+        info!("Running in debug mode, using 1 thread.");
+        server.workers(1).run().await?;
+    } else {
+        server.run().await?;
+    }
+
     anyhow::Ok(())
 }
