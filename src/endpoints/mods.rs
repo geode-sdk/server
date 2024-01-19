@@ -26,7 +26,12 @@ struct CreateQueryParams {
 pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    let result = Mod::get_index(&mut pool, query.0).await?;
+    let mut result = Mod::get_index(&mut pool, query.0).await?;
+    for i in &mut result.payload {
+        for j in &mut i.versions {
+            j.modify_download_link(&data.app_url);
+        }
+    }
     Ok(web::Json(ApiResponse {error: "".into(), data: result}))
 }
 
@@ -35,7 +40,12 @@ pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
     match found {
-        Some(m) => Ok(web::Json(ApiResponse {error: "".into(), data: m})),
+        Some(mut m) => {
+            for i in &mut m.versions {
+                i.modify_download_link(&data.app_url);
+            }
+            Ok(web::Json(ApiResponse {error: "".into(), data: m}))
+        },
         None => Err(ApiError::NotFound("".into()))
     }
 }

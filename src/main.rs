@@ -9,7 +9,8 @@ mod types;
 
 pub struct AppData {
     db: sqlx::postgres::PgPool,
-    debug: bool
+    debug: bool,
+    app_url: String
 }
 
 #[get("/")]
@@ -28,17 +29,19 @@ async fn main() -> anyhow::Result<()> {
     let addr = "127.0.0.1";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
+    let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
 
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppData { db: pool.clone(), debug }))
+            .app_data(web::Data::new(AppData { db: pool.clone(), debug, app_url: app_url.clone() }))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
             .service(endpoints::mods::get)
             .service(endpoints::mods::create)
             .service(endpoints::mods::update)
             .service(endpoints::mod_versions::get_one)
+            .service(endpoints::mod_versions::download_version)
             .service(health)
     }).bind((addr, port))?;
 

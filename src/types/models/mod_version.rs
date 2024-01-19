@@ -9,6 +9,7 @@ use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, de
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
+    #[serde(skip_serializing)]
     pub id: i32,
     pub name: String,
     pub description: Option<String>,
@@ -59,6 +60,9 @@ impl ModVersionGetOne {
 }
 
 impl ModVersion {
+    pub fn modify_download_link(&mut self, app_url: &str) {
+        self.download_link = format!("{}/v1/mods/{}/versions/{}/download", app_url, self.mod_id, self.version);
+    }
     pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: GDVersionEnum) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
@@ -102,6 +106,19 @@ impl ModVersion {
             }
         }
         Ok(ret)
+    }
+
+    pub async fn get_download_url(id: &str, version: &str,pool: &mut PgConnection) -> Result<String, ApiError> {
+        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2", id, version)
+            .fetch_optional(&mut *pool)
+            .await;
+        if result.is_err() {
+            return Err(ApiError::DbError);
+        }
+        match result.unwrap() {
+            None => return Err(ApiError::NotFound(format!("Mod {}, version {} doesn't exist", id, version))),
+            Some(r) => return Ok(r.download_link)
+        }
     }
 
     pub async fn create_from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
