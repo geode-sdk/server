@@ -36,11 +36,6 @@ struct ModRecordGetOne {
     download_link: String,
     hash: String,
     geode: String,
-    windows: bool,
-    android32: bool,
-    android64: bool,
-    mac: bool,
-    ios: bool,
     early_load: bool,
     api: bool,
     mod_id: String
@@ -105,8 +100,7 @@ impl Mod {
             "SELECT
                 m.*,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
-                mv.hash, mv.geode, mv.windows, mv.android32, mv.android64, mv.mac, mv.ios,
-                mv.early_load, mv.api, mv.mod_id
+                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             WHERE m.id = $1",
@@ -126,11 +120,6 @@ impl Mod {
                 download_link: x.download_link.clone(),
                 hash: x.hash.clone(),
                 geode: x.geode.clone(),
-                windows: x.windows,
-                android32: x.android32,
-                android64: x.android64,
-                mac: x.mac,
-                ios: x.ios,
                 early_load: x.early_load,
                 api: x.api,
                 mod_id: x.mod_id.clone(),

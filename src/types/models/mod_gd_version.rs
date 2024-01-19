@@ -3,7 +3,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 
-use crate::types::api::ApiError;
+use crate::types::{api::ApiError, mod_json::ModJson};
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
 #[sqlx(type_name = "gd_version")]
@@ -119,25 +119,21 @@ impl ModGDVersion {
         Ok(())
     }
 
-    pub async fn create_for_all_platforms(version: GDVersionEnum, mod_version_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let platforms = sqlx::query!("SELECT ios, android32, android64, windows, mac FROM mod_versions WHERE id = $1", mod_version_id)
-            .fetch_one(&mut *pool)
-            .await
-            .or(Err(ApiError::DbError))?;
+    pub async fn create_for_all_platforms(json: &ModJson, version: GDVersionEnum, version_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         let mut platforms_arg: Vec<ModGDVersionCreate> = vec![];
-        if platforms.android32 || platforms.android64 {
+        if json.android32 || json.android64 {
             platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Android })
         }
-        if platforms.windows {
+        if json.windows {
             platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Win})
         }
-        if platforms.mac {
+        if json.mac {
             platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Mac})
         }
-        if platforms.ios {
+        if json.ios {
             platforms_arg.push(ModGDVersionCreate { gd: version, platform: VerPlatform::Ios})
         }
-        ModGDVersion::create_from_json(platforms_arg, mod_version_id, pool).await?;
+        ModGDVersion::create_from_json(platforms_arg, version_id, pool).await?;
         Ok(())
     }
 

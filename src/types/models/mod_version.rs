@@ -16,11 +16,6 @@ pub struct ModVersion {
     pub download_link: String,
     pub hash: String,
     pub geode: String,
-    pub windows: bool,
-    pub android32: bool,
-    pub android64: bool,
-    pub mac: bool,
-    pub ios: bool,
     pub early_load: bool,
     pub api: bool,
     pub mod_id: String,
@@ -38,11 +33,6 @@ struct ModVersionGetOne {
     download_link: String,
     hash: String,
     geode: String,
-    windows: bool,
-    android32: bool,
-    android64: bool,
-    mac: bool,
-    ios: bool,
     early_load: bool,
     api: bool,
     mod_id: String 
@@ -58,11 +48,6 @@ impl ModVersionGetOne {
             download_link: self.download_link.clone(),
             hash: self.hash.clone(),
             geode: self.geode.clone(),
-            windows: self.windows,
-            android32: self.android32,
-            android64: self.android64,
-            mac: self.mac,
-            ios: self.ios,
             early_load: self.early_load,
             api: self.api,
             mod_id: self.mod_id.clone(),
@@ -125,7 +110,7 @@ impl ModVersion {
         if json.description.is_some() {
             builder.push("description, ");
         }
-        builder.push("name, version, download_link, hash, geode, windows, android32, android64, mac, ios, early_load, api, mod_id) VALUES (");
+        builder.push("name, version, download_link, hash, geode, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -135,11 +120,6 @@ impl ModVersion {
         separated.push_bind(&json.download_url);
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
-        separated.push_bind(&json.windows);
-        separated.push_bind(&json.android32);
-        separated.push_bind(&json.android64);
-        separated.push_bind(&json.mac);
-        separated.push_bind(&json.ios);
         separated.push_bind(&json.early_load);
         separated.push_bind(&json.api);
         separated.push_bind(&json.id);
@@ -158,7 +138,7 @@ impl ModVersion {
         let id = result.get::<i32, &str>("id");
         match json.gd.as_ref() {
             Some(gd) => match gd {
-                ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(*ver, id, pool).await?,
+                ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?,
                 ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_create_payload(), id, pool).await?
             },
             None => ()
