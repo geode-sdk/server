@@ -52,8 +52,8 @@ pub enum ModVersionCompare {
     #[serde(rename = "<")]
     #[sqlx(rename = "<")]
     Less,
-    #[serde(rename = "=<")]
-    #[sqlx(rename = "=<")]
+    #[serde(rename = "<=")]
+    #[sqlx(rename = "<=")]
     LessEq 
 }
 
