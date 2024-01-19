@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::{mod_gd_version::{ModGDVersion, GDVersionEnum}, dependency::{Dependency, Incompatibility}};
+use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, dependency::{Dependency, Incompatibility, ResponseDependency}};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -24,7 +24,8 @@ pub struct ModVersion {
     pub early_load: bool,
     pub api: bool,
     pub mod_id: String,
-    pub gd: Vec<ModGDVersion>
+    pub gd: DetailedGDVersion,
+    pub dependencies: Option<Vec<ResponseDependency>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -64,7 +65,8 @@ impl ModVersionGetOne {
             early_load: self.early_load,
             api: self.api,
             mod_id: self.mod_id.clone(),
-            gd: vec![]
+            gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+            dependencies: None
         }
     }
 }
@@ -174,19 +176,36 @@ impl ModVersion {
         Ok(())
     }
 
-    // This will be used in GET /v1/mods/versions/{version}
-    // pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
-    //     let result = sqlx::query_as!(
-    //         ModVersionRecord,
-    //         "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
-    //         id, version
-    //     ).fetch_optional(&mut *pool)
-    //     .await
-    //     .or(Err(ApiError::DbError))?;
+    pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
+        let result = sqlx::query_as!(
+            ModVersionGetOne,
+            "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
+            id, version
+        ).fetch_optional(&mut *pool)
+        .await;
         
-    //     match result {
-    //         Some(version) => Ok(version),
-    //         None => Err(ApiError::NotFound(format!("Mod {}, version {} not found", id, version)))
-    //     }
-    // }
+        let result = match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => r
+        };
+        if result.is_none() {
+            return Err(ApiError::NotFound("Not found".to_string()));
+        }
+
+        let mut version = result.unwrap().into_mod_version();
+        version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
+        let deps = Dependency::get_for_mod_version(version.id, pool).await?;
+        version.dependencies = Some(deps.into_iter().map(|x| {
+            ResponseDependency {
+                mod_id: x.mod_id.clone(),
+                version: format!("{}{}", x.compare.to_string(), x.version.trim_start_matches("v")),
+                importance: x.importance
+            }
+        }).collect());
+
+        Ok(version)
+    }
 }

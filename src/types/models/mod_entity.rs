@@ -4,7 +4,7 @@ use uuid::Uuid;
 use std::io::Cursor;
 use crate::{types::{models::{mod_version::ModVersion, mod_gd_version::GDVersionEnum}, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
-use super::mod_gd_version::ModGDVersion;
+use super::mod_gd_version::{ModGDVersion, DetailedGDVersion};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -134,15 +134,16 @@ impl Mod {
                 early_load: x.early_load,
                 api: x.api,
                 mod_id: x.mod_id.clone(),
-                gd: vec![],
+                gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+                dependencies: None
             }
         }).collect();
         let ids = versions.iter().map(|x| {x.id}).collect();
-        let mut gd = ModGDVersion::get_for_mod_versions(ids, pool).await?;
-        for (id, gd_versions) in &mut gd {
+        let gd = ModGDVersion::get_for_mod_versions(ids, pool).await?;
+        for (id, gd_versions) in &gd {
             for i in &mut versions {
-                if i.id == *id {
-                    i.gd.append(gd_versions);
+                if &i.id == id {
+                    i.gd = gd_versions.clone();
                 } 
             }
         }

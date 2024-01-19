@@ -6,7 +6,7 @@ use sqlx::PgConnection;
 use zip::read::ZipFile;
 use std::io::BufReader;
 
-use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, VerPlatform, ModGDVersionCreate}, dependency::{DependencyImportance, ModVersionCompare, DependencyCreate, IncompatibilityCreate, IncompatibilityImportance}}};
+use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, DetailedGDVersion}, dependency::{DependencyImportance, ModVersionCompare, DependencyCreate, IncompatibilityCreate, IncompatibilityImportance}}};
 
 #[derive(Debug, Deserialize)]
 pub struct ModJson {
@@ -63,35 +63,7 @@ pub struct ModJsonIncompatibility {
 #[serde(untagged)]
 pub enum ModJsonGDVersionType {
     VersionStr(GDVersionEnum),
-    VersionObj(ModJsonGDVersion)
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ModJsonGDVersion {
-    pub win: Option<GDVersionEnum>,
-    pub android: Option<GDVersionEnum>,
-    pub mac: Option<GDVersionEnum>,
-    pub ios: Option<GDVersionEnum>
-}
-
-impl ModJsonGDVersion {
-    pub fn to_create_payload(&self) -> Vec<ModGDVersionCreate> {
-        let mut ret: Vec<_> = vec![];
-        if self.android.is_some() {
-            ret.push(ModGDVersionCreate { gd: self.android.unwrap(), platform: VerPlatform::Android });
-        }
-        if self.win.is_some() {
-            ret.push(ModGDVersionCreate { gd: self.win.unwrap(), platform: VerPlatform::Win });
-        }
-        if self.mac.is_some() {
-            ret.push(ModGDVersionCreate { gd: self.mac.unwrap(), platform: VerPlatform::Mac });
-        }
-        if self.ios.is_some() {
-            ret.push(ModGDVersionCreate { gd: self.ios.unwrap(), platform: VerPlatform::Ios });
-        }
-
-        ret
-    }
+    VersionObj(DetailedGDVersion)
 }
 
 impl ModJson {

@@ -38,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mods::get)
             .service(endpoints::mods::create)
             .service(endpoints::mods::update)
+            .service(endpoints::mod_versions::get_one)
             .service(health)
     }).bind((addr, port))?;
 

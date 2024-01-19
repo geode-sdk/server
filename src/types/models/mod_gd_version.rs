@@ -45,6 +45,40 @@ pub struct ModGDVersionCreate {
     pub platform: VerPlatform
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct DetailedGDVersion {
+    pub win: Option<GDVersionEnum>,
+    pub android: Option<GDVersionEnum>,
+    pub mac: Option<GDVersionEnum>,
+    pub ios: Option<GDVersionEnum>
+}
+
+impl DetailedGDVersion {
+    pub fn to_create_payload(&self) -> Vec<ModGDVersionCreate> {
+        let mut ret: Vec<_> = vec![];
+        if self.android.is_some() {
+            ret.push(ModGDVersionCreate { gd: self.android.unwrap(), platform: VerPlatform::Android });
+        }
+        if self.win.is_some() {
+            ret.push(ModGDVersionCreate { gd: self.win.unwrap(), platform: VerPlatform::Win });
+        }
+        if self.mac.is_some() {
+            ret.push(ModGDVersionCreate { gd: self.mac.unwrap(), platform: VerPlatform::Mac });
+        }
+        if self.ios.is_some() {
+            ret.push(ModGDVersionCreate { gd: self.ios.unwrap(), platform: VerPlatform::Ios });
+        }
+
+        ret
+    }
+}
+
+impl Default for DetailedGDVersion {
+    fn default() -> Self {
+        DetailedGDVersion { mac: None, ios: None, win: None, android: None }
+    }
+}
+
 impl ModGDVersion {
     pub async fn create_from_json(json: Vec<ModGDVersionCreate>, mod_version_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         if json.len() == 0 {
@@ -108,22 +142,31 @@ impl ModGDVersion {
     }
 
     // to be used for GET mods/{id}/version/{version}
-    pub async fn get_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<Vec<ModGDVersion>, ApiError> {
+    pub async fn get_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<DetailedGDVersion, ApiError> {
         let result = sqlx::query_as!(ModGDVersion, r#"SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1"#, id)
             .fetch_all(&mut *pool)
             .await;
-        let result = match result {
+        let result: Vec<ModGDVersion> = match result {
             Err(e) => {
                 log::info!("{:?}", e);
                 return Err(ApiError::DbError)
             },
             Ok(r) => r
         };
+        let mut ret = DetailedGDVersion { win: None, mac: None, android: None, ios: None };
+        for i in result {
+            match i.platform {
+                VerPlatform::Android => { ret.android = Some(i.gd) },
+                VerPlatform::Win => { ret.win = Some(i.gd) },
+                VerPlatform::Mac => { ret.mac = Some(i.gd) },
+                VerPlatform::Ios => { ret.ios = Some(i.gd) }
+            }
+        }
 
-        Ok(result)
+        Ok(ret)
     }
 
-    pub async fn get_for_mod_versions(versions: Vec<i32>, pool: &mut PgConnection) -> Result<HashMap<i32, Vec<ModGDVersion>>, ApiError> {
+    pub async fn get_for_mod_versions(versions: Vec<i32>, pool: &mut PgConnection) -> Result<HashMap<i32, DetailedGDVersion>, ApiError> {
         if versions.len() == 0 {
             return Err(ApiError::DbError);
         }
@@ -145,14 +188,27 @@ impl ModGDVersion {
             Ok(r) => r
         };
 
-        let mut ret: HashMap<i32, Vec<ModGDVersion>> = HashMap::new();
+        let mut ret: HashMap<i32, DetailedGDVersion> = HashMap::new();
         for i in result {
             match ret.entry(i.mod_id) {
                 Entry::Vacant(e) => {
-                    let vec: Vec<ModGDVersion> = vec![i];
-                    e.insert(vec);
+                    let mut ver = DetailedGDVersion::default(); 
+                    match i.platform {
+                        VerPlatform::Android => ver.android = Some(i.gd),
+                        VerPlatform::Mac => ver.mac = Some(i.gd),
+                        VerPlatform::Ios => ver.ios = Some(i.gd),
+                        VerPlatform::Win => ver.win = Some(i.gd)
+                    }
+                    e.insert(ver);
                 },
-                Entry::Occupied(mut e) => { e.get_mut().push(i) }
+                Entry::Occupied(mut e) => {
+                    match i.platform {
+                        VerPlatform::Android => e.get_mut().android = Some(i.gd),
+                        VerPlatform::Mac => e.get_mut().mac = Some(i.gd),
+                        VerPlatform::Ios => e.get_mut().ios = Some(i.gd),
+                        VerPlatform::Win => e.get_mut().win = Some(i.gd)
+                    }
+                }
             }
         }
 
