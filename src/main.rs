@@ -1,8 +1,9 @@
-use actix_web::{get, web, App, HttpServer, Responder, middleware::Logger};
+use actix_web::{get, web::{self, QueryConfig}, App, HttpServer, Responder, middleware::Logger};
 use log::info;
 use env_logger::Env;
 
 use crate::types::api::ApiError;
+use crate::types::api;
 
 mod endpoints;
 mod types;
@@ -35,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(AppData { db: pool.clone(), debug, app_url: app_url.clone() }))
+            .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
             .service(endpoints::mods::get)

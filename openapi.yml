@@ -24,6 +24,12 @@ paths:
           description: Search query
           schema:
             type: string
+        - name: gd
+          in: query
+          description: Geometry Dash version
+          required: true
+          schema:
+            type: string
         - $ref: '#/components/parameters/GeodeVersionQuery'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'

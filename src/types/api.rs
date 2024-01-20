@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, http::header::ContentType};
+use actix_web::{HttpResponse, http::header::ContentType, error::QueryPayloadError, HttpRequest};
 use serde::{Serialize, Deserialize};
 use std::fmt::Display;
 use reqwest::StatusCode;
@@ -54,4 +54,11 @@ impl actix_web::ResponseError for ApiError {
             Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR
         }
     }
+}
+
+pub fn query_error_handler(
+    err: QueryPayloadError,
+    _req: &HttpRequest
+) -> actix_web::Error {
+    ApiError::BadRequest(err.to_string()).into()
 }
