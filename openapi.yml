@@ -100,7 +100,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Mod'
     
-  /mods/{id}/{version}:
+  /mods/{id}/versions/{version}:
     get:
       tags:
         - mods
