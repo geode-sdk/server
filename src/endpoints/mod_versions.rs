@@ -14,7 +14,7 @@ pub async fn get_one(path: web::Path<GetOnePath>, data: web::Data<AppData>) -> R
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut version = ModVersion::get_one(&path.id, &path.version, &mut pool).await?;
     version.modify_download_link(&data.app_url);
-    Ok(web::Json(ApiResponse {error: "".to_string(), data: version}))
+    Ok(web::Json(ApiResponse {error: "".to_string(), payload: version}))
 }
 
 #[get("v1/mods/{id}/versions/{version}/download")]

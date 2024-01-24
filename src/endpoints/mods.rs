@@ -27,12 +27,12 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let mut result = Mod::get_index(&mut pool, query.0).await?;
-    for i in &mut result.payload {
+    for i in &mut result.data {
         for j in &mut i.versions {
             j.modify_download_link(&data.app_url);
         }
     }
-    Ok(web::Json(ApiResponse {error: "".into(), data: result}))
+    Ok(web::Json(ApiResponse {error: "".into(), payload: result}))
 }
 
 #[get("/v1/mods/{id}")]
@@ -44,7 +44,7 @@ pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl
             for i in &mut m.versions {
                 i.modify_download_link(&data.app_url);
             }
-            Ok(web::Json(ApiResponse {error: "".into(), data: m}))
+            Ok(web::Json(ApiResponse {error: "".into(), payload: m}))
         },
         None => Err(ApiError::NotFound("".into()))
     }

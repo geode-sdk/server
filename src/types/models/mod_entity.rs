@@ -67,6 +67,9 @@ impl Mod {
             query_string, query.gd as GDVersionEnum)
             .fetch_one(&mut *pool)
             .await.or(Err(ApiError::DbError))?.unwrap_or(0);
+        if records.is_empty() {
+            return Ok(PaginatedData { data: vec![], count: 0 });
+        }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd).await?;
@@ -92,7 +95,7 @@ impl Mod {
                 versions: version_vec
             }
         }).collect();
-        Ok(PaginatedData{ payload: ret, count })
+        Ok(PaginatedData{ data: ret, count })
     }
 
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
