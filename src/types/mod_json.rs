@@ -1,5 +1,6 @@
-use std::{fs::File, path::Path};
+use std::io::{Cursor, Read};
 
+use actix_web::web::Bytes;
 use semver::Version;
 use serde::Deserialize;
 use sqlx::PgConnection;
@@ -67,13 +68,20 @@ pub enum ModJsonGDVersionType {
 }
 
 impl ModJson {
-    pub fn from_zip(file_path: &String, download_url: &str) -> Result<ModJson, ApiError> {
-        let file = File::open(&file_path).or(Err(ApiError::FilesystemError))?;
-        let path = Path::new(file_path);
-        let hash = sha256::try_digest(path).or(Err(ApiError::FilesystemError))?;
+    pub fn from_zip(file: &mut Cursor<Bytes>, download_url: &str) -> Result<ModJson, ApiError> {
+        let mut bytes: Vec<u8> = vec![];
+        match file.read_to_end(&mut bytes) {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::FilesystemError);
+            },
+            Ok(b) => b
+        };
+        let hash = sha256::digest(bytes);
         let reader = BufReader::new(file);
         let archive_res = zip::ZipArchive::new(reader);
         if archive_res.is_err() {
+            log::error!("{}", archive_res.err().unwrap());
             return Err(ApiError::FilesystemError)
         }
         let mut archive = archive_res.unwrap();

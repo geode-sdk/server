@@ -20,6 +20,9 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.204")]
     #[sqlx(rename = "2.204")]
     GD2204,
+    #[serde(rename = "2.205")]
+    #[sqlx(rename = "2.205")]
+    GD2205,
 }
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]

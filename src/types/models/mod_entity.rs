@@ -1,6 +1,6 @@
+use actix_web::web::Bytes;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
-use uuid::Uuid;
 use std::io::Cursor;
 use crate::{types::{models::{mod_version::ModVersion, mod_gd_version::GDVersionEnum}, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
@@ -228,15 +228,8 @@ impl Mod {
     }
 }
 
-pub async fn download_geode_file(url: &str) -> Result<String, ApiError> {
+pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
     let res = reqwest::get(url).await.or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
-    if !tokio::fs::metadata("/tmp/geode-index").await.is_ok() {
-        tokio::fs::create_dir("/tmp/geode-index").await.or(Err(ApiError::FilesystemError))?;
-    }
-    let file_path = format!("/tmp/geode-index/{}.geode", Uuid::new_v4());
-
-    let mut file = tokio::fs::File::create(&file_path).await.or(Err(ApiError::FilesystemError))?;
-    let mut content = Cursor::new(res.bytes().await.or(Err(ApiError::FilesystemError))?);
-    tokio::io::copy(&mut content, &mut file).await.or(Err(ApiError::FilesystemError))?;
-    Ok(file_path)
+    let content = Cursor::new(res.bytes().await.or(Err(ApiError::FilesystemError))?);
+    Ok(content)
 }
