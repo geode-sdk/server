@@ -14,7 +14,7 @@ serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.7.3", features = ["postgres", "runtime-tokio"] }
 tokio = { version = "1.35.1", features = ["rt", "macros", "rt-multi-thread"] }
-reqwest = "0.11.23"
+reqwest = { version = "0.11.23", features = ["json"]}
 uuid = { version = "1.6.1", features = ["v4", "fast-rng", "macro-diagnostics"]}
 zip = "0.6"
 sha256 = "1.5.0"

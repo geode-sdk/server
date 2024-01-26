@@ -7,11 +7,13 @@ use crate::types::api;
 
 mod endpoints;
 mod types;
+mod auth;
 
 pub struct AppData {
     db: sqlx::postgres::PgPool,
     debug: bool,
-    app_url: String
+    app_url: String,
+    github_client_id: String
 }
 
 #[get("/")]
@@ -31,11 +33,12 @@ async fn main() -> anyhow::Result<()> {
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
+    let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
 
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppData { db: pool.clone(), debug, app_url: app_url.clone() }))
+            .app_data(web::Data::new(AppData { db: pool.clone(), debug, app_url: app_url.clone(), github_client_id: github_client.clone() }))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
