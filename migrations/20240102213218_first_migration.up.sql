@@ -8,6 +8,8 @@ CREATE TYPE gd_ver_platform as ENUM ('android', 'ios', 'mac', 'win');
 CREATE TABLE mods (
     id TEXT PRIMARY KEY NOT NULL,
     repository TEXT,
+    changelog TEXT,
+    about TEXT,
     latest_version TEXT NOT NULL,
     validated BOOLEAN NOT NULL
 );
@@ -22,8 +24,6 @@ CREATE TABLE mod_versions (
     geode TEXT NOT NULL,
     early_load BOOLEAN NOT NULL DEFAULT false,
     api BOOLEAN NOT NULL DEFAULT false,
-    changelog TEXT,
-    about TEXT,
     mod_id TEXT NOT NULL,
     FOREIGN KEY (mod_id) REFERENCES mods(id)
 );
