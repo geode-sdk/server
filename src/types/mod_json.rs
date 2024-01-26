@@ -40,6 +40,8 @@ pub struct ModJson {
     #[serde(default)]
     pub api: bool,
     pub gd: Option<ModJsonGDVersionType>,
+    pub about: Option<String>,
+    pub changelog: Option<String>,
     pub dependencies: Option<Vec<ModJsonDependency>>,
     pub incompatibilities: Option<Vec<ModJsonIncompatibility>>
 }
@@ -79,12 +81,13 @@ impl ModJson {
         };
         let hash = sha256::digest(bytes);
         let reader = BufReader::new(file);
-        let archive_res = zip::ZipArchive::new(reader);
-        if archive_res.is_err() {
-            log::error!("{}", archive_res.err().unwrap());
-            return Err(ApiError::FilesystemError)
-        }
-        let mut archive = archive_res.unwrap();
+        let mut archive = match zip::ZipArchive::new(reader) {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::FilesystemError);
+            },
+            Ok(a) => a
+        };
         let json_file = archive.by_name("mod.json").or(Err(ApiError::BadRequest(String::from("mod.json not found"))))?;
         let mut json = match serde_json::from_reader::<ZipFile, ModJson>(json_file) {
             Ok(j) => j,
@@ -118,7 +121,7 @@ impl ModJson {
         }
 
         for i in 0..archive.len() {
-            if let Some(file) = archive.by_index(i).ok() {
+            if let Some(mut file) = archive.by_index(i).ok() {
                 if file.name().ends_with(".dll") {
                     json.windows = true;
                     continue;
@@ -138,6 +141,24 @@ impl ModJson {
                 if file.name().ends_with(".android64.so") {
                     json.android64 = true;
                     continue;
+                }
+                if file.name().eq("about.md") {
+                    json.about = match parse_zip_entry_to_str(&mut file) {
+                        Err(e) => {
+                            log::error!("{}", e);
+                            return Err(ApiError::InternalError);
+                        },
+                        Ok(r) => Some(r)
+                    };
+                }
+                if file.name().eq("changelog.md") {
+                    json.changelog = match parse_zip_entry_to_str(&mut file) {
+                        Err(e) => {
+                            log::error!("{}", e);
+                            return Err(ApiError::InternalError);
+                        },
+                        Ok(r) => Some(r)
+                    };
                 }
             }
         }
@@ -236,6 +257,17 @@ fn compare_versions(v1: &semver::Version, v2: &semver::Version, compare: &ModVer
         ModVersionCompare::LessEq => v1.le(&v2),
         ModVersionCompare::More => v1.gt(&v2),
         ModVersionCompare::MoreEq => v1.ge(&v2)
+    }
+}
+
+fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
+    let mut string: String = String::from("");
+    match file.read_to_string(&mut string) {
+        Ok(_) => Ok(string),
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(format!("Failed to parse {}", file.name()));
+        }
     }
 }
 

@@ -22,6 +22,8 @@ CREATE TABLE mod_versions (
     geode TEXT NOT NULL,
     early_load BOOLEAN NOT NULL DEFAULT false,
     api BOOLEAN NOT NULL DEFAULT false,
+    changelog TEXT,
+    about TEXT,
     mod_id TEXT NOT NULL,
     FOREIGN KEY (mod_id) REFERENCES mods(id)
 );

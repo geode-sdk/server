@@ -127,10 +127,22 @@ impl ModVersion {
         if json.description.is_some() {
             builder.push("description, ");
         }
+        if json.changelog.is_some() {
+            builder.push("changelog, ");
+        }
+        if json.about.is_some() {
+            builder.push("about, ");
+        }
         builder.push("name, version, download_link, hash, geode, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
+        }
+        if json.changelog.is_some() {
+            separated.push_bind(&json.changelog);
+        }
+        if json.about.is_some() {
+            separated.push_bind(&json.about);
         }
         separated.push_bind(&json.name);
         separated.push_bind(&json.version);
