@@ -44,6 +44,8 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::get_one)
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
+            .service(endpoints::auth::github::poll_github_login)
+            .service(endpoints::auth::github::start_github_login)
             .service(health)
     }).bind((addr, port))?;
 
