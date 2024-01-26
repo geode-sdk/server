@@ -1,4 +1,4 @@
-use actix_web::{get, post, web, Responder};
+use actix_web::{post, web, Responder};
 use serde::Deserialize;
 
 use crate::{auth::github, types::api::{ApiError, ApiResponse}, AppData};
