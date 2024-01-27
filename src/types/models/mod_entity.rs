@@ -2,7 +2,7 @@ use actix_web::web::Bytes;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 use std::io::Cursor;
-use crate::{types::{models::{mod_version::ModVersion, mod_gd_version::GDVersionEnum}, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
+use crate::{types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
 use super::mod_gd_version::{ModGDVersion, DetailedGDVersion};
 
@@ -15,9 +15,10 @@ pub struct Mod {
     pub versions: Vec<ModVersion>
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 struct ModRecord {
     id: String,
+    #[sqlx(default)]
     repository: Option<String>,
     latest_version: String,
     validated: bool,
@@ -48,25 +49,56 @@ impl Mod {
         let limit = per_page;
         let offset = (page - 1) * per_page;
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()));
-        log::info!("{}", query_string);
-        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT DISTINCT 
-                m.id, m.repository, m.latest_version, m.validated FROM mods m
-                INNER JOIN mod_versions mv ON m.id = mv.mod_id 
-                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2
-                LIMIT $3 OFFSET $4"#, 
-            query_string, query.gd as GDVersionEnum, limit, offset)
-            .fetch_all(&mut *pool)
-            .await.or(Err(ApiError::DbError))?;
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            WHERE m.validated = true AND mv.name LIKE "
+        );
+        let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT COUNT(*) FROM mods m
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            WHERE m.validated = true AND mv.name LIKE "
+        );
+        counter_builder.push_bind(&query_string);
+        builder.push_bind(&query_string);
+        match query.gd {
+            Some(g) => {
+                builder.push(" AND mgv.gd = ");
+                builder.push_bind(g);
+                counter_builder.push(" AND mgv.gd = ");
+                counter_builder.push_bind(g);
+            },
+            None => ()
+        };
+        builder.push(" LIMIT ");
+        builder.push_bind(limit);
+        builder.push(" OFFSET ");
+        builder.push_bind(offset);
 
-        let count = sqlx::query_scalar!("SELECT COUNT(*) 
-                FROM mods m
-                INNER JOIN mod_versions mv ON m.id = mv.mod_id
-                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2", 
-            query_string, query.gd as GDVersionEnum)
+        let result = builder.build_query_as::<ModRecord>()
+            .fetch_all(&mut *pool)
+            .await;
+        let records = match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => r
+        };
+
+        let result = counter_builder.build_query_scalar()
             .fetch_one(&mut *pool)
-            .await.or(Err(ApiError::DbError))?.unwrap_or(0);
+            .await;
+        let count = match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(c) => c
+        };
+
         if records.is_empty() {
             return Ok(PaginatedData { data: vec![], count: 0 });
         }

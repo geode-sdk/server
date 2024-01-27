@@ -71,7 +71,7 @@ impl ModVersion {
     pub fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = format!("{}/v1/mods/{}/versions/{}/download", app_url, self.mod_id, self.version);
     }
-    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: GDVersionEnum) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: Option<GDVersionEnum>) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
@@ -82,9 +82,12 @@ impl ModVersion {
             mv.early_load, mv.api, mv.mod_id, m.changelog FROM mod_versions mv 
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.version = m.latest_version AND mgv.gd = "#
+            WHERE mv.version = m.latest_version"#
         );
-        query_builder.push_bind(gd as GDVersionEnum);
+        if gd.is_some() {
+            query_builder.push(" AND mgv.gd = ");
+            query_builder.push_bind(gd.unwrap() as GDVersionEnum);
+        }
         query_builder.push(" AND mv.mod_id IN (");
         let mut separated = query_builder.separated(",");
         for id in ids.iter() {
