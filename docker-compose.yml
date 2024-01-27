@@ -4,7 +4,7 @@ services:
   app:
     build:
       context: ./
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-dev
     container_name: geode-index
     restart: unless-stopped
     environment:
@@ -22,8 +22,8 @@ services:
       - ./.env
     networks:
       - dev
-    expose:
-      - 3000
+    ports:
+      - "3000:3000"
   postgres:
     container_name: geode-postgres
     image: postgres:14.10-alpine3.19
