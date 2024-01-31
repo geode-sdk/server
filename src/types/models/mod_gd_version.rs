@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::{collections::{HashMap, hash_map::Entry}, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, QueryBuilder, Postgres};
@@ -32,7 +32,24 @@ pub enum VerPlatform {
     Android,
     Ios,
     Mac,
-    Win
+    Win,
+}
+
+impl FromStr for VerPlatform {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "android" => Ok(VerPlatform::Android),
+            "android32" => Ok(VerPlatform::Android),
+            "android64" => Ok(VerPlatform::Android),
+            "ios" => Ok(VerPlatform::Ios),
+            "mac" => Ok(VerPlatform::Mac),
+            "win" => Ok(VerPlatform::Win),
+            "windows" => Ok(VerPlatform::Win),
+            "macos" => Ok(VerPlatform::Mac),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(sqlx::FromRow, Clone, Copy, Debug, Serialize)]

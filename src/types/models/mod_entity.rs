@@ -1,10 +1,10 @@
 use actix_web::web::Bytes;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
-use std::io::Cursor;
+use std::{io::Cursor, str::FromStr};
 use crate::{types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
-use super::mod_gd_version::{ModGDVersion, DetailedGDVersion};
+use super::mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -49,6 +49,14 @@ impl Mod {
         let limit = per_page;
         let offset = (page - 1) * per_page;
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()));
+        let mut platforms: Vec<VerPlatform> = vec![];
+        if query.platforms.is_some() {
+            for i in query.platforms.unwrap().split(",") {
+                let trimmed = i.trim();
+                let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(format!("Invalid platform {}", trimmed))))?;
+                platforms.push(platform)
+            }
+        }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
@@ -72,6 +80,21 @@ impl Mod {
             },
             None => ()
         };
+        for (i, platform) in platforms.iter().enumerate() {
+            if i == 0 {
+                builder.push(" AND mgv.platform IN (");
+                counter_builder.push(" AND mgv.platform IN (");
+            }
+            builder.push_bind(platform.clone());
+            counter_builder.push_bind(platform.clone());
+            if i == platforms.len() - 1 {
+                builder.push(")");
+                counter_builder.push(")");
+            } else {
+                builder.push(", ");
+                counter_builder.push(", ");
+            }
+        }
         builder.push(" LIMIT ");
         builder.push_bind(limit);
         builder.push(" OFFSET ");
@@ -104,7 +127,7 @@ impl Mod {
         }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
-        let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd).await?;
+        let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd, platforms).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for i in &versions {
             let mut version_ids: Vec<_> = i.1.iter().map(|x| { x.id }).collect();

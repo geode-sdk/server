@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, dependency::{Dependency, ResponseDependency}, incompatibility::{Incompatibility, ResponseIncompatibility}};
+use super::{mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform}, dependency::{Dependency, ResponseDependency}, incompatibility::{Incompatibility, ResponseIncompatibility}};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -71,7 +71,7 @@ impl ModVersion {
     pub fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = format!("{}/v1/mods/{}/versions/{}/download", app_url, self.mod_id, self.version);
     }
-    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: Option<GDVersionEnum>) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: Option<GDVersionEnum>, platforms: Vec<VerPlatform>) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
@@ -87,6 +87,17 @@ impl ModVersion {
         if gd.is_some() {
             query_builder.push(" AND mgv.gd = ");
             query_builder.push_bind(gd.unwrap() as GDVersionEnum);
+        }
+        for (i, platform) in platforms.iter().enumerate() {
+            if i == 0 {
+                query_builder.push(" AND mgv.platform IN (");
+            }
+            query_builder.push_bind(platform.clone());
+            if i == platforms.len() - 1 {
+                query_builder.push(")");
+            } else {
+                query_builder.push(", ");
+            }
         }
         query_builder.push(" AND mv.mod_id IN (");
         let mut separated = query_builder.separated(",");
