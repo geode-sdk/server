@@ -39,7 +39,7 @@ pub struct ModJson {
     pub early_load: bool,
     #[serde(default)]
     pub api: bool,
-    pub gd: Option<ModJsonGDVersionType>,
+    pub gd: ModJsonGDVersionType,
     pub about: Option<String>,
     pub changelog: Option<String>,
     pub dependencies: Option<Vec<ModJsonDependency>>,
@@ -84,7 +84,7 @@ impl ModJson {
         let mut archive = match zip::ZipArchive::new(reader) {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::FilesystemError);
+                return Err(ApiError::BadRequest("Couldn't unzip .geode file".to_string()));
             },
             Ok(a) => a
         };

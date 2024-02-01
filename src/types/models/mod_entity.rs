@@ -54,7 +54,12 @@ impl Mod {
             for i in query.platforms.unwrap().split(",") {
                 let trimmed = i.trim();
                 let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(format!("Invalid platform {}", trimmed))))?;
-                platforms.push(platform)
+                if platform == VerPlatform::Android {
+                    platforms.push(VerPlatform::Android32);
+                    platforms.push(VerPlatform::Android64);
+                } else {
+                    platforms.push(platform)
+                }
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(

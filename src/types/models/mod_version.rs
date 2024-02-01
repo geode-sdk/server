@@ -179,12 +179,11 @@ impl ModVersion {
             Ok(row) => row
         };
         let id = result.get::<i32, &str>("id");
-        match json.gd.as_ref() {
-            Some(gd) => match gd {
-                ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?,
-                ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_create_payload(), id, pool).await?
-            },
-            None => ()
+        match &json.gd {
+            ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?,
+            ModJsonGDVersionType::VersionObj(vec) => {
+                ModGDVersion::create_from_json(vec.to_create_payload(json), id, pool).await?;
+            }
         }
         if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) { 
             let dependencies = json.query_dependencies(pool).await?;

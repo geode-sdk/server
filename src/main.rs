@@ -29,9 +29,12 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(10)
         .connect(&env_url).await?;
     info!("Running migrations");
-    sqlx::migrate!("./migrations")
+    let migration_res = sqlx::migrate!("./migrations")
         .run(&pool)
-        .await?;
+        .await;
+    if migration_res.is_err() {
+        log::error!("Error encountered while running migrations: {}", migration_res.err().unwrap());
+    }
     let addr = "0.0.0.0";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
