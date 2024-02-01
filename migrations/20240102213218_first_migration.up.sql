@@ -3,11 +3,13 @@ CREATE TYPE dependency_importance AS ENUM ('required', 'recommended', 'suggested
 CREATE TYPE incompatibility_importance AS ENUM ('breaking', 'conflicting');
 CREATE TYPE version_compare AS ENUM ('=', '>', '<', '>=', '=<');
 CREATE TYPE gd_version as ENUM ('*', '2.113', '2.200', '2.204', '2.205');
-CREATE TYPE gd_ver_platform as ENUM ('android', 'ios', 'mac', 'win');
+CREATE TYPE gd_ver_platform as ENUM ('android32', 'android64', 'ios', 'mac', 'win');
 
 CREATE TABLE mods (
     id TEXT PRIMARY KEY NOT NULL,
     repository TEXT,
+    changelog TEXT,
+    about TEXT,
     latest_version TEXT NOT NULL,
     validated BOOLEAN NOT NULL
 );

@@ -1,0 +1,45 @@
+version: "3.8"
+name: "geode-index"
+services:
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile-dev
+    container_name: geode-index
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://geode:geode@geode-postgres/geode
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src
+          target: /app
+          ignore:
+            - "target"
+    depends_on:
+      - postgres
+    env_file:
+      - ./.env
+    networks:
+      - dev
+    ports:
+      - "3000:3000"
+  postgres:
+    container_name: geode-postgres
+    image: postgres:14.10-alpine3.19
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=geode
+      - POSTGRES_USER=geode
+      - POSTGRES_DB=geode
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dev
+volumes:
+  postgres-db:
+networks:
+  dev:
+    driver: bridge

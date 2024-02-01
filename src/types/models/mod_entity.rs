@@ -1,10 +1,10 @@
 use actix_web::web::Bytes;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
-use std::io::Cursor;
-use crate::{types::{models::{mod_version::ModVersion, mod_gd_version::GDVersionEnum}, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
+use std::{io::Cursor, str::FromStr};
+use crate::{types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
-use super::mod_gd_version::{ModGDVersion, DetailedGDVersion};
+use super::mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -15,15 +15,16 @@ pub struct Mod {
     pub versions: Vec<ModVersion>
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 struct ModRecord {
     id: String,
+    #[sqlx(default)]
     repository: Option<String>,
     latest_version: String,
     validated: bool,
 }
 
-#[derive(Debug)]
+#[derive(sqlx::FromRow)]
 struct ModRecordGetOne {
     id: String,
     repository: Option<String>,
@@ -38,7 +39,7 @@ struct ModRecordGetOne {
     geode: String,
     early_load: bool,
     api: bool,
-    mod_id: String
+    mod_id: String,
 }
 
 impl Mod {
@@ -48,31 +49,90 @@ impl Mod {
         let limit = per_page;
         let offset = (page - 1) * per_page;
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()));
-        log::info!("{}", query_string);
-        let records: Vec<ModRecord> = sqlx::query_as!(ModRecord, r#"SELECT DISTINCT 
-                m.* FROM mods m
-                INNER JOIN mod_versions mv ON m.id = mv.mod_id 
-                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2
-                LIMIT $3 OFFSET $4"#, 
-            query_string, query.gd as GDVersionEnum, limit, offset)
-            .fetch_all(&mut *pool)
-            .await.or(Err(ApiError::DbError))?;
+        let mut platforms: Vec<VerPlatform> = vec![];
+        if query.platforms.is_some() {
+            for i in query.platforms.unwrap().split(",") {
+                let trimmed = i.trim();
+                let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(format!("Invalid platform {}", trimmed))))?;
+                if platform == VerPlatform::Android {
+                    platforms.push(VerPlatform::Android32);
+                    platforms.push(VerPlatform::Android64);
+                } else {
+                    platforms.push(platform)
+                }
+            }
+        }
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            WHERE m.validated = true AND mv.name LIKE "
+        );
+        let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT COUNT(*) FROM mods m
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            WHERE m.validated = true AND mv.name LIKE "
+        );
+        counter_builder.push_bind(&query_string);
+        builder.push_bind(&query_string);
+        match query.gd {
+            Some(g) => {
+                builder.push(" AND mgv.gd = ");
+                builder.push_bind(g);
+                counter_builder.push(" AND mgv.gd = ");
+                counter_builder.push_bind(g);
+            },
+            None => ()
+        };
+        for (i, platform) in platforms.iter().enumerate() {
+            if i == 0 {
+                builder.push(" AND mgv.platform IN (");
+                counter_builder.push(" AND mgv.platform IN (");
+            }
+            builder.push_bind(platform.clone());
+            counter_builder.push_bind(platform.clone());
+            if i == platforms.len() - 1 {
+                builder.push(")");
+                counter_builder.push(")");
+            } else {
+                builder.push(", ");
+                counter_builder.push(", ");
+            }
+        }
+        builder.push(" LIMIT ");
+        builder.push_bind(limit);
+        builder.push(" OFFSET ");
+        builder.push_bind(offset);
 
-        let count = sqlx::query_scalar!("SELECT COUNT(*) 
-                FROM mods m
-                INNER JOIN mod_versions mv ON m.id = mv.mod_id
-                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2", 
-            query_string, query.gd as GDVersionEnum)
+        let result = builder.build_query_as::<ModRecord>()
+            .fetch_all(&mut *pool)
+            .await;
+        let records = match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => r
+        };
+
+        let result = counter_builder.build_query_scalar()
             .fetch_one(&mut *pool)
-            .await.or(Err(ApiError::DbError))?.unwrap_or(0);
+            .await;
+        let count = match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(c) => c
+        };
+
         if records.is_empty() {
             return Ok(PaginatedData { data: vec![], count: 0 });
         }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
-        let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd).await?;
+        let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd, platforms).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for i in &versions {
             let mut version_ids: Vec<_> = i.1.iter().map(|x| { x.id }).collect();
@@ -101,7 +161,7 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.*,
+                m.id, m.repository, m.latest_version, m.validated,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -127,6 +187,8 @@ impl Mod {
                 api: x.api,
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+                changelog: None,
+                about: None,
                 dependencies: None,
                 incompatibilities: None
             }
@@ -166,7 +228,7 @@ impl Mod {
     }
 
     pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let result = sqlx::query!("SELECT latest_version, validated FROM mods WHERE id = $1", json.id)
+        let result = sqlx::query!("SELECT latest_version, validated, about, changelog FROM mods WHERE id = $1", json.id)
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
@@ -186,7 +248,10 @@ impl Mod {
             return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
         }
         ModVersion::create_from_json(json, pool).await?;
-        let result = sqlx::query!("UPDATE mods SET latest_version = $1 WHERE id = $2", json.version, json.id)
+        let result = sqlx::query!(
+            "UPDATE mods 
+            SET latest_version = $1, changelog = $2, about = $3
+            WHERE id = $4", json.version, json.changelog, json.about, json.id)
             .execute(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
@@ -209,10 +274,22 @@ impl Mod {
         if json.repository.is_some() {
             query_builder.push("repository, ");
         }
+        if json.changelog.is_some() {
+            query_builder.push("changelog, ");
+        }
+        if json.about.is_some() {
+            query_builder.push("about, ");
+        }
         query_builder.push("id, latest_version, validated) VALUES (");
         let mut separated = query_builder.separated(", ");
         if json.repository.is_some() {
             separated.push_bind(json.repository.as_ref().unwrap());
+        }
+        if json.changelog.is_some() {
+            separated.push_bind(&json.changelog);
+        }
+        if json.about.is_some() {
+            separated.push_bind(&json.about);
         }
         separated.push_bind(&json.id);
         separated.push_bind(&json.version);

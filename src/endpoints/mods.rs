@@ -14,7 +14,10 @@ pub struct IndexQueryParams {
     pub page: Option<i64>,
     pub per_page: Option<i64>,
     pub query: Option<String>,
-    pub gd: GDVersionEnum
+    #[serde(default)]
+    pub gd: Option<GDVersionEnum>,
+    #[serde(default)]
+    pub platforms: Option<String>
 }
 
 #[derive(Deserialize)]

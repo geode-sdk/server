@@ -5,7 +5,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres, Row};
 
 use crate::types::{api::ApiError, mod_json::{ModJson, ModJsonGDVersionType}};
 
-use super::{mod_gd_version::{ModGDVersion, GDVersionEnum, DetailedGDVersion}, dependency::{Dependency, ResponseDependency}, incompatibility::{Incompatibility, ResponseIncompatibility}};
+use super::{mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform}, dependency::{Dependency, ResponseDependency}, incompatibility::{Incompatibility, ResponseIncompatibility}};
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -21,6 +21,8 @@ pub struct ModVersion {
     pub api: bool,
     pub mod_id: String,
     pub gd: DetailedGDVersion,
+    pub about: Option<String>,
+    pub changelog: Option<String>,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>
 }
@@ -36,7 +38,11 @@ struct ModVersionGetOne {
     geode: String,
     early_load: bool,
     api: bool,
-    mod_id: String 
+    mod_id: String,
+    #[sqlx(default)]
+    about: Option<String>,
+    #[sqlx(default)]
+    changelog: Option<String>
 }
 
 impl ModVersionGetOne {
@@ -53,6 +59,8 @@ impl ModVersionGetOne {
             api: self.api,
             mod_id: self.mod_id.clone(),
             gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+            about: self.about.clone(),
+            changelog: self.changelog.clone(),
             dependencies: None,
             incompatibilities: None
         }
@@ -63,18 +71,34 @@ impl ModVersion {
     pub fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = format!("{}/v1/mods/{}/versions/{}/download", app_url, self.mod_id, self.version);
     }
-    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: GDVersionEnum) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    pub async fn get_latest_for_mods(pool: &mut PgConnection, ids: &[&str], gd: Option<GDVersionEnum>, platforms: Vec<VerPlatform>) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT mv.* FROM mod_versions mv 
+            r#"SELECT
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode,
+            mv.early_load, mv.api, mv.mod_id, m.changelog FROM mod_versions mv 
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.version = m.latest_version AND mgv.gd = "#
+            WHERE mv.version = m.latest_version"#
         );
-        query_builder.push_bind(gd as GDVersionEnum);
+        if gd.is_some() {
+            query_builder.push(" AND mgv.gd = ");
+            query_builder.push_bind(gd.unwrap() as GDVersionEnum);
+        }
+        for (i, platform) in platforms.iter().enumerate() {
+            if i == 0 {
+                query_builder.push(" AND mgv.platform IN (");
+            }
+            query_builder.push_bind(platform.clone());
+            if i == platforms.len() - 1 {
+                query_builder.push(")");
+            } else {
+                query_builder.push(", ");
+            }
+        }
         query_builder.push(" AND mv.mod_id IN (");
         let mut separated = query_builder.separated(",");
         for id in ids.iter() {
@@ -96,7 +120,9 @@ impl ModVersion {
         
         for x in records.iter() {
             let mod_id = x.mod_id.clone();
-            let version = x.into_mod_version();
+            let mut version = x.into_mod_version();
+            version.changelog = None;
+            version.about = None;
             match ret.entry(mod_id) {
                 Entry::Vacant(e) => {
                     let vector: Vec<ModVersion> = vec![version];
@@ -153,12 +179,11 @@ impl ModVersion {
             Ok(row) => row
         };
         let id = result.get::<i32, &str>("id");
-        match json.gd.as_ref() {
-            Some(gd) => match gd {
-                ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?,
-                ModJsonGDVersionType::VersionObj(vec) => ModGDVersion::create_from_json(vec.to_create_payload(), id, pool).await?
-            },
-            None => ()
+        match &json.gd {
+            ModJsonGDVersionType::VersionStr(ver) => ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?,
+            ModJsonGDVersionType::VersionObj(vec) => {
+                ModGDVersion::create_from_json(vec.to_create_payload(json), id, pool).await?;
+            }
         }
         if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) { 
             let dependencies = json.query_dependencies(pool).await?;
@@ -178,7 +203,9 @@ impl ModVersion {
     pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
             ModVersionGetOne,
-            "SELECT * FROM mod_versions WHERE mod_id = $1 AND version = $2",
+            "SELECT mv.*, m.changelog, m.about FROM mod_versions mv
+            INNER JOIN mods m ON m.id = mv.mod_id
+            WHERE mv.mod_id = $1 AND mv.version = $2",
             id, version
         ).fetch_optional(&mut *pool)
         .await;

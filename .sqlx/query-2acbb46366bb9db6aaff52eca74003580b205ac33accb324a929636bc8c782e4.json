@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT latest_version, validated, about, changelog FROM mods WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "latest_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "validated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "about",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "changelog",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "2acbb46366bb9db6aaff52eca74003580b205ac33accb324a929636bc8c782e4"
+}

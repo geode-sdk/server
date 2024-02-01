@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mgv.id, mgv.mod_id, mgv.gd AS \"gd: _\", mgv.platform as \"platform: _\" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "mod_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "gd: _",
+        "type_info": {
+          "Custom": {
+            "name": "gd_version",
+            "kind": {
+              "Enum": [
+                "*",
+                "2.113",
+                "2.200",
+                "2.204",
+                "2.205"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "platform: _",
+        "type_info": {
+          "Custom": {
+            "name": "gd_ver_platform",
+            "kind": {
+              "Enum": [
+                "android",
+                "ios",
+                "mac",
+                "win"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "70db4ee34c2c0a34c323d9bab8fb427328e9fae10c8e8ff3a12a53578f636c8a"
+}

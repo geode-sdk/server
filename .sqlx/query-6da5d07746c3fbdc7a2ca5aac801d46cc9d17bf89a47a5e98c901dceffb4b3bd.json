@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT \n                m.id, m.repository, m.latest_version, m.validated FROM mods m\n                INNER JOIN mod_versions mv ON m.id = mv.mod_id \n                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id\n                WHERE m.validated = true AND mv.name LIKE $1 AND mgv.gd = $2\n                LIMIT $3 OFFSET $4",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "repository",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "latest_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "validated",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "gd_version",
+            "kind": {
+              "Enum": [
+                "*",
+                "2.113",
+                "2.200",
+                "2.204",
+                "2.205"
+              ]
+            }
+          }
+        },
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6da5d07746c3fbdc7a2ca5aac801d46cc9d17bf89a47a5e98c901dceffb4b3bd"
+}

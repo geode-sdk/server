@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT icp.compare as \"compare: ModVersionCompare\",\n            icp.importance as \"importance: IncompatibilityImportance\",\n            icp.incompatibility_id, mv.mod_id, mv.version FROM incompatibilities icp\n            INNER JOIN mod_versions mv ON icp.mod_id = mv.id\n            WHERE mv.id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "compare: ModVersionCompare",
+        "type_info": {
+          "Custom": {
+            "name": "version_compare",
+            "kind": {
+              "Enum": [
+                "=",
+                ">",
+                "<",
+                ">=",
+                "=<"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "importance: IncompatibilityImportance",
+        "type_info": {
+          "Custom": {
+            "name": "incompatibility_importance",
+            "kind": {
+              "Enum": [
+                "breaking",
+                "conflicting"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "incompatibility_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "version",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "01bd480b1054bbc29c7d142eedfb05e2b3237b16153d5d00cef5c2a7ba7285b4"
+}

@@ -28,9 +28,17 @@ async fn main() -> anyhow::Result<()> {
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
+    let pool = sqlx::postgres::PgPoolOptions::default()
+        .max_connections(10)
         .connect(&env_url).await?;
-    let addr = "127.0.0.1";
+    info!("Running migrations");
+    let migration_res = sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await;
+    if migration_res.is_err() {
+        log::error!("Error encountered while running migrations: {}", migration_res.err().unwrap());
+    }
+    let addr = "0.0.0.0";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());

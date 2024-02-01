@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mods \n            SET latest_version = $1, changelog = $2, about = $3\n            WHERE id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b187c841dad18974779621a70d81e5490e7cc982d5cc5ca68ec080e33110d082"
+}

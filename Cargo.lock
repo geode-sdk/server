@@ -830,6 +830,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "geode-index"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "anyhow",
+ "dotenvy",
+ "env_logger",
+ "futures",
+ "log",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha256",
+ "sqlx",
+ "tokio",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1751,27 +1772,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "anyhow",
- "dotenvy",
- "env_logger",
- "futures",
- "log",
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "sha256",
- "sqlx",
- "tokio",
- "uuid",
- "zip",
 ]
 
 [[package]]
