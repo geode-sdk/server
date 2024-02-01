@@ -186,7 +186,7 @@ impl Mod {
                 early_load: x.early_load,
                 api: x.api,
                 mod_id: x.mod_id.clone(),
-                gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+                gd: DetailedGDVersion { win: None, android: None, mac: None, ios: None, android32: None, android64: None },
                 changelog: None,
                 about: None,
                 dependencies: None,
