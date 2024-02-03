@@ -1,7 +1,7 @@
-use std::net::Ipv4Addr;
+use std::time::Duration;
 
 use serde::Serialize;
-use sqlx::{types::{chrono::{self, DateTime, Local, TimeZone, Utc}, ipnetwork::IpNetwork}, PgConnection};
+use sqlx::{types::{chrono::{DateTime, Utc}, ipnetwork::IpNetwork}, PgConnection};
 use uuid::Uuid;
 
 use crate::types::api::ApiError;
@@ -15,13 +15,27 @@ pub struct GithubLoginAttempt {
 }
 
 pub struct StoredLoginAttempt {
-    uuid: String,
-    ip: IpNetwork,
-    device_code: String,
-    interval: i32,
-    expires_in: i32,
-    created_at: DateTime<Utc>,
-    last_poll: Option<DateTime<Utc>>
+    pub uuid: String,
+    pub ip: IpNetwork,
+    pub device_code: String,
+    pub interval: i32,
+    pub expires_in: i32,
+    pub created_at: DateTime<Utc>,
+    pub last_poll: DateTime<Utc>
+}
+
+impl StoredLoginAttempt {
+    pub fn is_expired(&self) -> bool {
+        let now = Utc::now();
+        let exprire_time = self.created_at + Duration::from_secs(u64::try_from(self.expires_in).unwrap());
+        now > exprire_time
+    }
+
+    pub fn interval_passed(&self) -> bool {
+        let now = Utc::now();
+        let diff = (now - self.last_poll).num_seconds() as i32;
+        diff > self.interval
+    }
 }
 
 impl GithubLoginAttempt {
@@ -79,5 +93,18 @@ impl GithubLoginAttempt {
             },
             Ok(r) => Ok(r)
         }
+    }
+
+    pub async fn remove(uuid: Uuid, pool: &mut PgConnection) {
+        let _ = sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
+            .execute(&mut *pool)
+            .await;
+    }
+
+    pub async fn poll(uuid: Uuid, pool: &mut PgConnection) {
+        let now = Utc::now();
+        let _ = sqlx::query!("UPDATE github_login_attempts SET last_poll = $1 WHERE uid = $2", now, uuid)
+            .execute(&mut *pool)
+            .await;
     }
 }

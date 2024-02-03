@@ -72,8 +72,7 @@ impl GithubClient {
         Ok(GithubLoginAttempt { uuid: uuid.to_string(), interval: body.interval, uri: body.verification_uri, code: body.user_code })
     }
 
-
-    pub async fn poll_github(&self, device_code: &str) -> Result<serde_json::Value, ApiError> {
+    pub async fn poll_github(&self, device_code: &str) -> Result<String, ApiError> {
         #[derive(Serialize, Debug)]
         struct GithubPollAuthBody {
             client_id: String,
@@ -96,6 +95,7 @@ impl GithubClient {
         let client = Client::new();
         let resp = client.post("https://github.com/login/oauth/access_token")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
+            .header("Content-Type", HeaderValue::from_str("application/json").unwrap())
             .basic_auth(&self.client_id, Some(&self.client_secret))
             .body(json)
             .send()
@@ -105,13 +105,41 @@ impl GithubClient {
             return Err(ApiError::InternalError);
         }
         let resp = resp.unwrap();
-        let status = resp.status();
         let body = resp.json::<serde_json::Value>().await.unwrap();
+        match body.get("access_token") {
+            None => {
+                return Err(ApiError::BadRequest("Request not accepted by user".to_string()));
+            },
+            Some(t) => Ok(String::from(t.as_str().unwrap()))
+        }
+    }
 
-        if status != StatusCode::OK {
-            log::info!("{:?}", body);
+    pub async fn get_user(&self, token: String) -> Result<serde_json::Value, ApiError> {
+        let client = Client::new();
+        let resp = client.get("https://api.github.com/user")
+            .header("Accept", HeaderValue::from_str("application/json").unwrap())
+            .header("User-Agent", "geode_index")
+            .bearer_auth(token)
+            .send()
+            .await;
+
+        if resp.is_err() {
+            log::info!("{}", resp.err().unwrap());
+            return Err(ApiError::InternalError);
         }
 
-        Ok(body)
+        let resp = resp.unwrap();
+        if !resp.status().is_success() {
+            return Err(ApiError::InternalError);
+        }
+        let body = match resp.json::<serde_json::Value>().await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            },
+            Ok(b) => b
+        };
+        
+        return Ok(body);
     }
 }

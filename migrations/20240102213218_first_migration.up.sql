@@ -76,7 +76,8 @@ CREATE TABLE developers (
     id SERIAL PRIMARY KEY NOT NULL,
     username TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    verified BOOLEAN NOT NULL,
+    verified BOOLEAN DEFAULT false NOT NULL,
+    admin BOOLEAN DEFAULT false NOT NULL,
     github_user_id BIGINT NOT NULL
 );
 
@@ -95,6 +96,6 @@ CREATE TABLE github_login_attempts (
     interval INTEGER NOT NULL,
     expires_in INTEGER NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    last_poll TIMESTAMPTZ,
+    last_poll TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (uid, ip)
 );

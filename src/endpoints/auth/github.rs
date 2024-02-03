@@ -1,12 +1,13 @@
 use actix_web::{post, web, HttpRequest, Responder};
 use serde::Deserialize;
 use sqlx::types::ipnetwork::Ipv4Network;
+use uuid::Uuid;
 
-use crate::{auth::github, types::api::{ApiError, ApiResponse}, AppData};
+use crate::{auth::github, types::{api::{ApiError, ApiResponse}, models::{developer::Developer, github_login_attempt::GithubLoginAttempt}}, AppData};
 
 #[derive(Deserialize)]
 struct PollParams {
-    device_code: String
+    uuid: String
 }
 
 #[post("v1/login/github")]
@@ -26,8 +27,54 @@ pub async fn start_github_login(data: web::Data<AppData>, req: HttpRequest) -> R
 }
 
 #[post("v1/login/github/poll")]
-pub async fn poll_github_login(json: web::Json<PollParams>, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
+pub async fn poll_github_login(json: web::Json<PollParams>, data: web::Data<AppData>, req: HttpRequest) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let uuid = match Uuid::parse_str(&json.uuid) {
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ApiError::BadRequest(format!("Invalid uuid {}", json.uuid)));
+        },
+        Ok(u) => u
+    };
+    let attempt = match GithubLoginAttempt::get_one(uuid, &mut *pool).await? {
+        None => {
+            return Err(ApiError::BadRequest(format!("No attempt made for uuid {}", json.uuid)))
+        },
+        Some(a) => a
+    };
+
+    let connection_info = req.connection_info();
+    let ip = match connection_info.realip_remote_addr() {
+        None => return Err(ApiError::InternalError),
+        Some(i) => i
+    };
+    let net: Ipv4Network = ip.parse().or(Err(ApiError::InternalError))?;
+    if attempt.ip.ip() != net.ip() {
+        log::error!("{} compared to {}", attempt.ip, net);
+        return Err(ApiError::BadRequest("Request IP does not match stored attempt IP".to_string()));
+    }
+    if !attempt.interval_passed() {
+        return Err(ApiError::BadRequest("Too fast".to_string()));
+    }
+    if attempt.is_expired() {
+        GithubLoginAttempt::remove(uuid, &mut *pool).await;
+        return Err(ApiError::BadRequest("Login attempt expired".to_string()));
+    }
+
     let client = github::GithubClient::new(data.github_client_id.to_string(), data.github_client_secret.to_string());
-    let result = client.poll_github(&json.device_code).await?;
-    Ok(web::Json(ApiResponse {error: "".to_string(), payload: result}))
+    GithubLoginAttempt::poll(uuid, &mut *pool).await;
+    let token = client.poll_github(&attempt.device_code).await?; 
+    GithubLoginAttempt::remove(uuid, &mut *pool).await;
+    let user = client.get_user(token).await?;
+    let id = match user.get("id") {
+        None => return Err(ApiError::InternalError),
+        Some(id) => id.as_i64().unwrap()
+    };
+    let username = match user.get("login") {
+        None => return Err(ApiError::InternalError),
+        Some(user) => user.to_string()
+    };
+    let id = Developer::create(id, username, &mut *pool).await?;
+
+    Ok(web::Json(ApiResponse {error: "".to_string(), payload: user}))
 }

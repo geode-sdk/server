@@ -63,16 +63,16 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND mv.validated = true AND mv.name LIKE "
+            WHERE mv.validated = true AND mv.name LIKE "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(*) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND mv.validated = true AND mv.name LIKE "
+            WHERE mv.validated = true AND mv.name LIKE "
         );
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
@@ -248,17 +248,18 @@ impl Mod {
             return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
         }
         ModVersion::create_from_json(json, pool).await?;
-        let result = sqlx::query!(
-            "UPDATE mods 
-            SET latest_version = $1, changelog = $2, about = $3
-            WHERE id = $4", json.version, json.changelog, json.about, json.id)
-            .execute(&mut *pool)
-            .await
-            .or(Err(ApiError::DbError))?;
-        if result.rows_affected() == 0 {
-            log::error!("{:?}", result);
-            return Err(ApiError::DbError);
-        }
+        // TODO update when doing mod validations
+        // let result = sqlx::query!(
+        //     "UPDATE mods 
+        //     SET latest_version = $1, changelog = $2, about = $3
+        //     WHERE id = $4", json.version, json.changelog, json.about, json.id)
+        //     .execute(&mut *pool)
+        //     .await
+        //     .or(Err(ApiError::DbError))?;
+        // if result.rows_affected() == 0 {
+        //     log::error!("{:?}", result);
+        //     return Err(ApiError::DbError);
+        // }
         Ok(())
     }
 
