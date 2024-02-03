@@ -184,7 +184,7 @@ impl ModJson {
                 Ok((ver, compare)) => (ver, compare)
             };
 
-            let versions = sqlx::query!("SELECT id, version FROM mod_versions WHERE mod_id = $1", i.id)
+            let versions = sqlx::query!("SELECT id, version FROM mod_versions WHERE mod_id = $1 and validated = true", i.id)
                 .fetch_all(&mut *pool)
                 .await;
             let versions = match versions {
@@ -194,13 +194,17 @@ impl ModJson {
             if versions.len() == 0 {
                 return Err(ApiError::BadRequest(format!("Couldn't find dependency {} on the index", i.id)));
             }
+            let mut found = false;
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
                 if compare_versions(&ver, &parsed, &compare) {
                     ret.push(DependencyCreate { dependency_id: j.id, compare, importance: i.importance });
-                    continue;
+                    found = true;
+                    break;
                 }
+            }
+            if !found {
                 return Err(ApiError::BadRequest(format!("Couldn't find dependency version that satisfies semver compare {}", i.version)));
             }
         }
@@ -235,13 +239,17 @@ impl ModJson {
             if versions.len() == 0 {
                 return Err(ApiError::BadRequest(format!("Couldn't find incompatibility {} on the index", i.id)));
             }
+            let mut found = false;
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
                 if compare_versions(&ver, &parsed, &compare) {
                     ret.push(IncompatibilityCreate { incompatibility_id: j.id, compare, importance: i.importance });
-                    continue;
+                    found = true;
+                    break;
                 }
+            }
+            if !found {
                 return Err(ApiError::BadRequest(format!("Couldn't find incompatibility version that satisfies semver compare {}", i.version)));
             }
         }
@@ -292,7 +300,7 @@ fn validate_dependency_version_str(ver: &str) -> bool {
 
 fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), ()> {
     let mut copy = ver.to_string();
-    let mut compare = ModVersionCompare::Exact; 
+    let mut compare = ModVersionCompare::MoreEq; 
     if ver.starts_with("<=") {
         copy = copy.trim_start_matches("<=").to_string();
         compare = ModVersionCompare::LessEq;

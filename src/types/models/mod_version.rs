@@ -82,7 +82,7 @@ impl ModVersion {
             mv.early_load, mv.api, mv.mod_id, m.changelog FROM mod_versions mv 
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.version = m.latest_version"#
+            WHERE mv.version = m.latest_version AND mv.validated = true"#
         );
         if gd.is_some() {
             query_builder.push(" AND mgv.gd = ");
@@ -153,7 +153,7 @@ impl ModVersion {
         if json.description.is_some() {
             builder.push("description, ");
         }
-        builder.push("name, version, download_link, hash, geode, early_load, api, mod_id) VALUES (");
+        builder.push("name, version, download_link, validated, hash, geode, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -161,6 +161,7 @@ impl ModVersion {
         separated.push_bind(&json.name);
         separated.push_bind(&json.version);
         separated.push_bind(&json.download_url);
+        separated.push_bind(false);
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
         separated.push_bind(&json.early_load);
@@ -203,9 +204,12 @@ impl ModVersion {
     pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
             ModVersionGetOne,
-            "SELECT mv.*, m.changelog, m.about FROM mod_versions mv
+            "SELECT
+            mv.id, mv.name, mv.description, mv.version, mv.download_link,
+            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id,
+            m.changelog, m.about FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.mod_id = $1 AND mv.version = $2",
+            WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
             id, version
         ).fetch_optional(&mut *pool)
         .await;

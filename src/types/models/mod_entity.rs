@@ -66,13 +66,13 @@ impl Mod {
             "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND mv.name LIKE "
+            WHERE m.validated = true AND mv.validated = true AND mv.name LIKE "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(*) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND mv.name LIKE "
+            WHERE m.validated = true AND mv.validated = true AND mv.name LIKE "
         );
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
@@ -161,12 +161,12 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.id, m.repository, m.latest_version, m.validated,
+                m.id, m.repository, m.latest_version, mv.validated,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            WHERE m.id = $1",
+            WHERE m.id = $1 AND mv.validated = true",
             id
         ).fetch_all(&mut *pool)
             .await
@@ -228,17 +228,17 @@ impl Mod {
     }
 
     pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let result = sqlx::query!("SELECT latest_version, validated, about, changelog FROM mods WHERE id = $1", json.id)
+        let result = sqlx::query!("SELECT DISTINCT
+            m.latest_version, m.about, m.changelog FROM mods m
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id
+            WHERE m.id = $1 AND mv.validated = true", json.id)
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
         let result = match result {
             Some(r) => r,
-            None => return Err(ApiError::NotFound(format!("Mod {} doesn't exist", &json.id)))
+            None => return Err(ApiError::NotFound(format!("Mod {} doesn't exist or isn't yet validated", &json.id)))
         };
-        if !result.validated {
-            return Err(ApiError::BadRequest("Cannot update an unverified mod. Please contact the Geode team for more details.".into()));
-        }
         let version = semver::Version::parse(result.latest_version.trim_start_matches("v")).unwrap();
         let new_version = match semver::Version::parse(json.version.trim_start_matches("v")) {
             Ok(v) => v,
@@ -280,7 +280,7 @@ impl Mod {
         if json.about.is_some() {
             query_builder.push("about, ");
         }
-        query_builder.push("id, latest_version, validated) VALUES (");
+        query_builder.push("id, latest_version) VALUES (");
         let mut separated = query_builder.separated(", ");
         if json.repository.is_some() {
             separated.push_bind(json.repository.as_ref().unwrap());
@@ -293,7 +293,6 @@ impl Mod {
         }
         separated.push_bind(&json.id);
         separated.push_bind(&json.version);
-        separated.push_bind(false);
         separated.push_unseparated(")");
         
         let _ = query_builder

@@ -114,13 +114,14 @@ impl Dependency {
             }
             let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT dp.dependency_id, dp.compare, dp.importance, mv.version, mv.mod_id FROM dependencies dp
             INNER JOIN mod_versions mv ON dp.dependency_id = mv.id 
-            WHERE dp.dependent_id IN (");
+            WHERE mv.validated = true AND dp.dependent_id IN (");
             let mut separated = builder.separated(",");
             let copy = ret.clone();
             for i in &modifiable_ids {
                 separated.push_bind(i);
             }
             separated.push_unseparated(")");
+            log::info!("{}", builder.sql());
             let result = builder.build_query_as::<FetchedDependency>()
                 .fetch_all(&mut *pool)
                 .await;
