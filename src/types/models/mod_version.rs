@@ -135,7 +135,7 @@ impl ModVersion {
     }
 
     pub async fn get_download_url(id: &str, version: &str,pool: &mut PgConnection) -> Result<String, ApiError> {
-        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2", id, version)
+        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2 AND validated = true", id, version)
             .fetch_optional(&mut *pool)
             .await;
         if result.is_err() {
