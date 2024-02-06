@@ -3,11 +3,11 @@ use sqlx::PgConnection;
 use crate::types::api::ApiError;
 
 pub struct Developer {
-    id: i32,
-    username: String,
-    display_name: String,
-    verified: bool,
-    github_user_id: i64
+    pub id: i32,
+    pub username: String,
+    pub display_name: String,
+    pub verified: bool,
+    pub github_user_id: i64
 }
 
 impl Developer {
@@ -28,5 +28,22 @@ impl Developer {
             Ok(row) => row.id
         };
         Ok(id)
+    }
+
+    pub async fn get_by_github_id(github_id: i64, pool: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
+        let result = sqlx::query_as!(
+            Developer,
+            "SELECT id, username, display_name, verified, github_user_id
+            FROM developers WHERE github_user_id = $1",
+            github_id
+        ).fetch_optional(&mut *pool).await;
+
+        match result {
+            Err(e) => {
+                log::info!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => Ok(r)
+        }
     }
 }

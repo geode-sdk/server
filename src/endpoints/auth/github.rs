@@ -3,7 +3,17 @@ use serde::Deserialize;
 use sqlx::types::ipnetwork::Ipv4Network;
 use uuid::Uuid;
 
-use crate::{auth::github, types::{api::{ApiError, ApiResponse}, models::{developer::Developer, github_login_attempt::GithubLoginAttempt}}, AppData};
+use crate::{
+    auth::{
+        github, token::create_token_for_developer
+    }, types::{
+        api::{
+            ApiError, ApiResponse
+        }, models::{
+            developer::Developer, github_login_attempt::GithubLoginAttempt
+        }
+    }, AppData
+};
 
 #[derive(Deserialize)]
 struct PollParams {
@@ -70,11 +80,16 @@ pub async fn poll_github_login(json: web::Json<PollParams>, data: web::Data<AppD
         None => return Err(ApiError::InternalError),
         Some(id) => id.as_i64().unwrap()
     };
+    if let Some(x) = Developer::get_by_github_id(id, &mut *pool).await? {
+        let token = create_token_for_developer(x.id, &mut *pool).await?;
+        return Ok(web::Json(ApiResponse {error: "".to_string(), payload: token.to_string()}));
+    }
     let username = match user.get("login") {
         None => return Err(ApiError::InternalError),
         Some(user) => user.to_string()
     };
     let id = Developer::create(id, username, &mut *pool).await?;
+    let token = create_token_for_developer(id, &mut *pool).await?;
 
-    Ok(web::Json(ApiResponse {error: "".to_string(), payload: user}))
+    Ok(web::Json(ApiResponse {error: "".to_string(), payload: token.to_string()}))
 }

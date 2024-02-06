@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS mod_versions;
 DROP TABLE IF EXISTS mods_developers;
 DROP TABLE IF EXISTS dependencies;
 DROP TABLE IF EXISTS mods;
+DROP TABLE IF EXISTS auth_tokens;
 DROP TABLE IF EXISTS developers;
 DROP TABLE IF EXISTS github_login_attempts;
 

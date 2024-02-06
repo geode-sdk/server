@@ -89,6 +89,13 @@ CREATE TABLE mods_developers (
     FOREIGN KEY (developer_id) REFERENCES developers(id)
 );
 
+CREATE TABLE auth_tokens (
+    token UUID DEFAULT gen_random_uuid() NOT NULL,
+    developer_id INTEGER NOT NULL,
+    PRIMARY KEY(token),
+    FOREIGN KEY(developer_id) REFERENCES developers(id)
+);
+
 CREATE TABLE github_login_attempts (
     uid UUID DEFAULT gen_random_uuid() NOT NULL,
     ip inet NOT NULL,
