@@ -12,7 +12,9 @@ pub struct Mod {
     pub repository: Option<String>,
     pub latest_version: String,
     pub validated: bool,
-    pub versions: Vec<ModVersion>
+    pub versions: Vec<ModVersion>,
+    pub about: Option<String>,
+    pub changelog: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -40,6 +42,8 @@ struct ModRecordGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
+    about: Option<String>,
+    changelog: Option<String>,
 }
 
 impl Mod {
@@ -152,7 +156,9 @@ impl Mod {
                 repository: x.repository.clone(),
                 latest_version: x.latest_version.clone(),
                 validated: x.validated,
-                versions: version_vec
+                versions: version_vec,
+                about: None,
+                changelog: None,
             }
         }).collect();
         Ok(PaginatedData{ data: ret, count })
@@ -161,7 +167,7 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.id, m.repository, m.latest_version, m.validated,
+                m.id, m.repository, m.latest_version, m.validated, m.about, m.changelog,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -187,8 +193,6 @@ impl Mod {
                 api: x.api,
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
-                changelog: None,
-                about: None,
                 dependencies: None,
                 incompatibilities: None
             }
@@ -208,7 +212,9 @@ impl Mod {
             repository: records[0].repository.clone(),
             latest_version: records[0].latest_version.clone(),
             validated: records[0].validated,
-            versions
+            versions,
+            about: records[0].about.clone(),
+            changelog: records[0].changelog.clone(),
         };
         Ok(Some(mod_entity))
     }

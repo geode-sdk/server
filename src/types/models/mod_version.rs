@@ -21,10 +21,8 @@ pub struct ModVersion {
     pub api: bool,
     pub mod_id: String,
     pub gd: DetailedGDVersion,
-    pub about: Option<String>,
-    pub changelog: Option<String>,
     pub dependencies: Option<Vec<ResponseDependency>>,
-    pub incompatibilities: Option<Vec<ResponseIncompatibility>>
+    pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -39,10 +37,6 @@ struct ModVersionGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
-    #[sqlx(default)]
-    about: Option<String>,
-    #[sqlx(default)]
-    changelog: Option<String>
 }
 
 impl ModVersionGetOne {
@@ -59,8 +53,6 @@ impl ModVersionGetOne {
             api: self.api,
             mod_id: self.mod_id.clone(),
             gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
-            about: self.about.clone(),
-            changelog: self.changelog.clone(),
             dependencies: None,
             incompatibilities: None
         }
@@ -120,9 +112,7 @@ impl ModVersion {
         
         for x in records.iter() {
             let mod_id = x.mod_id.clone();
-            let mut version = x.into_mod_version();
-            version.changelog = None;
-            version.about = None;
+            let version = x.into_mod_version();
             match ret.entry(mod_id) {
                 Entry::Vacant(e) => {
                     let vector: Vec<ModVersion> = vec![version];
@@ -203,7 +193,7 @@ impl ModVersion {
     pub async fn get_one(id: &str, version: &str, pool: &mut PgConnection) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
             ModVersionGetOne,
-            "SELECT mv.*, m.changelog, m.about FROM mod_versions mv
+            "SELECT mv.* FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.mod_id = $1 AND mv.version = $2",
             id, version
