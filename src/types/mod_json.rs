@@ -179,7 +179,7 @@ impl ModJson {
         
         // I am going to n+1 this, I am sorry, will optimize later
         for i in deps {
-            let (ver, compare) = match split_version_and_compare(i.version.as_str()) {
+            let (dependency_ver, compare) = match split_version_and_compare(i.version.as_str()) {
                 Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", i.version))),
                 Ok((ver, compare)) => (ver, compare)
             };
@@ -198,7 +198,7 @@ impl ModJson {
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
-                if compare_versions(&ver, &parsed, &compare) {
+                if compare_versions(&parsed, &dependency_ver, &compare) {
                     ret.push(DependencyCreate { dependency_id: j.id, compare, importance: i.importance });
                     found = true;
                     break;
@@ -243,7 +243,7 @@ impl ModJson {
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
-                if compare_versions(&ver, &parsed, &compare) {
+                if compare_versions(&parsed, &ver, &compare) {
                     ret.push(IncompatibilityCreate { incompatibility_id: j.id, compare, importance: i.importance });
                     found = true;
                     break;
