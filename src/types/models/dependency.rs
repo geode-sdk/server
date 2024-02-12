@@ -121,12 +121,11 @@ impl Dependency {
                 separated.push_bind(i);
             }
             separated.push_unseparated(")");
-            log::info!("{}", builder.sql());
             let result = builder.build_query_as::<FetchedDependency>()
                 .fetch_all(&mut *pool)
                 .await;
             if result.is_err() {
-                log::info!("{}", result.err().unwrap());
+                log::error!("{}", result.err().unwrap());
                 return Err(ApiError::DbError);
             }
             let result = result.unwrap();

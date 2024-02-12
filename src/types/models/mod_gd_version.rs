@@ -196,7 +196,12 @@ impl ModGDVersion {
         let mut ret = DetailedGDVersion { win: None, mac: None, android: None, ios: None, android32: None, android64: None };
         for i in result {
             match i.platform {
-                VerPlatform::Android32 | VerPlatform::Android64 | VerPlatform::Android => { ret.android = Some(i.gd) },
+                VerPlatform::Android32 => { ret.android32 = Some(i.gd) },
+                VerPlatform::Android64 => { ret.android64 = Some(i.gd) },
+                VerPlatform::Android => {
+                    ret.android32 = Some(i.gd);
+                    ret.android64 = Some(i.gd);
+                },
                 VerPlatform::Win => { ret.win = Some(i.gd) },
                 VerPlatform::Mac => { ret.mac = Some(i.gd) },
                 VerPlatform::Ios => { ret.ios = Some(i.gd) },
@@ -234,7 +239,10 @@ impl ModGDVersion {
                 Entry::Vacant(e) => {
                     let mut ver = DetailedGDVersion::default();
                     match i.platform {
-                        VerPlatform::Android => ver.android = Some(i.gd),
+                        VerPlatform::Android => {
+                            ver.android32 = Some(i.gd);
+                            ver.android64 = Some(i.gd);
+                        },
                         VerPlatform::Android32 => ver.android32 = Some(i.gd),
                         VerPlatform::Android64 => ver.android64 = Some(i.gd),
                         VerPlatform::Mac => ver.mac = Some(i.gd),
@@ -245,7 +253,10 @@ impl ModGDVersion {
                 },
                 Entry::Occupied(mut e) => {
                     match i.platform {
-                        VerPlatform::Android => e.get_mut().android = Some(i.gd),
+                        VerPlatform::Android => {
+                            e.get_mut().android32 = Some(i.gd);
+                            e.get_mut().android64 = Some(i.gd);
+                        },
                         VerPlatform::Android32 => e.get_mut().android32 = Some(i.gd),
                         VerPlatform::Android64 => e.get_mut().android64 = Some(i.gd),
                         VerPlatform::Mac => e.get_mut().mac = Some(i.gd),
