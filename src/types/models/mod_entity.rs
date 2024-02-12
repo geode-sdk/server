@@ -75,7 +75,7 @@ impl Mod {
             WHERE mv.validated = true AND LOWER(mv.name) LIKE "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT COUNT(*) FROM mods m
+            "SELECT COUNT(DISTINCT m.id) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             WHERE mv.validated = true AND LOWER(mv.name) LIKE "
