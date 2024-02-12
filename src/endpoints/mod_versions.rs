@@ -5,18 +5,18 @@ use sqlx::Acquire;
 use crate::{AppData, types::{api::{ApiError, ApiResponse}, models::{mod_version::ModVersion, mod_entity::{download_geode_file, Mod}}, mod_json::ModJson}};
 
 #[derive(Deserialize)]
-struct GetOnePath {
+pub struct GetOnePath {
     id: String,
     version: String
 }
 
 #[derive(Deserialize)]
-struct CreateQueryParams {
+pub struct CreateQueryParams {
     download_url: String
 }
 
 #[derive(Deserialize)]
-struct CreateVersionPath {
+pub struct CreateVersionPath {
     id: String
 }
 

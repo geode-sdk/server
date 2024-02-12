@@ -21,10 +21,8 @@ pub struct ModVersion {
     pub api: bool,
     pub mod_id: String,
     pub gd: DetailedGDVersion,
-    pub about: Option<String>,
-    pub changelog: Option<String>,
     pub dependencies: Option<Vec<ResponseDependency>>,
-    pub incompatibilities: Option<Vec<ResponseIncompatibility>>
+    pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -39,10 +37,6 @@ struct ModVersionGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
-    #[sqlx(default)]
-    about: Option<String>,
-    #[sqlx(default)]
-    changelog: Option<String>
 }
 
 impl ModVersionGetOne {
@@ -120,9 +114,7 @@ impl ModVersion {
         
         for x in records.iter() {
             let mod_id = x.mod_id.clone();
-            let mut version = x.into_mod_version();
-            version.changelog = None;
-            version.about = None;
+            let version = x.into_mod_version();
             match ret.entry(mod_id) {
                 Entry::Vacant(e) => {
                     let vector: Vec<ModVersion> = vec![version];

@@ -12,7 +12,9 @@ pub struct Mod {
     pub repository: Option<String>,
     pub latest_version: String,
     pub validated: bool,
-    pub versions: Vec<ModVersion>
+    pub versions: Vec<ModVersion>,
+    pub about: Option<String>,
+    pub changelog: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -40,15 +42,19 @@ struct ModRecordGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
+    about: Option<String>,
+    changelog: Option<String>,
 }
 
 impl Mod {
     pub async fn get_index(pool: &mut PgConnection, query: IndexQueryParams) -> Result<PaginatedData<Mod>, ApiError> {
         let page = query.page.unwrap_or(1);
+        if page <= 0 {
+            return Err(ApiError::BadRequest("Invalid page number, must be >= 1".into()));
+        }
         let per_page = query.per_page.unwrap_or(10);
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let query_string = format!("%{}%", query.query.unwrap_or("".to_string()));
         let mut platforms: Vec<VerPlatform> = vec![];
         if query.platforms.is_some() {
             for i in query.platforms.unwrap().split(",") {
@@ -66,25 +72,23 @@ impl Mod {
             "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true AND mv.name LIKE "
+            WHERE mv.validated = true AND LOWER(mv.name) LIKE "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(*) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true AND mv.name LIKE "
+            WHERE mv.validated = true AND LOWER(mv.name) LIKE "
         );
+        let query_string = format!("%{}%", query.query.unwrap_or("".to_string()).to_lowercase());
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
-        match query.gd {
-            Some(g) => {
-                builder.push(" AND mgv.gd = ");
-                builder.push_bind(g);
-                counter_builder.push(" AND mgv.gd = ");
-                counter_builder.push_bind(g);
-            },
-            None => ()
-        };
+        if let Some(g) = query.gd {
+            builder.push(" AND mgv.gd = ");
+            builder.push_bind(g);
+            counter_builder.push(" AND mgv.gd = ");
+            counter_builder.push_bind(g);
+        }
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
                 builder.push(" AND mgv.platform IN (");
@@ -152,7 +156,9 @@ impl Mod {
                 repository: x.repository.clone(),
                 latest_version: x.latest_version.clone(),
                 validated: x.validated,
-                versions: version_vec
+                versions: version_vec,
+                about: None,
+                changelog: None,
             }
         }).collect();
         Ok(PaginatedData{ data: ret, count })
@@ -161,7 +167,7 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.id, m.repository, m.latest_version, mv.validated,
+                m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -208,7 +214,9 @@ impl Mod {
             repository: records[0].repository.clone(),
             latest_version: records[0].latest_version.clone(),
             validated: records[0].validated,
-            versions
+            versions,
+            about: records[0].about.clone(),
+            changelog: records[0].changelog.clone(),
         };
         Ok(Some(mod_entity))
     }

@@ -21,7 +21,7 @@ pub struct IndexQueryParams {
 }
 
 #[derive(Deserialize)]
-struct CreateQueryParams {
+pub struct CreateQueryParams {
     download_url: String
 }
 
