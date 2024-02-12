@@ -6,8 +6,14 @@ pub struct Developer {
     pub id: i32,
     pub username: String,
     pub display_name: String,
+}
+
+pub struct FetchedDeveloper {
+    pub id: i32,
+    pub username: String,
+    pub display_name: String,
     pub verified: bool,
-    pub github_user_id: i64
+    pub admin: bool
 }
 
 impl Developer {
@@ -33,7 +39,7 @@ impl Developer {
     pub async fn get_by_github_id(github_id: i64, pool: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
         let result = sqlx::query_as!(
             Developer,
-            "SELECT id, username, display_name, verified, github_user_id
+            "SELECT id, username, display_name
             FROM developers WHERE github_user_id = $1",
             github_id
         ).fetch_optional(&mut *pool).await;

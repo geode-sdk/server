@@ -1,5 +1,4 @@
 use actix_web::web::Bytes;
-use futures::TryFutureExt;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 use std::{io::Cursor, str::FromStr};

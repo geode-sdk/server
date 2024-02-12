@@ -1,1 +1,1 @@
-pub mod authed_dev;
+pub mod auth;
