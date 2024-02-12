@@ -69,7 +69,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated FROM mods m
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             WHERE mv.validated = true AND LOWER(mv.name) LIKE "
@@ -193,8 +193,6 @@ impl Mod {
                 api: x.api,
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion { win: None, android: None, mac: None, ios: None, android32: None, android64: None },
-                changelog: None,
-                about: None,
                 dependencies: None,
                 incompatibilities: None
             }

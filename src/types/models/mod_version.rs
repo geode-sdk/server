@@ -53,8 +53,6 @@ impl ModVersionGetOne {
             api: self.api,
             mod_id: self.mod_id.clone(),
             gd: DetailedGDVersion { win: None, android: None, mac: None, ios: None, android32: None, android64: None },
-            about: self.about.clone(),
-            changelog: self.changelog.clone(),
             dependencies: None,
             incompatibilities: None
         }
@@ -73,7 +71,7 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode,
-            mv.early_load, mv.api, mv.mod_id, m.changelog FROM mod_versions mv 
+            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.version = m.latest_version AND mv.validated = true"#
@@ -198,8 +196,7 @@ impl ModVersion {
             ModVersionGetOne,
             "SELECT
             mv.id, mv.name, mv.description, mv.version, mv.download_link,
-            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id,
-            m.changelog, m.about FROM mod_versions mv
+            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
             id, version
