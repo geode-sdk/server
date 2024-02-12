@@ -39,7 +39,8 @@
             "name": "gd_ver_platform",
             "kind": {
               "Enum": [
-                "android",
+                "android32",
+                "android64",
                 "ios",
                 "mac",
                 "win"

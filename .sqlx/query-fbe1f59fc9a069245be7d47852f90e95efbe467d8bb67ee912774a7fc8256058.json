@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2",
+  "query": "SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2 AND validated = true",
   "describe": {
     "columns": [
       {
@@ -19,5 +19,5 @@
       false
     ]
   },
-  "hash": "b3c97f4cdc38242159e6bda2fa6763461750ba76828484766c05b2642f34bbd9"
+  "hash": "fbe1f59fc9a069245be7d47852f90e95efbe467d8bb67ee912774a7fc8256058"
 }

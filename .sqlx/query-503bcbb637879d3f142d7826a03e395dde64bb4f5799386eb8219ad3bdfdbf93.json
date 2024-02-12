@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mv.*, m.changelog, m.about FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            WHERE mv.mod_id = $1 AND mv.version = $2",
+  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version, mv.download_link,\n            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
   "describe": {
     "columns": [
       {
@@ -52,16 +52,6 @@
         "ordinal": 9,
         "name": "mod_id",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
-        "name": "changelog",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 11,
-        "name": "about",
-        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -80,10 +70,8 @@
       false,
       false,
       false,
-      false,
-      true,
-      true
+      false
     ]
   },
-  "hash": "5156837d9a48e476ce40f5e3b5554ed2fa633e9767072e20da98554c808ec169"
+  "hash": "503bcbb637879d3f142d7826a03e395dde64bb4f5799386eb8219ad3bdfdbf93"
 }
