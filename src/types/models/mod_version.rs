@@ -235,4 +235,40 @@ impl ModVersion {
 
         Ok(version)
     }
+
+    pub async fn update_version(id: &str, version: &str, validated: Option<bool>, unlisted: Option<bool>, pool: &mut PgConnection) -> Result<(), ApiError> {
+        if validated.is_none() && unlisted.is_none() {
+            return Ok(());
+        }
+
+        let mut query_builder : QueryBuilder<Postgres> = QueryBuilder::new("UPDATE mod_versions SET ");
+
+        if let Some(v) = validated {
+            query_builder.push("validated = ");
+            query_builder.push_bind(v);
+        }
+
+        query_builder.push("WHERE mod_id = ");
+        query_builder.push_bind(id);
+        query_builder.push(" AND version = ");
+        let version = version.trim_start_matches("v");
+        query_builder.push_bind(version);
+
+        let result = query_builder.build()
+            .execute(&mut *pool)
+            .await;
+
+        match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => {
+                if r.rows_affected() == 0 {
+                    return Err(ApiError::NotFound(format!("{} {} not found", id, version)));
+                }
+                Ok(())
+            }
+        }
+    }
 }

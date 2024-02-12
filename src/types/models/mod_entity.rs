@@ -247,7 +247,8 @@ impl Mod {
 
         let latest = sqlx::query!("SELECT mv.version, mv.id FROM mod_versions mv
             INNER JOIN mods m ON mv.mod_id = m.id
-            ORDER BY mv.id DESC LIMIT 1"
+            WHERE m.id = $1
+            ORDER BY mv.id DESC LIMIT 1", &json.id
         ).fetch_one(&mut *pool).await.unwrap();
 
         let version = semver::Version::parse(&latest.version.trim_start_matches("v")).unwrap();
@@ -259,19 +260,49 @@ impl Mod {
             return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, latest.version)));
         }
         ModVersion::create_from_json(json, pool).await?;
-        // TODO update when doing mod validations
-        // let result = sqlx::query!(
-        //     "UPDATE mods 
-        //     SET latest_version = $1, changelog = $2, about = $3
-        //     WHERE id = $4", json.version, json.changelog, json.about, json.id)
-        //     .execute(&mut *pool)
-        //     .await
-        //     .or(Err(ApiError::DbError))?;
-        // if result.rows_affected() == 0 {
-        //     log::error!("{:?}", result);
-        //     return Err(ApiError::DbError);
-        // }
         Ok(())
+    }
+
+    pub async fn try_update_latest_version(id: &str, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let latest = sqlx::query!("SELECT mv.version, mv.id FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
+            WHERE m.id = $1 AND mv.validated = true
+            ORDER BY mv.id DESC LIMIT 1", id
+        ).fetch_optional(&mut *pool)
+            .await;
+
+        let latest = match latest {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(l) => l
+        };
+
+        if let None = latest {
+            return Ok(());
+        }
+
+        let latest = latest.unwrap();
+
+        let result = sqlx::query!("UPDATE mods SET latest_version = $1 WHERE id = $2", latest.version, id)
+            .execute(&mut *pool)
+            .await;
+
+        match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => {
+                if r.rows_affected() == 0 {
+                    log::info!("Something really bad happened with mod {}", id);
+                    return Err(ApiError::InternalError);
+                }
+
+                Ok(())
+            }
+        }
     }
 
     async fn create(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
