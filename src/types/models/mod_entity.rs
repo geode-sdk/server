@@ -1,4 +1,5 @@
 use actix_web::web::Bytes;
+use futures::TryFutureExt;
 use serde::Serialize;
 use sqlx::{PgConnection, QueryBuilder, Postgres};
 use std::{io::Cursor, str::FromStr};
@@ -234,24 +235,28 @@ impl Mod {
     }
 
     pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let result = sqlx::query!("SELECT DISTINCT
-            m.latest_version, m.about, m.changelog FROM mods m
+        let result = sqlx::query!("SELECT DISTINCT m.id FROM mods m
             INNER JOIN mod_versions mv ON mv.mod_id = m.id
             WHERE m.id = $1 AND mv.validated = true", json.id)
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        let result = match result {
-            Some(r) => r,
-            None => return Err(ApiError::NotFound(format!("Mod {} doesn't exist or isn't yet validated", &json.id)))
-        };
-        let version = semver::Version::parse(result.latest_version.trim_start_matches("v")).unwrap();
+        if result.is_none() {
+            return Err(ApiError::NotFound(format!("Mod {} doesn't exist or isn't yet validated", &json.id)));
+        }
+
+        let latest = sqlx::query!("SELECT mv.version, mv.id FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
+            ORDER BY mv.id DESC LIMIT 1"
+        ).fetch_one(&mut *pool).await.unwrap();
+
+        let version = semver::Version::parse(&latest.version.trim_start_matches("v")).unwrap();
         let new_version = match semver::Version::parse(json.version.trim_start_matches("v")) {
             Ok(v) => v,
             Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", json.version)))
         };
         if new_version.le(&version) {
-            return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
+            return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, latest.version)));
         }
         ModVersion::create_from_json(json, pool).await?;
         // TODO update when doing mod validations
