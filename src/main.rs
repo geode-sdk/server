@@ -8,6 +8,7 @@ use crate::types::api;
 mod endpoints;
 mod types;
 mod auth;
+mod extractors;
 
 pub struct AppData {
     db: sqlx::postgres::PgPool,
