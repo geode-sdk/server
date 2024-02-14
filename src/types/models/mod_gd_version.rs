@@ -248,7 +248,7 @@ impl ModGDVersion {
     }
 
     pub async fn get_for_mod_versions(
-        versions: Vec<i32>,
+        versions: &Vec<i32>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, DetailedGDVersion>, ApiError> {
         if versions.is_empty() {

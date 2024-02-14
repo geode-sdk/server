@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
@@ -46,22 +48,48 @@ impl Tag {
         Ok(ret)
     }
 
-    pub async fn add_tags_to_mod_version(
-        mod_version_id: i32,
+    pub async fn add_tags_to_mod(
+        mod_id: &str,
         tags: Vec<i32>,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        let existing = match sqlx::query!(
+            "SELECT mod_id, tag_id FROM mods_mod_tags WHERE mod_id = $1",
+            mod_id,
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(existing) => existing,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let insertable = tags
+            .into_iter()
+            .filter(|t| !existing.iter().any(|e| e.tag_id == *t))
+            .collect::<Vec<_>>();
+
+        if insertable.is_empty() {
+            return Ok(());
+        }
+
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("INSERT INTO mods_mod_tags (mod_id, tag_id) VALUES (");
 
-        for (index, tag) in tags.iter().enumerate() {
+        for (index, tag) in insertable.iter().enumerate() {
+            if existing.iter().any(|e| e.tag_id == *tag) {
+                continue;
+            }
             let mut separated = query_builder.separated(", ");
-            separated.push_bind(mod_version_id);
+            separated.push_bind(mod_id);
             separated.push_bind(tag);
-            separated.push(")");
+            query_builder.push(")");
 
-            if index != tags.len() - 1 {
-                separated.push(", (");
+            if index != insertable.len() - 1 {
+                query_builder.push(", (");
             }
         }
 
@@ -70,5 +98,60 @@ impl Tag {
             return Err(ApiError::DbError);
         }
         Ok(())
+    }
+
+    pub async fn get_tags_for_mod(
+        mod_id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<String>, ApiError> {
+        let tags = match sqlx::query!(
+            "SELECT mod_tags.name FROM mod_tags
+            INNER JOIN mods_mod_tags ON mod_tags.id = mods_mod_tags.tag_id
+            WHERE mods_mod_tags.mod_id = $1",
+            mod_id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(tags) => tags,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        Ok(tags.iter().map(|t| t.name.clone()).collect())
+    }
+
+    pub async fn get_tags_for_mods(
+        ids: &Vec<String>,
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<String, Vec<String>>, ApiError> {
+        let tags = match sqlx::query!(
+            "SELECT mod_tags.name, mods_mod_tags.mod_id FROM mod_tags
+            INNER JOIN mods_mod_tags ON mod_tags.id = mods_mod_tags.tag_id
+            WHERE mods_mod_tags.mod_id = ANY($1)",
+            ids
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(tags) => tags,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let mut ret: HashMap<String, Vec<String>> = HashMap::new();
+        for tag in tags {
+            if let Some(t) = ret.get_mut(&tag.mod_id) {
+                t.push(tag.name.clone());
+            } else {
+                ret.insert(tag.mod_id, vec![tag.name.clone()]);
+            }
+        }
+
+        Ok(ret)
     }
 }

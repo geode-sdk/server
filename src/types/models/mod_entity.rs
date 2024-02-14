@@ -14,6 +14,7 @@ use std::{io::Cursor, str::FromStr};
 use super::{
     developer::{Developer, FetchedDeveloper, ModDeveloper},
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
+    tag::Tag,
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
@@ -24,6 +25,7 @@ pub struct Mod {
     pub validated: bool,
     pub developers: Vec<ModDeveloper>,
     pub versions: Vec<ModVersion>,
+    pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
 }
@@ -167,7 +169,9 @@ impl Mod {
             mod_version_ids.append(&mut version_ids);
         }
 
-        let gd_versions = ModGDVersion::get_for_mod_versions(mod_version_ids, pool).await?;
+        let gd_versions = ModGDVersion::get_for_mod_versions(&mod_version_ids, pool).await?;
+        let tags =
+            Tag::get_tags_for_mods(&ids.iter().map(|x| String::from(*x)).collect(), pool).await?;
 
         let ret = records
             .into_iter()
@@ -179,12 +183,14 @@ impl Mod {
                 }
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
+                let tags = tags.get(&x.id).cloned().unwrap_or_default();
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
                     latest_version: x.latest_version.clone(),
                     validated: x.validated,
                     versions: version_vec,
+                    tags,
                     developers: devs,
                     about: None,
                     changelog: None,
@@ -238,14 +244,13 @@ impl Mod {
             })
             .collect();
         let ids = versions.iter().map(|x| x.id).collect();
-        let gd = ModGDVersion::get_for_mod_versions(ids, pool).await?;
+        let gd = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
+        let tags = Tag::get_tags_for_mod(id, pool).await?;
         let devs = Developer::fetch_for_mod(id, pool).await?;
-        for (id, gd_versions) in &gd {
-            for i in &mut versions {
-                if &i.id == id {
-                    i.gd = gd_versions.clone();
-                }
-            }
+
+        for i in &mut versions {
+            let gd_versions = gd.get(&i.id).cloned().unwrap_or_default();
+            i.gd = gd_versions;
         }
 
         let mod_entity = Mod {
@@ -254,6 +259,7 @@ impl Mod {
             latest_version: records[0].latest_version.clone(),
             validated: records[0].validated,
             versions,
+            tags,
             developers: devs,
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
