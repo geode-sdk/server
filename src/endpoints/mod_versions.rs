@@ -80,6 +80,10 @@ pub async fn create_version(
     let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
+    if Mod::get_one(&path.id, &mut pool).await?.is_none() {
+        return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
+    }
+
     if !(Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
         return Err(ApiError::Forbidden);
     }
