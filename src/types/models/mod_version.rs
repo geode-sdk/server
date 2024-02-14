@@ -15,6 +15,7 @@ use super::{
     dependency::{Dependency, ResponseDependency},
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
+    tag::Tag,
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
@@ -204,6 +205,9 @@ impl ModVersion {
             Ok(row) => row,
         };
         let id = result.get::<i32, &str>("id");
+        let json_tags = json.tags.clone().unwrap_or_default();
+        let tags = Tag::get_tag_ids(json_tags, pool).await?;
+        Tag::add_tags_to_mod_version(id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
         match &json.gd {
             ModJsonGDVersionType::VersionStr(ver) => {
                 ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?
