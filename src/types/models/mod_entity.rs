@@ -429,17 +429,17 @@ impl Mod {
             .await
             .or(Err(ApiError::DbError))?;
 
-        Mod::assign_lead_dev(&json.id, developer.id, pool).await?;
+        Mod::assign_owner(&json.id, developer.id, pool).await?;
         Ok(())
     }
 
-    pub async fn assign_lead_dev(
+    pub async fn assign_owner(
         mod_id: &str,
         dev_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let existing = sqlx::query!(
-            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            "SELECT md.developer_id, md.is_owner FROM mods_developers md
             INNER JOIN mods m ON md.mod_id = m.id
             WHERE m.id = $1",
             mod_id
@@ -457,7 +457,7 @@ impl Mod {
 
         if !existing.is_empty() {
             let res = sqlx::query!(
-                "UPDATE mods_developers SET is_lead = false
+                "UPDATE mods_developers SET is_owner = false
                 WHERE mod_id = $1",
                 mod_id
             )
@@ -474,7 +474,7 @@ impl Mod {
             // we found our dev inside the existing list
             if record.developer_id == dev_id {
                 if let Err(e) = sqlx::query!(
-                    "UPDATE mods_developers SET is_lead = true
+                    "UPDATE mods_developers SET is_owner = true
                     WHERE mod_id = $1 AND developer_id = $2",
                     mod_id,
                     dev_id
@@ -490,7 +490,7 @@ impl Mod {
         }
 
         if let Err(e) = sqlx::query!(
-            "INSERT INTO mods_developers (mod_id, developer_id, is_lead) VALUES
+            "INSERT INTO mods_developers (mod_id, developer_id, is_owner) VALUES
             ($1, $2, true)",
             mod_id,
             dev_id
@@ -510,7 +510,7 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let existing = match sqlx::query!(
-            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            "SELECT md.developer_id, md.is_owner FROM mods_developers md
             INNER JOIN mods m ON md.mod_id = m.id
             WHERE m.id = $1",
             mod_id
@@ -555,7 +555,7 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let existing = match sqlx::query!(
-            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            "SELECT md.developer_id, md.is_owner FROM mods_developers md
             INNER JOIN mods m ON md.mod_id = m.id
             WHERE m.id = $1",
             mod_id
@@ -579,9 +579,9 @@ impl Mod {
             Some(f) => f,
         };
 
-        if found.is_lead {
+        if found.is_owner {
             return Err(ApiError::BadRequest(
-                "Cannot unassign the lead developer for the mod".to_string(),
+                "Cannot unassign the owner developer for the mod".to_string(),
             ));
         }
 
