@@ -102,7 +102,8 @@ pub async fn update_version(
     payload: web::Json<UpdatePayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    if !auth.developer.admin {
+    let dev = auth.into_developer()?;
+    if !dev.admin {
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;

@@ -72,11 +72,12 @@ pub async fn create(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_url).await?;
     let json = ModJson::from_zip(&mut file_path, payload.download_url.as_str())?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
-    let result = Mod::from_json(&json, auth.developer, &mut transaction).await;
+    let result = Mod::from_json(&json, dev, &mut transaction).await;
     if result.is_err() {
         let _ = transaction.rollback().await;
         return Err(result.err().unwrap());
