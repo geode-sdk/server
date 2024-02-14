@@ -48,7 +48,7 @@ impl Tag {
         Ok(ret)
     }
 
-    pub async fn add_tags_to_mod(
+    pub async fn update_mod_tags(
         mod_id: &str,
         tags: Vec<i32>,
         pool: &mut PgConnection,
@@ -68,9 +68,17 @@ impl Tag {
         };
 
         let insertable = tags
-            .into_iter()
-            .filter(|t| !existing.iter().any(|e| e.tag_id == *t))
+            .iter()
+            .filter(|t| !existing.iter().any(|e| e.tag_id == **t))
             .collect::<Vec<_>>();
+
+        let deletable = existing
+            .iter()
+            .filter(|e| !tags.iter().any(|t| e.tag_id == *t))
+            .map(|x| x.tag_id)
+            .collect::<Vec<_>>();
+
+        Tag::delete_tags_for_mod(mod_id, deletable, pool).await?;
 
         if insertable.is_empty() {
             return Ok(());
@@ -80,7 +88,7 @@ impl Tag {
             QueryBuilder::new("INSERT INTO mods_mod_tags (mod_id, tag_id) VALUES (");
 
         for (index, tag) in insertable.iter().enumerate() {
-            if existing.iter().any(|e| e.tag_id == *tag) {
+            if existing.iter().any(|e| e.tag_id == **tag) {
                 continue;
             }
             let mut separated = query_builder.separated(", ");
@@ -92,6 +100,36 @@ impl Tag {
                 query_builder.push(", (");
             }
         }
+
+        if let Err(e) = query_builder.build().execute(&mut *pool).await {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
+        Ok(())
+    }
+
+    pub async fn delete_tags_for_mod(
+        mod_id: &str,
+        tags: Vec<i32>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        if tags.is_empty() {
+            return Ok(());
+        }
+        let mut query_builder: QueryBuilder<Postgres> =
+            QueryBuilder::new("DELETE FROM mods_mod_tags WHERE (mod_id, tag_id) IN ((");
+
+        for (index, tag) in tags.iter().enumerate() {
+            let mut separated = query_builder.separated(", ");
+            separated.push_bind(mod_id);
+            separated.push_bind(tag);
+            query_builder.push(")");
+
+            if index != tags.len() - 1 {
+                query_builder.push(", (");
+            }
+        }
+        query_builder.push(")");
 
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
