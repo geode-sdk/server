@@ -86,4 +86,48 @@ impl Developer {
             Ok(count) => Ok(count.is_some() && count.unwrap() != 0),
         }
     }
+
+    pub async fn owns_mod(
+        dev_id: i32,
+        mod_id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<bool, ApiError> {
+        let found = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM mods_developers
+            WHERE developer_id = $1 AND mod_id = $2 AND is_lead = true",
+            dev_id,
+            mod_id
+        )
+        .fetch_one(&mut *pool)
+        .await;
+
+        match found {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(count) => Ok(count.is_some() && count.unwrap() != 0),
+        }
+    }
+
+    pub async fn find_by_username(
+        username: &str,
+        pool: &mut PgConnection,
+    ) -> Result<Option<FetchedDeveloper>, ApiError> {
+        match sqlx::query_as!(
+            FetchedDeveloper,
+            "SELECT id, username, display_name, verified, admin
+            FROM developers WHERE username = $1",
+            username
+        )
+        .fetch_optional(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(found) => Ok(found),
+        }
+    }
 }

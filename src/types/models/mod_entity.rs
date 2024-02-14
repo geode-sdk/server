@@ -503,6 +503,51 @@ impl Mod {
         }
         Ok(())
     }
+
+    pub async fn assign_dev(
+        mod_id: &str,
+        dev_id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let existing = match sqlx::query!(
+            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            INNER JOIN mods m ON md.mod_id = m.id
+            WHERE m.id = $1",
+            mod_id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(e) => e,
+            Err(err) => {
+                log::error!("{}", err);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        if existing.iter().any(|x| x.developer_id == dev_id) {
+            return Err(ApiError::BadRequest(format!(
+                "This developer already exists on mod {}",
+                mod_id
+            )));
+        }
+
+        match sqlx::query!(
+            "INSERT INTO mods_developers (mod_id, developer_id)
+            VALUES ($1, $2)",
+            mod_id,
+            dev_id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            Err(err) => {
+                log::error!("{}", err);
+                Err(ApiError::DbError)
+            }
+            Ok(_) => Ok(()),
+        }
+    }
 }
 
 pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
