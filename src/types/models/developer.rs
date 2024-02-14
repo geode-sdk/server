@@ -22,12 +22,14 @@ impl Developer {
         username: String,
         pool: &mut PgConnection,
     ) -> Result<i32, ApiError> {
+        // what the fuck github
+        let username = username.trim_matches('\"');
         let result = sqlx::query!(
             "INSERT INTO developers 
             (username, display_name, github_user_id) VALUES
             ($1, $2, $3) RETURNING id",
-            username,
-            username,
+            username.to_lowercase(),
+            username.to_lowercase(),
             github_id
         )
         .fetch_one(&mut *pool)
