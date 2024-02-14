@@ -114,7 +114,7 @@ impl Dependency {
             }
             let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT dp.dependency_id, dp.compare, dp.importance, mv.version, mv.mod_id FROM dependencies dp
             INNER JOIN mod_versions mv ON dp.dependency_id = mv.id 
-            WHERE dp.dependent_id IN (");
+            WHERE mv.validated = true AND dp.dependent_id IN (");
             let mut separated = builder.separated(",");
             let copy = ret.clone();
             for i in &modifiable_ids {
@@ -125,7 +125,7 @@ impl Dependency {
                 .fetch_all(&mut *pool)
                 .await;
             if result.is_err() {
-                log::info!("{}", result.err().unwrap());
+                log::error!("{}", result.err().unwrap());
                 return Err(ApiError::DbError);
             }
             let result = result.unwrap();

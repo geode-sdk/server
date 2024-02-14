@@ -69,16 +69,16 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, m.validated FROM mods m
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND LOWER(mv.name) LIKE "
+            WHERE mv.validated = true AND LOWER(mv.name) LIKE "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT COUNT(*) FROM mods m
+            "SELECT COUNT(DISTINCT m.id) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE m.validated = true AND LOWER(mv.name) LIKE "
+            WHERE mv.validated = true AND LOWER(mv.name) LIKE "
         );
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()).to_lowercase());
         counter_builder.push_bind(&query_string);
@@ -167,12 +167,12 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(ModRecordGetOne, 
             "SELECT
-                m.id, m.repository, m.latest_version, m.validated, m.about, m.changelog,
+                m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            WHERE m.id = $1",
+            WHERE m.id = $1 AND mv.validated = true",
             id
         ).fetch_all(&mut *pool)
             .await
@@ -192,7 +192,7 @@ impl Mod {
                 early_load: x.early_load,
                 api: x.api,
                 mod_id: x.mod_id.clone(),
-                gd: DetailedGDVersion {win: None, android: None, mac: None, ios: None},
+                gd: DetailedGDVersion { win: None, android: None, mac: None, ios: None, android32: None, android64: None },
                 dependencies: None,
                 incompatibilities: None
             }
@@ -234,38 +234,74 @@ impl Mod {
     }
 
     pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let result = sqlx::query!("SELECT latest_version, validated, about, changelog FROM mods WHERE id = $1", json.id)
+        let result = sqlx::query!("SELECT DISTINCT m.id FROM mods m
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id
+            WHERE m.id = $1 AND mv.validated = true", json.id)
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        let result = match result {
-            Some(r) => r,
-            None => return Err(ApiError::NotFound(format!("Mod {} doesn't exist", &json.id)))
-        };
-        if !result.validated {
-            return Err(ApiError::BadRequest("Cannot update an unverified mod. Please contact the Geode team for more details.".into()));
+        if result.is_none() {
+            return Err(ApiError::NotFound(format!("Mod {} doesn't exist or isn't yet validated", &json.id)));
         }
-        let version = semver::Version::parse(result.latest_version.trim_start_matches("v")).unwrap();
+
+        let latest = sqlx::query!("SELECT mv.version, mv.id FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
+            WHERE m.id = $1
+            ORDER BY mv.id DESC LIMIT 1", &json.id
+        ).fetch_one(&mut *pool).await.unwrap();
+
+        let version = semver::Version::parse(&latest.version.trim_start_matches("v")).unwrap();
         let new_version = match semver::Version::parse(json.version.trim_start_matches("v")) {
             Ok(v) => v,
             Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", json.version)))
         };
         if new_version.le(&version) {
-            return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, result.latest_version)));
+            return Err(ApiError::BadRequest(format!("mod.json version {} is smaller / equal to latest mod version {}", json.version, latest.version)));
         }
         ModVersion::create_from_json(json, pool).await?;
-        let result = sqlx::query!(
-            "UPDATE mods 
-            SET latest_version = $1, changelog = $2, about = $3
-            WHERE id = $4", json.version, json.changelog, json.about, json.id)
-            .execute(&mut *pool)
-            .await
-            .or(Err(ApiError::DbError))?;
-        if result.rows_affected() == 0 {
-            log::error!("{:?}", result);
-            return Err(ApiError::DbError);
-        }
         Ok(())
+    }
+
+    pub async fn try_update_latest_version(id: &str, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let latest = sqlx::query!("SELECT mv.version, mv.id FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
+            WHERE m.id = $1 AND mv.validated = true
+            ORDER BY mv.id DESC LIMIT 1", id
+        ).fetch_optional(&mut *pool)
+            .await;
+
+        let latest = match latest {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(l) => l
+        };
+
+        if let None = latest {
+            return Ok(());
+        }
+
+        let latest = latest.unwrap();
+
+        let result = sqlx::query!("UPDATE mods SET latest_version = $1 WHERE id = $2", latest.version, id)
+            .execute(&mut *pool)
+            .await;
+
+        match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(r) => {
+                if r.rows_affected() == 0 {
+                    log::info!("Something really bad happened with mod {}", id);
+                    return Err(ApiError::InternalError);
+                }
+
+                Ok(())
+            }
+        }
     }
 
     async fn create(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
@@ -286,7 +322,7 @@ impl Mod {
         if json.about.is_some() {
             query_builder.push("about, ");
         }
-        query_builder.push("id, latest_version, validated) VALUES (");
+        query_builder.push("id, latest_version) VALUES (");
         let mut separated = query_builder.separated(", ");
         if json.repository.is_some() {
             separated.push_bind(json.repository.as_ref().unwrap());
@@ -299,7 +335,6 @@ impl Mod {
         }
         separated.push_bind(&json.id);
         separated.push_bind(&json.version);
-        separated.push_bind(false);
         separated.push_unseparated(")");
         
         let _ = query_builder

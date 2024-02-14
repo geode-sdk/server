@@ -1,8 +1,8 @@
-use actix_web::{get, post, web, Responder, HttpResponse};
+use actix_web::{get, post, web, put, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
-use crate::{AppData, types::{api::{ApiError, ApiResponse}, models::{mod_version::ModVersion, mod_entity::{download_geode_file, Mod}}, mod_json::ModJson}};
+use crate::{extractors::auth::Auth, types::{api::{ApiError, ApiResponse}, mod_json::ModJson, models::{mod_entity::{download_geode_file, Mod}, mod_version::ModVersion}}, AppData};
 
 #[derive(Deserialize)]
 pub struct GetOnePath {
@@ -16,8 +16,20 @@ pub struct CreateQueryParams {
 }
 
 #[derive(Deserialize)]
+struct UpdatePayload {
+    validated: Option<bool>,
+    unlisted: Option<bool>
+}
+
+#[derive(Deserialize)]
 pub struct CreateVersionPath {
     id: String
+}
+
+#[derive(Deserialize)]
+struct UpdateVersionPath {
+    id: String,
+    version: String
 }
 
 #[get("v1/mods/{id}/versions/{version}")]
@@ -50,5 +62,32 @@ pub async fn create_version(path: web::Path<CreateVersionPath>, data: web::Data<
         return Err(result.err().unwrap());
     }
     let _ = transaction.commit().await;
+    Ok(HttpResponse::NoContent())
+}
+
+#[put("v1/mods/{id}/versions/{version}")]
+pub async fn update_version(
+    path: web::Path<UpdateVersionPath>,
+    data: web::Data<AppData>,
+    payload: web::Json<UpdatePayload>,
+    auth: Auth
+) -> Result<impl Responder, ApiError> {
+    if !auth.developer.admin {
+        return Err(ApiError::Forbidden);
+    }
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let r = ModVersion::update_version(&path.id, &path.version, payload.validated, payload.unlisted, &mut *transaction).await;
+    if r.is_err() {
+        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        return Err(r.err().unwrap());
+    }
+    let r = Mod::try_update_latest_version(&path.id, &mut *transaction).await;
+    if r.is_err() {
+        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        return Err(r.err().unwrap());
+    }
+    transaction.commit().await.or(Err(ApiError::DbError))?;
+
     Ok(HttpResponse::NoContent())
 }

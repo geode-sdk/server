@@ -10,8 +10,7 @@ CREATE TABLE mods (
     repository TEXT,
     changelog TEXT,
     about TEXT,
-    latest_version TEXT NOT NULL,
-    validated BOOLEAN NOT NULL
+    latest_version TEXT NOT NULL
 );
 
 CREATE TABLE mod_versions (
@@ -24,6 +23,7 @@ CREATE TABLE mod_versions (
     geode TEXT NOT NULL,
     early_load BOOLEAN NOT NULL DEFAULT false,
     api BOOLEAN NOT NULL DEFAULT false,
+    validated BOOLEAN NOT NULL,
     mod_id TEXT NOT NULL,
     FOREIGN KEY (mod_id) REFERENCES mods(id)
 );
@@ -76,7 +76,8 @@ CREATE TABLE developers (
     id SERIAL PRIMARY KEY NOT NULL,
     username TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    verified BOOLEAN NOT NULL,
+    verified BOOLEAN DEFAULT false NOT NULL,
+    admin BOOLEAN DEFAULT false NOT NULL,
     github_user_id BIGINT NOT NULL
 );
 
@@ -86,4 +87,22 @@ CREATE TABLE mods_developers (
     PRIMARY KEY (mod_id, developer_id),
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)
+);
+
+CREATE TABLE auth_tokens (
+    token UUID DEFAULT gen_random_uuid() NOT NULL,
+    developer_id INTEGER NOT NULL,
+    PRIMARY KEY(token),
+    FOREIGN KEY(developer_id) REFERENCES developers(id)
+);
+
+CREATE TABLE github_login_attempts (
+    uid UUID DEFAULT gen_random_uuid() NOT NULL,
+    ip inet NOT NULL,
+    device_code TEXT NOT NULL,
+    interval INTEGER NOT NULL,
+    expires_in INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_poll TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (uid, ip)
 );

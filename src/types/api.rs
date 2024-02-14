@@ -16,7 +16,9 @@ pub enum ApiError {
     DbError,
     InternalError,
     BadRequest(String),
-    NotFound(String)
+    NotFound(String),
+    Unauthorized,
+    Forbidden
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,7 +35,9 @@ impl Display for ApiError {
             Self::DbError => write!(f, "Unknown database error"),
             Self::BadRequest(message) => write!(f, "{}", message),
             Self::NotFound(message) => write!(f, "{}", message),
-            Self::InternalError => write!(f, "{}", "Internal server error")
+            Self::InternalError => write!(f, "{}", "Internal server error"),
+            Self::Forbidden => write!(f, "You cannot perform this action"),
+            Self::Unauthorized => write!(f, "You need to be authenticated to perform this action")
         }
     }
 }
@@ -51,7 +55,9 @@ impl actix_web::ResponseError for ApiError {
             Self::DbError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR
+            Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden => StatusCode::FORBIDDEN
         }
     }
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.latest_version, m.validated,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            WHERE m.id = $1",
+  "query": "SELECT\n                m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            WHERE m.id = $1 AND mv.validated = true",
   "describe": {
     "columns": [
       {
@@ -25,51 +25,61 @@
       },
       {
         "ordinal": 4,
-        "name": "version_id",
-        "type_info": "Int4"
+        "name": "about",
+        "type_info": "Text"
       },
       {
         "ordinal": 5,
-        "name": "name",
+        "name": "changelog",
         "type_info": "Text"
       },
       {
         "ordinal": 6,
-        "name": "description",
-        "type_info": "Text"
+        "name": "version_id",
+        "type_info": "Int4"
       },
       {
         "ordinal": 7,
-        "name": "version",
+        "name": "name",
         "type_info": "Text"
       },
       {
         "ordinal": 8,
-        "name": "download_link",
+        "name": "description",
         "type_info": "Text"
       },
       {
         "ordinal": 9,
-        "name": "hash",
+        "name": "version",
         "type_info": "Text"
       },
       {
         "ordinal": 10,
-        "name": "geode",
+        "name": "download_link",
         "type_info": "Text"
       },
       {
         "ordinal": 11,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "geode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "early_load",
         "type_info": "Bool"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "api",
         "type_info": "Bool"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "mod_id",
         "type_info": "Text"
       }
@@ -84,6 +94,8 @@
       true,
       false,
       false,
+      true,
+      true,
       false,
       false,
       true,
@@ -96,5 +108,5 @@
       false
     ]
   },
-  "hash": "4b29cde85703a13451fe0c007330b533a8758ced46a7c350f46260c7a76283da"
+  "hash": "b7e31d7c81fa04928e659cf5acfb71719da68329f5b1f568774359cae28e997e"
 }
