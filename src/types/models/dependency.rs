@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
-use sqlx::{QueryBuilder, Postgres, PgConnection};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
@@ -10,21 +10,20 @@ pub struct Dependency {
     pub dependent_id: i32,
     pub dependency_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: DependencyImportance
+    pub importance: DependencyImportance,
 }
 
 pub struct DependencyCreate {
     pub dependency_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: DependencyImportance
+    pub importance: DependencyImportance,
 }
-
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ResponseDependency {
     pub mod_id: String,
     pub version: String,
-    pub importance: DependencyImportance
+    pub importance: DependencyImportance,
 }
 
 #[derive(sqlx::FromRow, Clone, Debug)]
@@ -33,9 +32,8 @@ pub struct FetchedDependency {
     pub version: String,
     pub dependency_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: DependencyImportance
+    pub importance: DependencyImportance,
 }
-
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "version_compare")]
@@ -54,7 +52,7 @@ pub enum ModVersionCompare {
     Less,
     #[serde(rename = "<=")]
     #[sqlx(rename = "<=")]
-    LessEq 
+    LessEq,
 }
 
 impl Display for ModVersionCompare {
@@ -65,7 +63,7 @@ impl Display for ModVersionCompare {
             Self::More => write!(f, ">"),
             Self::LessEq => write!(f, "<="),
             Self::MoreEq => write!(f, ">="),
-        } 
+        }
     }
 }
 
@@ -75,14 +73,19 @@ impl Display for ModVersionCompare {
 pub enum DependencyImportance {
     Suggested,
     Recommended,
-    Required
+    Required,
 }
 
 impl Dependency {
-    pub async fn create_for_mod_version(id: i32, deps: Vec<DependencyCreate>, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO dependencies (dependent_id, dependency_id, compare, importance) VALUES ");
-        let mut index = 0;
-        for i in &deps {
+    pub async fn create_for_mod_version(
+        id: i32,
+        deps: Vec<DependencyCreate>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "INSERT INTO dependencies (dependent_id, dependency_id, compare, importance) VALUES ",
+        );
+        for (index, i) in deps.iter().enumerate() {
             let mut separated = builder.separated(", ");
             separated.push_unseparated("(");
             separated.push_bind(id);
@@ -93,7 +96,6 @@ impl Dependency {
             if index != deps.len() - 1 {
                 separated.push_unseparated(", ");
             }
-            index += 1;
         }
 
         let result = builder.build().execute(&mut *pool).await;
@@ -105,11 +107,14 @@ impl Dependency {
         Ok(())
     }
 
-    pub async fn get_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<Vec<FetchedDependency>, ApiError> {
+    pub async fn get_for_mod_version(
+        id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<FetchedDependency>, ApiError> {
         let mut ret: Vec<FetchedDependency> = vec![];
         let mut modifiable_ids = vec![id];
         loop {
-            if modifiable_ids.len() == 0 {
+            if modifiable_ids.is_empty() {
                 break;
             }
             let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT dp.dependency_id, dp.compare, dp.importance, mv.version, mv.mod_id FROM dependencies dp
@@ -121,7 +126,8 @@ impl Dependency {
                 separated.push_bind(i);
             }
             separated.push_unseparated(")");
-            let result = builder.build_query_as::<FetchedDependency>()
+            let result = builder
+                .build_query_as::<FetchedDependency>()
                 .fetch_all(&mut *pool)
                 .await;
             if result.is_err() {
@@ -134,7 +140,7 @@ impl Dependency {
             }
             modifiable_ids.clear();
             for i in result {
-                let doubled = copy.iter().find(|x| {x.dependency_id == i.dependency_id});
+                let doubled = copy.iter().find(|x| x.dependency_id == i.dependency_id);
                 if doubled.is_none() {
                     modifiable_ids.push(i.dependency_id);
                     ret.push(i);
@@ -151,7 +157,6 @@ impl Dependency {
         Ok(ret)
     }
 }
-
 
 fn should_add(old: &FetchedDependency, new: &FetchedDependency) -> bool {
     old.compare != new.compare || old.version != new.version

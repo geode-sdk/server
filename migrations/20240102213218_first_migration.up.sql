@@ -36,11 +36,16 @@ CREATE TABLE mod_tags (
     name TEXT NOT NULL
 );
 
+INSERT INTO mod_tags (name) VALUES
+('universal'), ('gameplay'), ('editor'), ('offline'), ('online'),
+('enhancement'), ('music'), ('interface'), ('bugfix'), ('utility'),
+('performance'), ('customization'), ('content'), ('developer');
+
 CREATE TABLE mods_mod_tags (
-    mod_id INTEGER NOT NULL,
+    mod_id TEXT NOT NULL,
     tag_id INTEGER NOT NULL,
     PRIMARY KEY (mod_id, tag_id),
-    FOREIGN KEY (mod_id) REFERENCES mod_versions(id),
+    FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (tag_id) REFERENCES mod_tags(id)
 );
 
@@ -84,6 +89,7 @@ CREATE TABLE developers (
 CREATE TABLE mods_developers (
     mod_id TEXT NOT NULL,
     developer_id INTEGER NOT NULL,
+    is_owner BOOLEAN DEFAULT false NOT NULL,
     PRIMARY KEY (mod_id, developer_id),
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)

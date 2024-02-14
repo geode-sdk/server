@@ -4,10 +4,25 @@ use actix_web::{web, FromRequest, HttpRequest};
 use futures::Future;
 use uuid::Uuid;
 
-use crate::{types::{api::ApiError, models::developer::FetchedDeveloper}, AppData};
+use crate::{
+    types::{api::ApiError, models::developer::FetchedDeveloper},
+    AppData,
+};
 
 pub struct Auth {
-    pub developer: FetchedDeveloper
+    pub developer: Option<FetchedDeveloper>,
+}
+
+impl Auth {
+    /**
+     * Returns Ok(developer) if token was valid in request or returns ApiError::Unauthorized otherwise
+     */
+    pub fn into_developer(self) -> Result<FetchedDeveloper, ApiError> {
+        match self.developer {
+            None => Err(ApiError::Unauthorized),
+            Some(d) => Ok(d),
+        }
+    }
 }
 
 impl FromRequest for Auth {
@@ -19,46 +34,52 @@ impl FromRequest for Auth {
         let headers = req.headers().clone();
         Box::pin(async move {
             let token = match headers.get("Authorization") {
-                None => { return Err(ApiError::Unauthorized) },
+                None => return Ok(Auth { developer: None }),
                 Some(t) => match t.to_str() {
                     Err(e) => {
                         log::error!("Failed to parse auth token: {}", e);
-                        return Err(ApiError::Unauthorized);
-                    },
+                        return Ok(Auth { developer: None });
+                    }
                     Ok(str) => {
-                        let split = str.split(" ").collect::<Vec<&str>>();
+                        let split = str.split(' ').collect::<Vec<&str>>();
                         if split.len() != 2 || split[0] != "Bearer" {
-                            return Err(ApiError::Unauthorized);
+                            return Ok(Auth { developer: None });
                         }
                         match Uuid::try_parse(split[1]) {
                             Err(e) => {
                                 log::error!("Failed to parse auth token {}, error: {}", str, e);
-                                return Err(ApiError::Unauthorized);
-                            },
-                            Ok(token) => token
+                                return Ok(Auth { developer: None });
+                            }
+                            Ok(token) => token,
                         }
                     }
-                }
+                },
             };
 
             let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-            let developer = sqlx::query_as!(FetchedDeveloper,
+            let developer = sqlx::query_as!(
+                FetchedDeveloper,
                 "SELECT d.id, d.username, d.display_name, d.verified, d.admin FROM developers d
                 INNER JOIN auth_tokens at ON at.developer_id = d.id
-                WHERE at.token = $1", token
-            ).fetch_optional(&mut *pool).await;
+                WHERE at.token = $1",
+                token
+            )
+            .fetch_optional(&mut *pool)
+            .await;
             let developer = match developer {
                 Err(e) => {
                     log::error!("{}", e);
                     return Err(ApiError::DbError);
-                },
-                Ok(d) => match d {
-                    None => return Err(ApiError::Unauthorized),
-                    Some(data) => data
                 }
+                Ok(d) => match d {
+                    None => return Ok(Auth { developer: None }),
+                    Some(data) => data,
+                },
             };
 
-            Ok(Auth { developer })
+            Ok(Auth {
+                developer: Some(developer),
+            })
         })
     }
 }
