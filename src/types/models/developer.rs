@@ -117,8 +117,8 @@ impl Developer {
         match sqlx::query_as!(
             FetchedDeveloper,
             "SELECT id, username, display_name, verified, admin
-            FROM developers WHERE username = $1",
-            username
+            FROM developers WHERE LOWER(username) = $1",
+            username.to_lowercase()
         )
         .fetch_optional(&mut *pool)
         .await

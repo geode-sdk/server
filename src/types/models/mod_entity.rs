@@ -548,6 +548,59 @@ impl Mod {
             Ok(_) => Ok(()),
         }
     }
+
+    pub async fn unassign_dev(
+        mod_id: &str,
+        dev_id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let existing = match sqlx::query!(
+            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            INNER JOIN mods m ON md.mod_id = m.id
+            WHERE m.id = $1",
+            mod_id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(e) => e,
+            Err(err) => {
+                log::error!("{}", err);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let found = match existing.iter().find(|x| x.developer_id == dev_id) {
+            None => {
+                return Err(ApiError::NotFound(
+                    "Developer is not assigned to mod".to_string(),
+                ))
+            }
+            Some(f) => f,
+        };
+
+        if found.is_lead {
+            return Err(ApiError::BadRequest(
+                "Cannot unassign the lead developer for the mod".to_string(),
+            ));
+        }
+
+        match sqlx::query!(
+            "DELETE FROM mods_developers
+            WHERE mod_id = $1 AND developer_id = $2",
+            mod_id,
+            dev_id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(_) => Ok(()),
+        }
+    }
 }
 
 pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
