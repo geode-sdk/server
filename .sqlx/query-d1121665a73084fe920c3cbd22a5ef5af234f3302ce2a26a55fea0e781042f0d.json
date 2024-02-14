@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mod_id, tag_id FROM mods_mod_tags WHERE mod_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "tag_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d1121665a73084fe920c3cbd22a5ef5af234f3302ce2a26a55fea0e781042f0d"
+}

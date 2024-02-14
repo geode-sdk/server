@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mod_tags.name, mods_mod_tags.mod_id FROM mod_tags\n            INNER JOIN mods_mod_tags ON mod_tags.id = mods_mod_tags.tag_id\n            WHERE mods_mod_tags.mod_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "mod_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "74a8ad8da9121d864db3b38a0df52082349b104f6f50382325d4291ab10f3b82"
+}
