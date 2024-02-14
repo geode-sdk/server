@@ -36,6 +36,10 @@ CREATE TABLE mod_tags (
     name TEXT NOT NULL
 );
 
+INSERT INTO mod_tags (name) VALUES
+('universal'), ('gameplay'), ('editor'), ('offline'), ('online'),
+('enhancement'), ('music');
+
 CREATE TABLE mods_mod_tags (
     mod_id INTEGER NOT NULL,
     tag_id INTEGER NOT NULL,
@@ -84,6 +88,7 @@ CREATE TABLE developers (
 CREATE TABLE mods_developers (
     mod_id TEXT NOT NULL,
     developer_id INTEGER NOT NULL,
+    is_lead BOOLEAN DEFAULT false NOT NULL,
     PRIMARY KEY (mod_id, developer_id),
     FOREIGN KEY (mod_id) REFERENCES mods(id),
     FOREIGN KEY (developer_id) REFERENCES developers(id)

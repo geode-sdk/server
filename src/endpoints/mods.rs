@@ -3,6 +3,7 @@ use serde::Deserialize;
 use sqlx::Acquire;
 use log::info;
 
+use crate::extractors::auth::Auth;
 use crate::types::api::{ApiError, ApiResponse};
 use crate::AppData;
 use crate::types::models::mod_entity::{Mod, download_geode_file};
@@ -54,12 +55,12 @@ pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl
 }
 
 #[post("/v1/mods")]
-pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>) -> Result<impl Responder, ApiError> {
+pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>, auth: Auth) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_url).await?;
     let json = ModJson::from_zip(&mut file_path, payload.download_url.as_str())?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
-    let result = Mod::from_json(&json, &mut transaction).await;
+    let result = Mod::from_json(&json, auth.developer, &mut transaction).await;
     if result.is_err() {
         let _ = transaction.rollback().await;
         return Err(result.err().unwrap());

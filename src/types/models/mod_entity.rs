@@ -4,7 +4,7 @@ use sqlx::{PgConnection, QueryBuilder, Postgres};
 use std::{io::Cursor, str::FromStr};
 use crate::{types::{models::mod_version::ModVersion, api::{PaginatedData, ApiError}, mod_json::ModJson}, endpoints::mods::IndexQueryParams};
 
-use super::mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform};
+use super::{developer::FetchedDeveloper, mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform}};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -219,7 +219,7 @@ impl Mod {
         Ok(Some(mod_entity))
     }
 
-    pub async fn from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn from_json(json: &ModJson, developer: FetchedDeveloper, pool: &mut PgConnection) -> Result<(), ApiError> {
         if semver::Version::parse(json.version.trim_start_matches("v")).is_err() {
             return Err(ApiError::BadRequest(format!("Invalid mod version semver {}", json.version)));
         };
@@ -228,7 +228,7 @@ impl Mod {
             return Err(ApiError::BadRequest(format!("Invalid geode version semver {}", json.geode)));
         };
 
-        Mod::create(json, pool).await?;
+        Mod::create(json, developer, pool).await?;
         ModVersion::create_from_json(json, pool).await?;
         Ok(())
     }
@@ -304,7 +304,7 @@ impl Mod {
         }
     }
 
-    async fn create(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+    async fn create(json: &ModJson, developer: FetchedDeveloper, pool: &mut PgConnection) -> Result<(), ApiError> {
         let res = sqlx::query!("SELECT id FROM mods WHERE id = $1", json.id)
             .fetch_optional(&mut *pool)
             .await
@@ -342,6 +342,42 @@ impl Mod {
             .execute(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
+        Ok(())
+    }
+
+    pub async fn assign_lead_dev(mod_id: String, dev_id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let existing = sqlx::query!(
+            "SELECT md.developer_id, md.is_lead FROM mods_developers md
+            INNER JOIN mods m ON md.mod_id = m.id
+            WHERE m.id = $1", mod_id
+        ).fetch_all(&mut *pool)
+            .await;
+        
+        let existing = match existing {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(e) => e
+        };
+
+        let found = false;
+
+        for record in existing {
+            // we found our dev inside the existing list
+            if record.developer_id == dev_id {
+                let result = sqlx::query!(
+                    "UPDATE mods_developers SET is_lead = true
+                    WHERE mod_id = $1 AND developer_id = $2", mod_id, dev_id
+                ).execute(&mut *pool).await;
+
+                if let Err(e) = result {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                }
+                return Ok(());
+            }
+        }
         Ok(())
     }
 }
