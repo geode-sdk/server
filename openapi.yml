@@ -333,6 +333,10 @@ components:
             - "https://github.com/geode-sdk/geode"
         latest_version:
           $ref: "#/components/schemas/ModVersionString"
+        developers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModDeveloper"
         tags:
           type: array
           items:
@@ -394,6 +398,36 @@ components:
             - $ref: "#/components/schemas/GDVersionObject"
         mod_id:
           $ref: "#/components/schemas/ModID"
+
+    ModDeveloper:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+          description: The username of the developer. At the moment it's the same as the GitHub username of the developer.
+          examples:
+            - fleeym
+        display_name:
+          type: string
+          examples:
+            - Flame
+        verified:
+          type: boolean,
+          description: Whether the developer can post mods without admin verification
+          examples:
+            - true
+        admin:
+          type: boolean,
+          description: Whether the developer is an admin (which can verify mods and developers)
+          examples:
+            - true
+        is_owner:
+          type: boolean,
+          description: Whether the developer is the owner of the mod
+          examples:
+            - true
 
     Platform:
       type: string
