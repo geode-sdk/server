@@ -4,10 +4,17 @@ use actix_web::web::Bytes;
 use semver::Version;
 use serde::Deserialize;
 use sqlx::PgConnection;
-use zip::read::ZipFile;
 use std::io::BufReader;
+use zip::read::ZipFile;
 
-use super::{api::ApiError, models::{mod_gd_version::{GDVersionEnum, DetailedGDVersion}, dependency::{DependencyImportance, ModVersionCompare, DependencyCreate}, incompatibility::{IncompatibilityImportance, IncompatibilityCreate}}};
+use super::{
+    api::ApiError,
+    models::{
+        dependency::{DependencyCreate, DependencyImportance, ModVersionCompare},
+        incompatibility::{IncompatibilityCreate, IncompatibilityImportance},
+        mod_gd_version::{DetailedGDVersion, GDVersionEnum},
+    },
+};
 
 #[derive(Debug, Deserialize)]
 pub struct ModJson {
@@ -43,7 +50,7 @@ pub struct ModJson {
     pub about: Option<String>,
     pub changelog: Option<String>,
     pub dependencies: Option<Vec<ModJsonDependency>>,
-    pub incompatibilities: Option<Vec<ModJsonIncompatibility>>
+    pub incompatibilities: Option<Vec<ModJsonIncompatibility>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -52,21 +59,21 @@ pub struct ModJsonDependency {
     pub version: String,
     pub importance: DependencyImportance,
     // This should throw a deprecated error
-    pub required: Option<bool>
+    pub required: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ModJsonIncompatibility {
     pub id: String,
     pub version: String,
-    pub importance: IncompatibilityImportance
+    pub importance: IncompatibilityImportance,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ModJsonGDVersionType {
     VersionStr(GDVersionEnum),
-    VersionObj(DetailedGDVersion)
+    VersionObj(DetailedGDVersion),
 }
 
 impl ModJson {
@@ -76,19 +83,25 @@ impl ModJson {
             Err(e) => {
                 log::error!("{}", e);
                 return Err(ApiError::FilesystemError);
-            },
-            Ok(b) => b
+            }
+            Ok(b) => b,
         };
         let hash = sha256::digest(bytes);
         let reader = BufReader::new(file);
         let mut archive = match zip::ZipArchive::new(reader) {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::BadRequest("Couldn't unzip .geode file".to_string()));
-            },
-            Ok(a) => a
+                return Err(ApiError::BadRequest(
+                    "Couldn't unzip .geode file".to_string(),
+                ));
+            }
+            Ok(a) => a,
         };
-        let json_file = archive.by_name("mod.json").or(Err(ApiError::BadRequest(String::from("mod.json not found"))))?;
+        let json_file = archive
+            .by_name("mod.json")
+            .or(Err(ApiError::BadRequest(String::from(
+                "mod.json not found",
+            ))))?;
         let mut json = match serde_json::from_reader::<ZipFile, ModJson>(json_file) {
             Ok(j) => j,
             Err(e) => {
@@ -103,10 +116,16 @@ impl ModJson {
         if json.dependencies.is_some() {
             for i in json.dependencies.as_mut().unwrap() {
                 if !validate_dependency_version_str(&i.version) {
-                    return Err(ApiError::BadRequest(format!("Invalid dependency version {} for mod {}", i.version, i.id)));
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid dependency version {} for mod {}",
+                        i.version, i.id
+                    )));
                 }
                 if i.required.is_some() {
-                    return Err(ApiError::BadRequest(format!("'required' key for dependencies is deprecated! Found at dependency id {}.", i.id)));
+                    return Err(ApiError::BadRequest(format!(
+                        "'required' key for dependencies is deprecated! Found at dependency id {}.",
+                        i.id
+                    )));
                 }
                 i.version = i.version.trim_start_matches("v").to_string();
             }
@@ -114,7 +133,10 @@ impl ModJson {
         if json.incompatibilities.is_some() {
             for i in json.incompatibilities.as_mut().unwrap() {
                 if !validate_dependency_version_str(&i.version) {
-                    return Err(ApiError::BadRequest(format!("Invalid incompatibility version {} for mod {}", i.version, i.id)));
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid incompatibility version {} for mod {}",
+                        i.version, i.id
+                    )));
                 }
                 i.version = i.version.trim_start_matches("v").to_string();
             }
@@ -147,8 +169,8 @@ impl ModJson {
                         Err(e) => {
                             log::error!("{}", e);
                             return Err(ApiError::InternalError);
-                        },
-                        Ok(r) => Some(r)
+                        }
+                        Ok(r) => Some(r),
                     };
                 }
                 if file.name().eq("changelog.md") {
@@ -156,8 +178,8 @@ impl ModJson {
                         Err(e) => {
                             log::error!("{}", e);
                             return Err(ApiError::InternalError);
-                        },
-                        Ok(r) => Some(r)
+                        }
+                        Ok(r) => Some(r),
                     };
                 }
             }
@@ -165,10 +187,13 @@ impl ModJson {
         return Ok(json);
     }
 
-    pub async fn query_dependencies(&self, pool: &mut PgConnection) -> Result<Vec<DependencyCreate>, ApiError> {
+    pub async fn query_dependencies(
+        &self,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<DependencyCreate>, ApiError> {
         let deps = match self.dependencies.as_ref() {
             None => return Err(ApiError::InternalError),
-            Some(d) => d
+            Some(d) => d,
         };
 
         if deps.is_empty() {
@@ -176,46 +201,67 @@ impl ModJson {
         }
 
         let mut ret: Vec<DependencyCreate> = vec![];
-        
+
         // I am going to n+1 this, I am sorry, will optimize later
         for i in deps {
             let (dependency_ver, compare) = match split_version_and_compare(i.version.as_str()) {
-                Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", i.version))),
-                Ok((ver, compare)) => (ver, compare)
+                Err(_) => {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid semver {}",
+                        i.version
+                    )))
+                }
+                Ok((ver, compare)) => (ver, compare),
             };
 
-            let versions = sqlx::query!("SELECT id, version FROM mod_versions WHERE mod_id = $1 and validated = true", i.id)
-                .fetch_all(&mut *pool)
-                .await;
+            let versions = sqlx::query!(
+                "SELECT id, version FROM mod_versions WHERE mod_id = $1 and validated = true",
+                i.id
+            )
+            .fetch_all(&mut *pool)
+            .await;
             let versions = match versions {
                 Err(_) => return Err(ApiError::DbError),
-                Ok(v) => v
+                Ok(v) => v,
             };
             if versions.len() == 0 {
-                return Err(ApiError::BadRequest(format!("Couldn't find dependency {} on the index", i.id)));
+                return Err(ApiError::BadRequest(format!(
+                    "Couldn't find dependency {} on the index",
+                    i.id
+                )));
             }
             let mut found = false;
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
                 if compare_versions(&parsed, &dependency_ver, &compare) {
-                    ret.push(DependencyCreate { dependency_id: j.id, compare, importance: i.importance });
+                    ret.push(DependencyCreate {
+                        dependency_id: j.id,
+                        compare,
+                        importance: i.importance,
+                    });
                     found = true;
                     break;
                 }
             }
             if !found {
-                return Err(ApiError::BadRequest(format!("Couldn't find dependency version that satisfies semver compare {}", i.version)));
+                return Err(ApiError::BadRequest(format!(
+                    "Couldn't find dependency version that satisfies semver compare {}",
+                    i.version
+                )));
             }
         }
 
         Ok(ret)
     }
 
-    pub async fn query_incompatibilities(&self, pool: &mut PgConnection) -> Result<Vec<IncompatibilityCreate>, ApiError> {
+    pub async fn query_incompatibilities(
+        &self,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<IncompatibilityCreate>, ApiError> {
         let incompat = match self.incompatibilities.as_ref() {
             None => return Err(ApiError::InternalError),
-            Some(d) => d
+            Some(d) => d,
         };
 
         if incompat.is_empty() {
@@ -225,32 +271,50 @@ impl ModJson {
 
         for i in incompat {
             let (ver, compare) = match split_version_and_compare(i.version.as_str()) {
-                Err(_) => return Err(ApiError::BadRequest(format!("Invalid semver {}", i.version))),
-                Ok((ver, compare)) => (ver, compare)
+                Err(_) => {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid semver {}",
+                        i.version
+                    )))
+                }
+                Ok((ver, compare)) => (ver, compare),
             };
 
-            let versions = sqlx::query!("SELECT id, version FROM mod_versions WHERE mod_id = $1", i.id)
-                .fetch_all(&mut *pool)
-                .await;
+            let versions = sqlx::query!(
+                "SELECT id, version FROM mod_versions WHERE mod_id = $1",
+                i.id
+            )
+            .fetch_all(&mut *pool)
+            .await;
             let versions = match versions {
                 Err(_) => return Err(ApiError::DbError),
-                Ok(v) => v
+                Ok(v) => v,
             };
             if versions.len() == 0 {
-                return Err(ApiError::BadRequest(format!("Couldn't find incompatibility {} on the index", i.id)));
+                return Err(ApiError::BadRequest(format!(
+                    "Couldn't find incompatibility {} on the index",
+                    i.id
+                )));
             }
             let mut found = false;
             for j in versions {
                 // This should never fail (I hope)
                 let parsed = semver::Version::parse(&j.version).unwrap();
                 if compare_versions(&parsed, &ver, &compare) {
-                    ret.push(IncompatibilityCreate { incompatibility_id: j.id, compare, importance: i.importance });
+                    ret.push(IncompatibilityCreate {
+                        incompatibility_id: j.id,
+                        compare,
+                        importance: i.importance,
+                    });
                     found = true;
                     break;
                 }
             }
             if !found {
-                return Err(ApiError::BadRequest(format!("Couldn't find incompatibility version that satisfies semver compare {}", i.version)));
+                return Err(ApiError::BadRequest(format!(
+                    "Couldn't find incompatibility version that satisfies semver compare {}",
+                    i.version
+                )));
             }
         }
 
@@ -258,13 +322,17 @@ impl ModJson {
     }
 }
 
-fn compare_versions(v1: &semver::Version, v2: &semver::Version, compare: &ModVersionCompare) -> bool {
+fn compare_versions(
+    v1: &semver::Version,
+    v2: &semver::Version,
+    compare: &ModVersionCompare,
+) -> bool {
     match compare {
         ModVersionCompare::Exact => v1.eq(&v2),
         ModVersionCompare::Less => v1.lt(&v2),
         ModVersionCompare::LessEq => v1.le(&v2),
         ModVersionCompare::More => v1.gt(&v2),
-        ModVersionCompare::MoreEq => v1.ge(&v2)
+        ModVersionCompare::MoreEq => v1.ge(&v2),
     }
 }
 
@@ -300,7 +368,7 @@ fn validate_dependency_version_str(ver: &str) -> bool {
 
 fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), ()> {
     let mut copy = ver.to_string();
-    let mut compare = ModVersionCompare::MoreEq; 
+    let mut compare = ModVersionCompare::MoreEq;
     if ver.starts_with("<=") {
         copy = copy.trim_start_matches("<=").to_string();
         compare = ModVersionCompare::LessEq;
@@ -321,6 +389,6 @@ fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), 
     let ver = semver::Version::parse(&copy);
     match ver {
         Err(_) => Err(()),
-        Ok(v) => Ok((v, compare))
+        Ok(v) => Ok((v, compare)),
     }
 }

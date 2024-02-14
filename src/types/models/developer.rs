@@ -13,11 +13,15 @@ pub struct FetchedDeveloper {
     pub username: String,
     pub display_name: String,
     pub verified: bool,
-    pub admin: bool
+    pub admin: bool,
 }
 
 impl Developer {
-    pub async fn create(github_id: i64, username: String, pool: &mut PgConnection) -> Result<i32, ApiError> {
+    pub async fn create(
+        github_id: i64,
+        username: String,
+        pool: &mut PgConnection,
+    ) -> Result<i32, ApiError> {
         let result = sqlx::query!(
             "INSERT INTO developers 
             (username, display_name, github_user_id) VALUES
@@ -25,31 +29,38 @@ impl Developer {
             username,
             username,
             github_id
-        ).fetch_one(&mut *pool).await;
+        )
+        .fetch_one(&mut *pool)
+        .await;
         let id = match result {
             Err(e) => {
                 log::error!("{}", e);
                 return Err(ApiError::DbError);
-            },
-            Ok(row) => row.id
+            }
+            Ok(row) => row.id,
         };
         Ok(id)
     }
 
-    pub async fn get_by_github_id(github_id: i64, pool: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
+    pub async fn get_by_github_id(
+        github_id: i64,
+        pool: &mut PgConnection,
+    ) -> Result<Option<Developer>, ApiError> {
         let result = sqlx::query_as!(
             Developer,
             "SELECT id, username, display_name
             FROM developers WHERE github_user_id = $1",
             github_id
-        ).fetch_optional(&mut *pool).await;
+        )
+        .fetch_optional(&mut *pool)
+        .await;
 
         match result {
             Err(e) => {
                 log::info!("{}", e);
                 return Err(ApiError::DbError);
-            },
-            Ok(r) => Ok(r)
+            }
+            Ok(r) => Ok(r),
         }
     }
 }

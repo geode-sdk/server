@@ -1,8 +1,7 @@
-use crate::types::models::dependency::ModVersionCompare;
-use serde::{Serialize, Deserialize};
-use sqlx::{QueryBuilder, Postgres, PgConnection};
 use crate::types::api::ApiError;
-
+use crate::types::models::dependency::ModVersionCompare;
+use serde::{Deserialize, Serialize};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
@@ -10,13 +9,13 @@ pub struct FetchedIncompatibility {
     pub version: String,
     pub incompatibility_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: IncompatibilityImportance 
+    pub importance: IncompatibilityImportance,
 }
 
 pub struct IncompatibilityCreate {
     pub incompatibility_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: IncompatibilityImportance
+    pub importance: IncompatibilityImportance,
 }
 
 #[derive(sqlx::FromRow)]
@@ -24,7 +23,7 @@ pub struct Incompatibility {
     pub mod_id: i32,
     pub incompatibility_id: i32,
     pub compare: ModVersionCompare,
-    pub importance: IncompatibilityImportance 
+    pub importance: IncompatibilityImportance,
 }
 
 #[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize)]
@@ -32,19 +31,25 @@ pub struct Incompatibility {
 #[serde(rename_all = "lowercase")]
 pub enum IncompatibilityImportance {
     Breaking,
-    Conflicting
+    Conflicting,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ResponseIncompatibility {
     pub mod_id: String,
     pub version: String,
-    pub importance: IncompatibilityImportance 
+    pub importance: IncompatibilityImportance,
 }
 
 impl Incompatibility {
-    pub async fn create_for_mod_version(id: i32, incompats: Vec<IncompatibilityCreate>, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO incompatibilities (mod_id, incompatible_id, compare, importance) VALUES ");
+    pub async fn create_for_mod_version(
+        id: i32,
+        incompats: Vec<IncompatibilityCreate>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "INSERT INTO incompatibilities (mod_id, incompatible_id, compare, importance) VALUES ",
+        );
         let mut index = 0;
         for i in &incompats {
             let mut separated = builder.separated(", ");
@@ -70,14 +75,20 @@ impl Incompatibility {
         Ok(())
     }
 
-    pub async fn get_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<Vec<FetchedIncompatibility>, ApiError> {
-        let result = sqlx::query_as!(FetchedIncompatibility,
+    pub async fn get_for_mod_version(
+        id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<FetchedIncompatibility>, ApiError> {
+        let result = sqlx::query_as!(
+            FetchedIncompatibility,
             r#"SELECT icp.compare as "compare: ModVersionCompare",
             icp.importance as "importance: IncompatibilityImportance",
             icp.incompatibility_id, mv.mod_id, mv.version FROM incompatibilities icp
             INNER JOIN mod_versions mv ON icp.mod_id = mv.id
-            WHERE mv.id = $1 AND mv.validated = true"#, id
-        ).fetch_all(&mut *pool)
+            WHERE mv.id = $1 AND mv.validated = true"#,
+            id
+        )
+        .fetch_all(&mut *pool)
         .await;
         if result.is_err() {
             log::info!("{}", result.err().unwrap());

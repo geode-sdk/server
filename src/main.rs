@@ -1,21 +1,26 @@
-use actix_web::{get, web::{self, QueryConfig}, App, HttpServer, Responder, middleware::Logger};
-use log::info;
+use actix_web::{
+    get,
+    middleware::Logger,
+    web::{self, QueryConfig},
+    App, HttpServer, Responder,
+};
 use env_logger::Env;
+use log::info;
 
-use crate::types::api::ApiError;
 use crate::types::api;
+use crate::types::api::ApiError;
 
-mod endpoints;
-mod types;
 mod auth;
+mod endpoints;
 mod extractors;
+mod types;
 
 pub struct AppData {
     db: sqlx::postgres::PgPool,
     debug: bool,
     app_url: String,
     github_client_id: String,
-    github_client_secret: String
+    github_client_secret: String,
 }
 
 #[get("/")]
@@ -31,13 +36,15 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = sqlx::postgres::PgPoolOptions::default()
         .max_connections(10)
-        .connect(&env_url).await?;
+        .connect(&env_url)
+        .await?;
     info!("Running migrations");
-    let migration_res = sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await;
+    let migration_res = sqlx::migrate!("./migrations").run(&pool).await;
     if migration_res.is_err() {
-        log::error!("Error encountered while running migrations: {}", migration_res.err().unwrap());
+        log::error!(
+            "Error encountered while running migrations: {}",
+            migration_res.err().unwrap()
+        );
     }
     let addr = "0.0.0.0";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
@@ -49,7 +56,13 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppData { db: pool.clone(), debug, app_url: app_url.clone(), github_client_id: github_client.clone(), github_client_secret: github_secret.clone() }))
+            .app_data(web::Data::new(AppData {
+                db: pool.clone(),
+                debug,
+                app_url: app_url.clone(),
+                github_client_id: github_client.clone(),
+                github_client_secret: github_secret.clone(),
+            }))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
@@ -62,7 +75,8 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::auth::github::poll_github_login)
             .service(endpoints::auth::github::start_github_login)
             .service(health)
-    }).bind((addr, port))?;
+    })
+    .bind((addr, port))?;
 
     if debug {
         info!("Running in debug mode, using 1 thread.");

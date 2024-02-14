@@ -1,14 +1,14 @@
-use actix_web::{get, web, Responder, post, HttpResponse};
+use actix_web::{get, post, web, HttpResponse, Responder};
+use log::info;
 use serde::Deserialize;
 use sqlx::Acquire;
-use log::info;
 
 use crate::extractors::auth::Auth;
 use crate::types::api::{ApiError, ApiResponse};
-use crate::AppData;
-use crate::types::models::mod_entity::{Mod, download_geode_file};
 use crate::types::mod_json::ModJson;
+use crate::types::models::mod_entity::{download_geode_file, Mod};
 use crate::types::models::mod_gd_version::GDVersionEnum;
+use crate::AppData;
 
 #[derive(Deserialize)]
 pub struct IndexQueryParams {
@@ -18,16 +18,19 @@ pub struct IndexQueryParams {
     #[serde(default)]
     pub gd: Option<GDVersionEnum>,
     #[serde(default)]
-    pub platforms: Option<String>
+    pub platforms: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct CreateQueryParams {
-    download_url: String
+    download_url: String,
 }
 
 #[get("/v1/mods")]
-pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>) -> Result<impl Responder, ApiError> {
+pub async fn index(
+    data: web::Data<AppData>,
+    query: web::Query<IndexQueryParams>,
+) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let mut result = Mod::get_index(&mut pool, query.0).await?;
@@ -36,11 +39,17 @@ pub async fn index(data: web::Data<AppData>, query: web::Query<IndexQueryParams>
             j.modify_download_link(&data.app_url);
         }
     }
-    Ok(web::Json(ApiResponse {error: "".into(), payload: result}))
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: result,
+    }))
 }
 
 #[get("/v1/mods/{id}")]
-pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl Responder, ApiError> {
+pub async fn get(
+    data: web::Data<AppData>,
+    id: web::Path<String>,
+) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let found = Mod::get_one(&id, &mut pool).await?;
     match found {
@@ -48,14 +57,21 @@ pub async fn get(data: web::Data<AppData>, id: web::Path<String>) -> Result<impl
             for i in &mut m.versions {
                 i.modify_download_link(&data.app_url);
             }
-            Ok(web::Json(ApiResponse {error: "".into(), payload: m}))
-        },
-        None => Err(ApiError::NotFound("".into()))
+            Ok(web::Json(ApiResponse {
+                error: "".into(),
+                payload: m,
+            }))
+        }
+        None => Err(ApiError::NotFound("".into())),
     }
 }
 
 #[post("/v1/mods")]
-pub async fn create(data: web::Data<AppData>, payload: web::Json<CreateQueryParams>, auth: Auth) -> Result<impl Responder, ApiError> {
+pub async fn create(
+    data: web::Data<AppData>,
+    payload: web::Json<CreateQueryParams>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_url).await?;
     let json = ModJson::from_zip(&mut file_path, payload.download_url.as_str())?;
