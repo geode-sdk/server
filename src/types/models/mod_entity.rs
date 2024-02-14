@@ -423,11 +423,13 @@ impl Mod {
             .execute(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
+
+        Mod::assign_lead_dev(&json.id, developer.id, pool).await?;
         Ok(())
     }
 
     pub async fn assign_lead_dev(
-        mod_id: String,
+        mod_id: &str,
         dev_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
@@ -448,24 +450,51 @@ impl Mod {
             Ok(e) => e,
         };
 
+        if !existing.is_empty() {
+            let res = sqlx::query!(
+                "UPDATE mods_developers SET is_lead = false
+                WHERE mod_id = $1",
+                mod_id
+            )
+            .execute(&mut *pool)
+            .await;
+
+            if let Err(e) = res {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        }
+
         for record in existing {
             // we found our dev inside the existing list
             if record.developer_id == dev_id {
-                let result = sqlx::query!(
+                if let Err(e) = sqlx::query!(
                     "UPDATE mods_developers SET is_lead = true
                     WHERE mod_id = $1 AND developer_id = $2",
                     mod_id,
                     dev_id
                 )
                 .execute(&mut *pool)
-                .await;
-
-                if let Err(e) = result {
+                .await
+                {
                     log::error!("{}", e);
                     return Err(ApiError::DbError);
                 }
                 return Ok(());
             }
+        }
+
+        if let Err(e) = sqlx::query!(
+            "INSERT INTO mods_developers (mod_id, developer_id, is_lead) VALUES
+            ($1, $2, true)",
+            mod_id,
+            dev_id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
         }
         Ok(())
     }
