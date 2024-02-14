@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::auth::github::poll_github_login)
             .service(endpoints::auth::github::start_github_login)
             .service(endpoints::developers::add_developer_to_mod)
+            .service(endpoints::developers::remove_dev_from_mod)
             .service(health)
     })
     .bind((addr, port))?;
