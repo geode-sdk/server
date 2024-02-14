@@ -10,6 +10,7 @@ CREATE TABLE mods (
     repository TEXT,
     changelog TEXT,
     about TEXT,
+    image BYTEA,
     latest_version TEXT NOT NULL
 );
 
