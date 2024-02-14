@@ -1,5 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
@@ -18,6 +19,7 @@ pub struct FetchedDeveloper {
     pub admin: bool,
 }
 
+#[derive(Serialize, Clone, Debug)]
 pub struct ModDeveloper {
     pub id: i32,
     pub username: String,
@@ -165,7 +167,7 @@ impl Developer {
     }
 
     pub async fn fetch_for_mods(
-        mod_ids: Vec<String>,
+        mod_ids: &Vec<&str>,
         pool: &mut PgConnection
     ) -> Result<HashMap<String, Vec<ModDeveloper>>, ApiError> {
         if mod_ids.is_empty() {

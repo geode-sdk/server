@@ -12,7 +12,7 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 use std::{io::Cursor, str::FromStr};
 
 use super::{
-    developer::FetchedDeveloper,
+    developer::{Developer, FetchedDeveloper, ModDeveloper},
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
 };
 
@@ -22,6 +22,7 @@ pub struct Mod {
     pub repository: Option<String>,
     pub latest_version: String,
     pub validated: bool,
+    pub developers: Vec<ModDeveloper>,
     pub versions: Vec<ModVersion>,
     pub about: Option<String>,
     pub changelog: Option<String>,
@@ -159,6 +160,7 @@ impl Mod {
 
         let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd, platforms).await?;
+        let developers = Developer::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for i in &versions {
             let mut version_ids: Vec<_> = i.1.iter().map(|x| x.id).collect();
@@ -175,12 +177,15 @@ impl Mod {
                     let gd_ver = gd_versions.get(&i.id).cloned().unwrap_or_default();
                     i.gd = gd_ver;
                 }
+
+                let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
                     latest_version: x.latest_version.clone(),
                     validated: x.validated,
                     versions: version_vec,
+                    developers: devs,
                     about: None,
                     changelog: None,
                 }
@@ -234,6 +239,7 @@ impl Mod {
             .collect();
         let ids = versions.iter().map(|x| x.id).collect();
         let gd = ModGDVersion::get_for_mod_versions(ids, pool).await?;
+        let devs = Developer::fetch_for_mod(id, pool).await?;
         for (id, gd_versions) in &gd {
             for i in &mut versions {
                 if &i.id == id {
@@ -248,6 +254,7 @@ impl Mod {
             latest_version: records[0].latest_version.clone(),
             validated: records[0].validated,
             versions,
+            developers: devs,
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
         };
