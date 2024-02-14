@@ -35,7 +35,7 @@ impl Display for ApiError {
             Self::DbError => write!(f, "Unknown database error"),
             Self::BadRequest(message) => write!(f, "{}", message),
             Self::NotFound(message) => write!(f, "{}", message),
-            Self::InternalError => write!(f, "{}", "Internal server error"),
+            Self::InternalError => write!(f, "Internal server error"),
             Self::Forbidden => write!(f, "You cannot perform this action"),
             Self::Unauthorized => write!(f, "You need to be authenticated to perform this action"),
         }

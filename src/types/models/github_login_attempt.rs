@@ -69,7 +69,7 @@ impl GithubLoginAttempt {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(u) => Ok(u.uid),
         }
@@ -92,7 +92,7 @@ impl GithubLoginAttempt {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(r) => Ok(r),
         }
@@ -115,7 +115,7 @@ impl GithubLoginAttempt {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(r) => Ok(r),
         }

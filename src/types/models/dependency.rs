@@ -85,8 +85,7 @@ impl Dependency {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "INSERT INTO dependencies (dependent_id, dependency_id, compare, importance) VALUES ",
         );
-        let mut index = 0;
-        for i in &deps {
+        for (index, i) in deps.iter().enumerate() {
             let mut separated = builder.separated(", ");
             separated.push_unseparated("(");
             separated.push_bind(id);
@@ -97,7 +96,6 @@ impl Dependency {
             if index != deps.len() - 1 {
                 separated.push_unseparated(", ");
             }
-            index += 1;
         }
 
         let result = builder.build().execute(&mut *pool).await;
@@ -116,7 +114,7 @@ impl Dependency {
         let mut ret: Vec<FetchedDependency> = vec![];
         let mut modifiable_ids = vec![id];
         loop {
-            if modifiable_ids.len() == 0 {
+            if modifiable_ids.is_empty() {
                 break;
             }
             let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT dp.dependency_id, dp.compare, dp.importance, mv.version, mv.mod_id FROM dependencies dp

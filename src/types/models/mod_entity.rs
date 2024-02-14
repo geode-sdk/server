@@ -72,7 +72,7 @@ impl Mod {
         let offset = (page - 1) * per_page;
         let mut platforms: Vec<VerPlatform> = vec![];
         if query.platforms.is_some() {
-            for i in query.platforms.unwrap().split(",") {
+            for i in query.platforms.unwrap().split(',') {
                 let trimmed = i.trim();
                 let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(
                     format!("Invalid platform {}", trimmed),
@@ -111,8 +111,8 @@ impl Mod {
                 builder.push(" AND mgv.platform IN (");
                 counter_builder.push(" AND mgv.platform IN (");
             }
-            builder.push_bind(platform.clone());
-            counter_builder.push_bind(platform.clone());
+            builder.push_bind(*platform);
+            counter_builder.push_bind(*platform);
             if i == platforms.len() - 1 {
                 builder.push(")");
                 counter_builder.push(")");
@@ -204,7 +204,7 @@ impl Mod {
         .fetch_all(&mut *pool)
         .await
         .or(Err(ApiError::DbError))?;
-        if records.len() == 0 {
+        if records.is_empty() {
             return Ok(None);
         }
         let mut versions: Vec<ModVersion> = records
@@ -259,14 +259,14 @@ impl Mod {
         developer: FetchedDeveloper,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if semver::Version::parse(json.version.trim_start_matches("v")).is_err() {
+        if semver::Version::parse(json.version.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid mod version semver {}",
                 json.version
             )));
         };
 
-        if semver::Version::parse(json.geode.trim_start_matches("v")).is_err() {
+        if semver::Version::parse(json.geode.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid geode version semver {}",
                 json.geode
@@ -306,8 +306,8 @@ impl Mod {
         .await
         .unwrap();
 
-        let version = semver::Version::parse(&latest.version.trim_start_matches("v")).unwrap();
-        let new_version = match semver::Version::parse(json.version.trim_start_matches("v")) {
+        let version = semver::Version::parse(latest.version.trim_start_matches('v')).unwrap();
+        let new_version = match semver::Version::parse(json.version.trim_start_matches('v')) {
             Ok(v) => v,
             Err(_) => {
                 return Err(ApiError::BadRequest(format!(
@@ -348,7 +348,7 @@ impl Mod {
             Ok(l) => l,
         };
 
-        if let None = latest {
+        if latest.is_none() {
             return Ok(());
         }
 
@@ -365,7 +365,7 @@ impl Mod {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(r) => {
                 if r.rows_affected() == 0 {
@@ -387,7 +387,7 @@ impl Mod {
             .fetch_optional(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
-        if !res.is_none() {
+        if res.is_some() {
             return Err(ApiError::BadRequest(format!(
                 "Mod {} already exists, consider creating a new version",
                 json.id
@@ -447,8 +447,6 @@ impl Mod {
             }
             Ok(e) => e,
         };
-
-        let found = false;
 
         for record in existing {
             // we found our dev inside the existing list

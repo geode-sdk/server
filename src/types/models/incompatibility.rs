@@ -50,8 +50,7 @@ impl Incompatibility {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "INSERT INTO incompatibilities (mod_id, incompatible_id, compare, importance) VALUES ",
         );
-        let mut index = 0;
-        for i in &incompats {
+        for (index, i) in incompats.iter().enumerate() {
             let mut separated = builder.separated(", ");
             separated.push_unseparated("(");
             separated.push_bind(id);
@@ -63,7 +62,6 @@ impl Incompatibility {
             if index != incompats.len() - 1 {
                 separated.push_unseparated(", ");
             }
-            index += 1;
         }
 
         let result = builder.build().execute(&mut *pool).await;

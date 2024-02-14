@@ -29,7 +29,7 @@ impl FromRequest for Auth {
                         return Err(ApiError::Unauthorized);
                     }
                     Ok(str) => {
-                        let split = str.split(" ").collect::<Vec<&str>>();
+                        let split = str.split(' ').collect::<Vec<&str>>();
                         if split.len() != 2 || split[0] != "Bearer" {
                             return Err(ApiError::Unauthorized);
                         }

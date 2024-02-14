@@ -109,7 +109,7 @@ impl ModJson {
                 return Err(ApiError::BadRequest("Invalid mod.json".to_string()));
             }
         };
-        json.version = json.version.trim_start_matches("v").to_string();
+        json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
         json.download_url = download_url.to_string();
 
@@ -127,7 +127,7 @@ impl ModJson {
                         i.id
                     )));
                 }
-                i.version = i.version.trim_start_matches("v").to_string();
+                i.version = i.version.trim_start_matches('v').to_string();
             }
         }
         if json.incompatibilities.is_some() {
@@ -138,12 +138,12 @@ impl ModJson {
                         i.version, i.id
                     )));
                 }
-                i.version = i.version.trim_start_matches("v").to_string();
+                i.version = i.version.trim_start_matches('v').to_string();
             }
         }
 
         for i in 0..archive.len() {
-            if let Some(mut file) = archive.by_index(i).ok() {
+            if let Ok(mut file) = archive.by_index(i) {
                 if file.name().ends_with(".dll") {
                     json.windows = true;
                     continue;
@@ -184,7 +184,7 @@ impl ModJson {
                 }
             }
         }
-        return Ok(json);
+        Ok(json)
     }
 
     pub async fn query_dependencies(
@@ -224,7 +224,7 @@ impl ModJson {
                 Err(_) => return Err(ApiError::DbError),
                 Ok(v) => v,
             };
-            if versions.len() == 0 {
+            if versions.is_empty() {
                 return Err(ApiError::BadRequest(format!(
                     "Couldn't find dependency {} on the index",
                     i.id
@@ -290,7 +290,7 @@ impl ModJson {
                 Err(_) => return Err(ApiError::DbError),
                 Ok(v) => v,
             };
-            if versions.len() == 0 {
+            if versions.is_empty() {
                 return Err(ApiError::BadRequest(format!(
                     "Couldn't find incompatibility {} on the index",
                     i.id
@@ -328,11 +328,11 @@ fn compare_versions(
     compare: &ModVersionCompare,
 ) -> bool {
     match compare {
-        ModVersionCompare::Exact => v1.eq(&v2),
-        ModVersionCompare::Less => v1.lt(&v2),
-        ModVersionCompare::LessEq => v1.le(&v2),
-        ModVersionCompare::More => v1.gt(&v2),
-        ModVersionCompare::MoreEq => v1.ge(&v2),
+        ModVersionCompare::Exact => v1.eq(v2),
+        ModVersionCompare::Less => v1.lt(v2),
+        ModVersionCompare::LessEq => v1.le(v2),
+        ModVersionCompare::More => v1.gt(v2),
+        ModVersionCompare::MoreEq => v1.ge(v2),
     }
 }
 
@@ -342,7 +342,7 @@ fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
         Ok(_) => Ok(string),
         Err(e) => {
             log::error!("{}", e);
-            return Err(format!("Failed to parse {}", file.name()));
+            Err(format!("Failed to parse {}", file.name()))
         }
     }
 }
@@ -353,14 +353,14 @@ fn validate_dependency_version_str(ver: &str) -> bool {
         copy = copy.trim_start_matches("<=").to_string();
     } else if ver.starts_with(">=") {
         copy = copy.trim_start_matches(">=").to_string();
-    } else if ver.starts_with("=") {
-        copy = copy.trim_start_matches("=").to_string();
-    } else if ver.starts_with("<") {
-        copy = copy.trim_start_matches("<").to_string();
-    } else if ver.starts_with(">") {
-        copy = copy.trim_start_matches(">").to_string();
+    } else if ver.starts_with('=') {
+        copy = copy.trim_start_matches('=').to_string();
+    } else if ver.starts_with('<') {
+        copy = copy.trim_start_matches('<').to_string();
+    } else if ver.starts_with('>') {
+        copy = copy.trim_start_matches('>').to_string();
     }
-    copy = copy.trim_start_matches("v").to_string();
+    copy = copy.trim_start_matches('v').to_string();
 
     let result = semver::Version::parse(&copy);
     result.is_ok()
@@ -375,17 +375,17 @@ fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), 
     } else if ver.starts_with(">=") {
         copy = copy.trim_start_matches(">=").to_string();
         compare = ModVersionCompare::MoreEq;
-    } else if ver.starts_with("=") {
-        copy = copy.trim_start_matches("=").to_string();
+    } else if ver.starts_with('=') {
+        copy = copy.trim_start_matches('=').to_string();
         compare = ModVersionCompare::Exact;
-    } else if ver.starts_with("<") {
-        copy = copy.trim_start_matches("<").to_string();
+    } else if ver.starts_with('<') {
+        copy = copy.trim_start_matches('<').to_string();
         compare = ModVersionCompare::Less;
-    } else if ver.starts_with(">") {
-        copy = copy.trim_start_matches(">").to_string();
+    } else if ver.starts_with('>') {
+        copy = copy.trim_start_matches('>').to_string();
         compare = ModVersionCompare::More;
     }
-    copy = copy.trim_start_matches("v").to_string();
+    copy = copy.trim_start_matches('v').to_string();
     let ver = semver::Version::parse(&copy);
     match ver {
         Err(_) => Err(()),

@@ -112,14 +112,14 @@ pub async fn update_version(
         &path.version,
         payload.validated,
         payload.unlisted,
-        &mut *transaction,
+        &mut transaction,
     )
     .await;
     if r.is_err() {
         transaction.rollback().await.or(Err(ApiError::DbError))?;
         return Err(r.err().unwrap());
     }
-    let r = Mod::try_update_latest_version(&path.id, &mut *transaction).await;
+    let r = Mod::try_update_latest_version(&path.id, &mut transaction).await;
     if r.is_err() {
         transaction.rollback().await.or(Err(ApiError::DbError))?;
         return Err(r.err().unwrap());

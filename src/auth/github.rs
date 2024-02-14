@@ -180,6 +180,6 @@ impl GithubClient {
             Ok(b) => b,
         };
 
-        return Ok(body);
+        Ok(body)
     }
 }

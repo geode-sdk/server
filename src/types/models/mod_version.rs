@@ -50,7 +50,7 @@ struct ModVersionGetOne {
 }
 
 impl ModVersionGetOne {
-    pub fn into_mod_version(&self) -> ModVersion {
+    pub fn into_mod_version(self) -> ModVersion {
         ModVersion {
             id: self.id,
             name: self.name.clone(),
@@ -101,15 +101,15 @@ impl ModVersion {
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.version = m.latest_version AND mv.validated = true"#,
         );
-        if gd.is_some() {
+        if let Some(g) = gd {
             query_builder.push(" AND mgv.gd = ");
-            query_builder.push_bind(gd.unwrap() as GDVersionEnum);
+            query_builder.push_bind(g);
         }
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
                 query_builder.push(" AND mgv.platform IN (");
             }
-            query_builder.push_bind(platform.clone());
+            query_builder.push_bind(*platform);
             if i == platforms.len() - 1 {
                 query_builder.push(")");
             } else {
@@ -136,7 +136,7 @@ impl ModVersion {
 
         let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
 
-        for x in records.iter() {
+        for x in records.into_iter() {
             let mod_id = x.mod_id.clone();
             let version = x.into_mod_version();
             match ret.entry(mod_id) {
@@ -162,13 +162,11 @@ impl ModVersion {
             return Err(ApiError::DbError);
         }
         match result.unwrap() {
-            None => {
-                return Err(ApiError::NotFound(format!(
-                    "Mod {}, version {} doesn't exist",
-                    id, version
-                )))
-            }
-            Some(r) => return Ok(r.download_link),
+            None => Err(ApiError::NotFound(format!(
+                "Mod {}, version {} doesn't exist",
+                id, version
+            ))),
+            Some(r) => Ok(r.download_link),
         }
     }
 
@@ -189,8 +187,8 @@ impl ModVersion {
         separated.push_bind(false);
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
-        separated.push_bind(&json.early_load);
-        separated.push_bind(&json.api);
+        separated.push_bind(json.early_load);
+        separated.push_bind(json.api);
         separated.push_bind(&json.id);
         separated.push_unseparated(") RETURNING id");
         let result = builder.build().fetch_one(&mut *pool).await;
@@ -265,11 +263,7 @@ impl ModVersion {
             deps.into_iter()
                 .map(|x| ResponseDependency {
                     mod_id: x.mod_id.clone(),
-                    version: format!(
-                        "{}{}",
-                        x.compare.to_string(),
-                        x.version.trim_start_matches("v")
-                    ),
+                    version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
                     importance: x.importance,
                 })
                 .collect(),
@@ -280,11 +274,7 @@ impl ModVersion {
                 .into_iter()
                 .map(|x| ResponseIncompatibility {
                     mod_id: x.mod_id.clone(),
-                    version: format!(
-                        "{}{}",
-                        x.compare.to_string(),
-                        x.version.trim_start_matches("v")
-                    ),
+                    version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
                     importance: x.importance,
                 })
                 .collect(),
@@ -315,7 +305,7 @@ impl ModVersion {
         query_builder.push("WHERE mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(" AND version = ");
-        let version = version.trim_start_matches("v");
+        let version = version.trim_start_matches('v');
         query_builder.push_bind(version);
 
         let result = query_builder.build().execute(&mut *pool).await;
@@ -323,7 +313,7 @@ impl ModVersion {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(r) => {
                 if r.rows_affected() == 0 {

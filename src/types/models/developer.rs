@@ -58,7 +58,7 @@ impl Developer {
         match result {
             Err(e) => {
                 log::info!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(r) => Ok(r),
         }

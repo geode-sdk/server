@@ -73,7 +73,7 @@ pub struct ModGDVersionCreate {
     pub platform: VerPlatform,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct DetailedGDVersion {
     pub win: Option<GDVersionEnum>,
     #[serde(skip_serializing)]
@@ -103,45 +103,26 @@ impl DetailedGDVersion {
                 })
             }
         }
-        if self.win.is_some() {
-            if json.windows {
-                ret.push(ModGDVersionCreate {
-                    gd: self.win.unwrap(),
-                    platform: VerPlatform::Win,
-                });
-            }
+        if self.win.is_some() && json.windows {
+            ret.push(ModGDVersionCreate {
+                gd: self.win.unwrap(),
+                platform: VerPlatform::Win,
+            });
         }
-        if self.mac.is_some() {
-            if json.mac {
-                ret.push(ModGDVersionCreate {
-                    gd: self.mac.unwrap(),
-                    platform: VerPlatform::Mac,
-                });
-            }
+        if self.mac.is_some() && json.mac {
+            ret.push(ModGDVersionCreate {
+                gd: self.mac.unwrap(),
+                platform: VerPlatform::Mac,
+            });
         }
-        if self.ios.is_some() {
-            if json.ios {
-                ret.push(ModGDVersionCreate {
-                    gd: self.ios.unwrap(),
-                    platform: VerPlatform::Ios,
-                });
-            }
+        if self.ios.is_some() && json.ios {
+            ret.push(ModGDVersionCreate {
+                gd: self.ios.unwrap(),
+                platform: VerPlatform::Ios,
+            });
         }
 
         ret
-    }
-}
-
-impl Default for DetailedGDVersion {
-    fn default() -> Self {
-        DetailedGDVersion {
-            mac: None,
-            ios: None,
-            win: None,
-            android: None,
-            android32: None,
-            android64: None,
-        }
     }
 }
 
@@ -151,15 +132,15 @@ impl ModGDVersion {
         mod_version_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if json.len() == 0 {
+        if json.is_empty() {
             return Err(ApiError::BadRequest(
                 "mod.json gd version array has no elements".to_string(),
             ));
         }
-        match check_for_duplicate_platforms(&json) {
-            Err(e) => return Err(ApiError::BadRequest(e)),
-            Ok(_) => (),
-        };
+
+        if let Err(e) = check_for_duplicate_platforms(&json) {
+            return Err(ApiError::BadRequest(e));
+        }
 
         let mut builder: QueryBuilder<Postgres> =
             QueryBuilder::new("INSERT INTO mod_gd_versions (gd, platform, mod_id) VALUES ");
@@ -177,14 +158,10 @@ impl ModGDVersion {
             }
         }
 
-        let result = builder.build().execute(&mut *pool).await;
-        match result {
-            Err(e) => {
-                log::error!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(_) => (),
-        };
+        if let Err(e) = builder.build().execute(&mut *pool).await {
+            log::error!("{:?}", e);
+            return Err(ApiError::DbError);
+        }
 
         Ok(())
     }
@@ -274,7 +251,7 @@ impl ModGDVersion {
         versions: Vec<i32>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, DetailedGDVersion>, ApiError> {
-        if versions.len() == 0 {
+        if versions.is_empty() {
             return Err(ApiError::DbError);
         }
         let mut builder: QueryBuilder<Postgres> =
