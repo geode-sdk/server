@@ -8,6 +8,7 @@ use crate::{
         api::{ApiError, ApiResponse},
         mod_json::ModJson,
         models::{
+            developer::Developer,
             mod_entity::{download_geode_file, Mod},
             mod_version::ModVersion,
         },
@@ -74,8 +75,15 @@ pub async fn create_version(
     path: web::Path<CreateVersionPath>,
     data: web::Data<AppData>,
     payload: web::Json<CreateQueryParams>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    if !(Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
+        return Err(ApiError::Forbidden);
+    }
+
     let mut file_path = download_geode_file(&payload.download_url).await?;
     let json = ModJson::from_zip(&mut file_path, payload.download_url.as_str())
         .or(Err(ApiError::FilesystemError))?;
@@ -86,10 +94,9 @@ pub async fn create_version(
         )));
     }
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
-    let result = Mod::new_version(&json, &mut transaction).await;
-    if result.is_err() {
+    if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
         let _ = transaction.rollback().await;
-        return Err(result.err().unwrap());
+        return Err(e);
     }
     let _ = transaction.commit().await;
     Ok(HttpResponse::NoContent())

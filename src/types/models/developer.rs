@@ -63,4 +63,27 @@ impl Developer {
             Ok(r) => Ok(r),
         }
     }
+
+    pub async fn has_access_to_mod(
+        dev_id: i32,
+        mod_id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<bool, ApiError> {
+        let found = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM mods_developers
+            WHERE developer_id = $1 AND mod_id = $2",
+            dev_id,
+            mod_id
+        )
+        .fetch_one(&mut *pool)
+        .await;
+
+        match found {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(count) => Ok(count.is_some() && count.unwrap() != 0),
+        }
+    }
 }

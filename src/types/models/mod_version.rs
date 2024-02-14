@@ -170,7 +170,11 @@ impl ModVersion {
         }
     }
 
-    pub async fn create_from_json(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn create_from_json(
+        json: &ModJson,
+        dev_verified: bool,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
@@ -184,7 +188,7 @@ impl ModVersion {
         separated.push_bind(&json.name);
         separated.push_bind(&json.version);
         separated.push_bind(&json.download_url);
-        separated.push_bind(false);
+        separated.push_bind(dev_verified);
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
         separated.push_bind(json.early_load);

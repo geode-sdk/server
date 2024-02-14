@@ -272,13 +272,18 @@ impl Mod {
                 json.geode
             )));
         };
+        let dev_verified = developer.verified;
 
         Mod::create(json, developer, pool).await?;
-        ModVersion::create_from_json(json, pool).await?;
+        ModVersion::create_from_json(json, dev_verified, pool).await?;
         Ok(())
     }
 
-    pub async fn new_version(json: &ModJson, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn new_version(
+        json: &ModJson,
+        developer: FetchedDeveloper,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
         let result = sqlx::query!(
             "SELECT DISTINCT m.id FROM mods m
             INNER JOIN mod_versions mv ON mv.mod_id = m.id
@@ -322,7 +327,7 @@ impl Mod {
                 json.version, latest.version
             )));
         }
-        ModVersion::create_from_json(json, pool).await?;
+        ModVersion::create_from_json(json, developer.verified, pool).await?;
         Ok(())
     }
 
