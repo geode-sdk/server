@@ -175,7 +175,7 @@ components:
   schemas:
     ModID:
       type: string
-      pattern: '^[\w\-]\.[\w\-]$'
+      pattern: '^[\w\-]+\.[\w\-]+$'
       description: Mod ID
       examples: 
         - geode.devtools
