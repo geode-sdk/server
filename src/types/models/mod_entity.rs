@@ -341,7 +341,48 @@ impl Mod {
             )));
         }
         ModVersion::create_from_json(json, developer.verified, pool).await?;
+        Mod::update_mod_image(&json.id, &json.logo, pool).await?;
         Ok(())
+    }
+
+    pub async fn update_mod_image(
+        id: &str,
+        image: &Vec<u8>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        match sqlx::query!("UPDATE mods SET image = $1 WHERE id = $2", &image, id)
+            .execute(&mut *pool)
+            .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(_) => Ok(()),
+        }
+    }
+
+    pub async fn get_logo_for_mod(
+        id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<Option<Vec<u8>>, ApiError> {
+        match sqlx::query!(
+            "SELECT DISTINCT m.image FROM mods m
+        INNER JOIN mod_versions mv ON mv.mod_id = m.id WHERE m.id = $1 AND mv.validated = true",
+            id
+        )
+        .fetch_optional(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(r) => match r {
+                Some(r) => Ok(r.image),
+                None => Ok(None),
+            },
+        }
     }
 
     pub async fn try_update_latest_version(
@@ -421,7 +462,7 @@ impl Mod {
         if json.about.is_some() {
             query_builder.push("about, ");
         }
-        query_builder.push("id, latest_version) VALUES (");
+        query_builder.push("id, latest_version, image) VALUES (");
         let mut separated = query_builder.separated(", ");
         if json.repository.is_some() {
             separated.push_bind(json.repository.as_ref().unwrap());
@@ -434,6 +475,7 @@ impl Mod {
         }
         separated.push_bind(&json.id);
         separated.push_bind(&json.version);
+        separated.push_bind(&json.logo);
         separated.push_unseparated(")");
 
         let _ = query_builder

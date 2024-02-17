@@ -88,3 +88,17 @@ pub async fn create(
     }
     Ok(HttpResponse::NoContent())
 }
+
+#[get("/v1/mods/{id}/logo")]
+pub async fn get_logo(
+    data: web::Data<AppData>,
+    path: web::Path<String>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let image = Mod::get_logo_for_mod(&path, &mut pool).await?;
+
+    match image {
+        Some(i) => Ok(HttpResponse::Ok().content_type("image/png").body(i)),
+        None => Err(ApiError::NotFound("".into())),
+    }
+}

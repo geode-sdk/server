@@ -1,10 +1,20 @@
-use std::io::{Cursor, Read};
+use std::{
+    fs::{remove_file, File},
+    io::{Cursor, Read, Seek},
+    os::unix::fs::MetadataExt,
+};
 
-use actix_web::web::Bytes;
+use actix_web::{web::Bytes, CustomizeResponder};
+use image::{
+    codecs::png::{PngDecoder, PngEncoder},
+    io::Reader,
+    DynamicImage, EncodableLayout, GenericImageView, ImageDecoder, ImageEncoder,
+};
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
-use zip::read::ZipFile;
+use uuid::Uuid;
+use zip::read::{self, ZipFile};
 
 use super::{
     api::ApiError,
@@ -46,6 +56,8 @@ pub struct ModJson {
     #[serde(default)]
     pub api: bool,
     pub gd: ModJsonGDVersionType,
+    #[serde(skip_deserializing)]
+    pub logo: Vec<u8>,
     pub about: Option<String>,
     pub changelog: Option<String>,
     pub dependencies: Option<Vec<ModJsonDependency>>,
@@ -181,6 +193,12 @@ impl ModJson {
                         Ok(r) => Some(r),
                     };
                 }
+
+                if file.name() == "logo.png" {
+                    let bytes = validate_mod_logo(&mut file)?;
+                    json.logo = bytes;
+                    continue;
+                }
             }
         }
         Ok(json)
@@ -252,6 +270,56 @@ impl ModJson {
 
         Ok(ret)
     }
+}
+
+fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
+    let mut logo: Vec<u8> = vec![];
+    if let Err(e) = file.read_to_end(&mut logo) {
+        log::error!("{}", e);
+        return Err(ApiError::BadRequest("Couldn't read logo.png".to_string()));
+    }
+
+    let mut reader = BufReader::new(Cursor::new(logo));
+
+    let decoder = match PngDecoder::new(&mut reader) {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
+        }
+    };
+    let img = match DynamicImage::from_decoder(decoder) {
+        Ok(i) => i,
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
+        }
+    };
+
+    let dimensions = img.dimensions();
+    if (dimensions.0 > 336) || (dimensions.1 > 336) {
+        img.resize(336, 336, image::imageops::FilterType::Lanczos3);
+    }
+
+    let mut cursor: Cursor<Vec<u8>> = Cursor::new(vec![]);
+
+    let encoder = PngEncoder::new_with_quality(
+        &mut cursor,
+        image::codecs::png::CompressionType::Best,
+        image::codecs::png::FilterType::NoFilter,
+    );
+
+    let (width, height) = img.dimensions();
+
+    encoder
+        .write_image(img.as_bytes(), width, height, image::ColorType::Rgba8)
+        .or(Err(ApiError::FilesystemError))?;
+    cursor.seek(std::io::SeekFrom::Start(0)).unwrap();
+
+    let mut bytes: Vec<u8> = vec![];
+    cursor.read_to_end(&mut bytes).unwrap();
+
+    Ok(bytes)
 }
 
 fn compare_versions(
