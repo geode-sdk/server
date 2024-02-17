@@ -187,22 +187,18 @@ impl ModJson {
         Ok(json)
     }
 
-    pub async fn query_dependencies(
-        &self,
-        pool: &mut PgConnection,
-    ) -> Result<Vec<DependencyCreate>, ApiError> {
+    pub fn prepare_dependencies_for_create(&self) -> Result<Vec<DependencyCreate>, ApiError> {
         let deps = match self.dependencies.as_ref() {
-            None => return Err(ApiError::InternalError),
+            None => return Ok(vec![]),
             Some(d) => d,
         };
 
         if deps.is_empty() {
-            return Err(ApiError::InternalError);
+            return Ok(vec![]);
         }
 
         let mut ret: Vec<DependencyCreate> = vec![];
 
-        // I am going to n+1 this, I am sorry, will optimize later
         for i in deps {
             let (dependency_ver, compare) = match split_version_and_compare(i.version.as_str()) {
                 Err(_) => {
@@ -213,61 +209,29 @@ impl ModJson {
                 }
                 Ok((ver, compare)) => (ver, compare),
             };
-
-            let versions = sqlx::query!(
-                "SELECT id, version FROM mod_versions WHERE mod_id = $1 and validated = true",
-                i.id
-            )
-            .fetch_all(&mut *pool)
-            .await;
-            let versions = match versions {
-                Err(_) => return Err(ApiError::DbError),
-                Ok(v) => v,
-            };
-            if versions.is_empty() {
-                return Err(ApiError::BadRequest(format!(
-                    "Couldn't find dependency {} on the index",
-                    i.id
-                )));
-            }
-            let mut found = false;
-            for j in versions {
-                // This should never fail (I hope)
-                let parsed = semver::Version::parse(&j.version).unwrap();
-                if compare_versions(&parsed, &dependency_ver, &compare) {
-                    ret.push(DependencyCreate {
-                        dependency_id: j.id,
-                        compare,
-                        importance: i.importance,
-                    });
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return Err(ApiError::BadRequest(format!(
-                    "Couldn't find dependency version that satisfies semver compare {}",
-                    i.version
-                )));
-            }
+            ret.push(DependencyCreate {
+                dependency_id: i.id.clone(),
+                version: dependency_ver.to_string(),
+                compare,
+                importance: i.importance,
+            });
         }
 
         Ok(ret)
     }
 
-    pub async fn query_incompatibilities(
+    pub fn prepare_incompatibilities_for_create(
         &self,
-        pool: &mut PgConnection,
     ) -> Result<Vec<IncompatibilityCreate>, ApiError> {
         let incompat = match self.incompatibilities.as_ref() {
-            None => return Err(ApiError::InternalError),
+            None => return Ok(vec![]),
             Some(d) => d,
         };
 
         if incompat.is_empty() {
-            return Err(ApiError::InternalError);
+            return Ok(vec![]);
         }
-        let mut ret: Vec<_> = vec![];
+        let mut ret: Vec<IncompatibilityCreate> = vec![];
 
         for i in incompat {
             let (ver, compare) = match split_version_and_compare(i.version.as_str()) {
@@ -279,43 +243,12 @@ impl ModJson {
                 }
                 Ok((ver, compare)) => (ver, compare),
             };
-
-            let versions = sqlx::query!(
-                "SELECT id, version FROM mod_versions WHERE mod_id = $1",
-                i.id
-            )
-            .fetch_all(&mut *pool)
-            .await;
-            let versions = match versions {
-                Err(_) => return Err(ApiError::DbError),
-                Ok(v) => v,
-            };
-            if versions.is_empty() {
-                return Err(ApiError::BadRequest(format!(
-                    "Couldn't find incompatibility {} on the index",
-                    i.id
-                )));
-            }
-            let mut found = false;
-            for j in versions {
-                // This should never fail (I hope)
-                let parsed = semver::Version::parse(&j.version).unwrap();
-                if compare_versions(&parsed, &ver, &compare) {
-                    ret.push(IncompatibilityCreate {
-                        incompatibility_id: j.id,
-                        compare,
-                        importance: i.importance,
-                    });
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return Err(ApiError::BadRequest(format!(
-                    "Couldn't find incompatibility version that satisfies semver compare {}",
-                    i.version
-                )));
-            }
+            ret.push(IncompatibilityCreate {
+                incompatibility_id: i.id.clone(),
+                version: ver.to_string(),
+                compare,
+                importance: i.importance,
+            });
         }
 
         Ok(ret)

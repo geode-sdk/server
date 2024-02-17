@@ -5,15 +5,16 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
-    pub mod_id: String,
+    pub mod_id: i32,
     pub version: String,
-    pub incompatibility_id: i32,
+    pub incompatibility_id: String,
     pub compare: ModVersionCompare,
     pub importance: IncompatibilityImportance,
 }
 
 pub struct IncompatibilityCreate {
-    pub incompatibility_id: i32,
+    pub incompatibility_id: String,
+    pub version: String,
     pub compare: ModVersionCompare,
     pub importance: IncompatibilityImportance,
 }
@@ -21,7 +22,7 @@ pub struct IncompatibilityCreate {
 #[derive(sqlx::FromRow)]
 pub struct Incompatibility {
     pub mod_id: i32,
-    pub incompatibility_id: i32,
+    pub incompatibility_id: String,
     pub compare: ModVersionCompare,
     pub importance: IncompatibilityImportance,
 }
@@ -54,10 +55,9 @@ impl Incompatibility {
             let mut separated = builder.separated(", ");
             separated.push_unseparated("(");
             separated.push_bind(id);
-            separated.push_bind(i.incompatibility_id);
+            separated.push_bind(&i.incompatibility_id);
             separated.push_bind(i.compare);
             separated.push_bind(i.importance);
-            log::info!("{}", index);
             separated.push_unseparated(")");
             if index != incompats.len() - 1 {
                 separated.push_unseparated(", ");
@@ -77,21 +77,23 @@ impl Incompatibility {
         id: i32,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedIncompatibility>, ApiError> {
-        let result = sqlx::query_as!(
+        match sqlx::query_as!(
             FetchedIncompatibility,
-            r#"SELECT icp.compare as "compare: ModVersionCompare",
-            icp.importance as "importance: IncompatibilityImportance",
-            icp.incompatibility_id, mv.mod_id, mv.version FROM incompatibilities icp
-            INNER JOIN mod_versions mv ON icp.mod_id = mv.id
+            r#"SELECT icp.compare as "compare: _",
+            icp.importance as "importance: _",
+            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
+            INNER JOIN mod_versions mv ON mv.id = icp.mod_id
             WHERE mv.id = $1 AND mv.validated = true"#,
             id
         )
         .fetch_all(&mut *pool)
-        .await;
-        if result.is_err() {
-            log::info!("{}", result.err().unwrap());
-            return Err(ApiError::DbError);
+        .await
+        {
+            Ok(d) => Ok(d),
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
         }
-        Ok(result.unwrap())
     }
 }

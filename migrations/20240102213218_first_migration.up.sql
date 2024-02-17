@@ -60,22 +60,24 @@ CREATE TABLE mod_gd_versions (
 
 CREATE TABLE dependencies (
     dependent_id INTEGER NOT NULL,
-    dependency_id INTEGER NOT NULL,
+    dependency_id TEXT NOT NULL,
+    version TEXT NOT NULL,
     compare version_compare NOT NULL,
     importance dependency_importance NOT NULL,
     PRIMARY KEY (dependent_id, dependency_id),
     FOREIGN KEY (dependent_id) REFERENCES mod_versions(id),
-    FOREIGN KEY (dependency_id) REFERENCES mod_versions(id)
+    FOREIGN KEY (dependency_id) REFERENCES mods(id)
 );
 
 CREATE TABLE incompatibilities (
     mod_id INTEGER NOT NULL,
-    incompatibility_id INTEGER NOT NULL,
+    incompatibility_id TEXT NOT NULL,
+    version TEXT NOT NULL,
     compare version_compare NOT NULL,
     importance incompatibility_importance NOT NULL,
     PRIMARY KEY (mod_id, incompatibility_id),
     FOREIGN KEY (mod_id) REFERENCES mod_versions(id),
-    FOREIGN KEY (incompatibility_id) REFERENCES mod_versions(id)
+    FOREIGN KEY (incompatibility_id) REFERENCES mods(id)
 );
 
 CREATE TABLE developers (

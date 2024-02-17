@@ -9,7 +9,7 @@ use crate::{
 use actix_web::web::Bytes;
 use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder};
-use std::{io::Cursor, str::FromStr};
+use std::{collections::HashMap, io::Cursor, str::FromStr};
 
 use super::{
     developer::{Developer, FetchedDeveloper, ModDeveloper},
@@ -290,6 +290,57 @@ impl Mod {
         Mod::create(json, developer, pool).await?;
         ModVersion::create_from_json(json, dev_verified, pool).await?;
         Ok(())
+    }
+
+    pub async fn get_all_version_strings_for_mod(
+        id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<String>, ApiError> {
+        let result = match sqlx::query!(
+            "SELECT version FROM mod_versions WHERE mod_id = $1 AND validated = true",
+            id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+        Ok(result.iter().map(|x| x.version.clone()).collect())
+    }
+
+    pub async fn get_all_version_strings_for_mods(
+        ids: Vec<String>,
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<String, Vec<String>>, ApiError> {
+        let mut ret: HashMap<String, Vec<String>> = HashMap::new();
+        if ids.is_empty() {
+            return Ok(ret);
+        }
+        let result = match sqlx::query!(
+            "SELECT version, mod_id FROM mod_versions WHERE mod_id = ANY($1) AND validated = true",
+            &ids
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+        for i in result {
+            if ret.contains_key(&i.mod_id) {
+                ret.get_mut(&i.mod_id).unwrap().push(i.version);
+            } else {
+                ret.insert(i.mod_id.clone(), vec![i.version]);
+            }
+        }
+        Ok(ret)
     }
 
     pub async fn new_version(

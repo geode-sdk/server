@@ -217,7 +217,7 @@ impl ModVersion {
             }
         }
         if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
-            let dependencies = json.query_dependencies(pool).await?;
+            let dependencies = json.prepare_dependencies_for_create()?;
             if !dependencies.is_empty() {
                 Dependency::create_for_mod_version(id, dependencies, pool).await?;
             }
@@ -227,7 +227,7 @@ impl ModVersion {
             .as_ref()
             .is_some_and(|x| !x.is_empty())
         {
-            let incompat = json.query_incompatibilities(pool).await?;
+            let incompat = json.prepare_incompatibilities_for_create()?;
             if !incompat.is_empty() {
                 Incompatibility::create_for_mod_version(id, incompat, pool).await?;
             }
@@ -266,11 +266,11 @@ impl ModVersion {
 
         let mut version = result.unwrap().into_mod_version();
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
-        let deps = Dependency::get_for_mod_version(version.id, pool).await?;
+        let deps = Dependency::get_for_mod_version(&version, pool).await?;
         version.dependencies = Some(
             deps.into_iter()
                 .map(|x| ResponseDependency {
-                    mod_id: x.mod_id.clone(),
+                    mod_id: x.dependency_id.clone(),
                     version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
                     importance: x.importance,
                 })
@@ -281,7 +281,7 @@ impl ModVersion {
             incompat
                 .into_iter()
                 .map(|x| ResponseIncompatibility {
-                    mod_id: x.mod_id.clone(),
+                    mod_id: x.incompatibility_id.clone(),
                     version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
                     importance: x.importance,
                 })
