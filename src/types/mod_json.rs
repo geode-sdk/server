@@ -1,20 +1,14 @@
-use std::{
-    fs::{remove_file, File},
-    io::{Cursor, Read, Seek},
-    os::unix::fs::MetadataExt,
-};
+use std::io::{Cursor, Read, Seek};
 
-use actix_web::{web::Bytes, CustomizeResponder};
+use actix_web::web::Bytes;
 use image::{
     codecs::png::{PngDecoder, PngEncoder},
-    io::Reader,
-    DynamicImage, EncodableLayout, GenericImageView, ImageDecoder, ImageEncoder,
+    DynamicImage, GenericImageView, ImageEncoder,
 };
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
-use uuid::Uuid;
-use zip::read::{self, ZipFile};
+use zip::read::ZipFile;
 
 use super::{
     api::ApiError,

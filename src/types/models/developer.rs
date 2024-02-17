@@ -5,10 +5,12 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
+#[derive(Serialize, Clone, Debug)]
 pub struct Developer {
     pub id: i32,
     pub username: String,
     pub display_name: String,
+    pub is_owner: bool,
 }
 
 pub struct FetchedDeveloper {
@@ -17,16 +19,6 @@ pub struct FetchedDeveloper {
     pub display_name: String,
     pub verified: bool,
     pub admin: bool,
-}
-
-#[derive(Serialize, Clone, Debug)]
-pub struct ModDeveloper {
-    pub id: i32,
-    pub username: String,
-    pub display_name: String,
-    pub verified: bool,
-    pub admin: bool,
-    pub is_owner: bool
 }
 
 impl Developer {
@@ -60,10 +52,10 @@ impl Developer {
     pub async fn get_by_github_id(
         github_id: i64,
         pool: &mut PgConnection,
-    ) -> Result<Option<Developer>, ApiError> {
+    ) -> Result<Option<FetchedDeveloper>, ApiError> {
         let result = sqlx::query_as!(
-            Developer,
-            "SELECT id, username, display_name
+            FetchedDeveloper,
+            "SELECT id, username, display_name, verified, admin
             FROM developers WHERE github_user_id = $1",
             github_id
         )
@@ -149,27 +141,28 @@ impl Developer {
     pub async fn fetch_for_mod(
         mod_id: &str,
         pool: &mut PgConnection,
-    ) -> Result<Vec<ModDeveloper>, ApiError> {
+    ) -> Result<Vec<Developer>, ApiError> {
         match sqlx::query_as!(
-            ModDeveloper, 
-            "SELECT dev.id, dev.username, dev.display_name, dev.verified, dev.admin, md.is_owner FROM developers dev
-            INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id = $1", 
+            Developer,
+            "SELECT dev.id, dev.username, dev.display_name, md.is_owner FROM developers dev
+            INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id = $1",
             mod_id
-        ).fetch_all(&mut *pool)
-        .await 
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Err(e) => {
                 log::error!("{}", e);
                 Err(ApiError::DbError)
-            },
-            Ok(r) => Ok(r)
+            }
+            Ok(r) => Ok(r),
         }
     }
 
     pub async fn fetch_for_mods(
         mod_ids: &Vec<&str>,
-        pool: &mut PgConnection
-    ) -> Result<HashMap<String, Vec<ModDeveloper>>, ApiError> {
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<String, Vec<Developer>>, ApiError> {
         if mod_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -179,13 +172,11 @@ impl Developer {
             pub id: i32,
             pub username: String,
             pub display_name: String,
-            pub verified: bool,
-            pub admin: bool,
-            pub is_owner: bool
+            pub is_owner: bool,
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT dev.id, dev.username, dev.display_name, dev.verified, dev.admin, md.is_owner, md.mod_id FROM developers dev 
+            "SELECT dev.id, dev.username, dev.display_name, dev.verified, md.is_owner, md.mod_id FROM developers dev 
             INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id IN ("
         );
 
@@ -195,30 +186,30 @@ impl Developer {
         }
         split.push_unseparated(")");
 
-        let result = match query_builder.build_query_as::<QueryResult>()
+        let result = match query_builder
+            .build_query_as::<QueryResult>()
             .fetch_all(&mut *pool)
-            .await {
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                },
-                Ok(r) => r
-            };
-        
+            .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(r) => r,
+        };
+
         let mut ret = HashMap::new();
 
         for result_item in result {
-            let mod_dev = ModDeveloper {
+            let mod_dev = Developer {
                 id: result_item.id,
                 username: result_item.username,
                 display_name: result_item.display_name,
-                verified: result_item.verified,
-                admin: result_item.admin,
-                is_owner: result_item.is_owner
+                is_owner: result_item.is_owner,
             };
             match ret.entry(result_item.mod_id) {
                 Entry::Vacant(e) => {
-                    let vector: Vec<ModDeveloper> = vec![mod_dev];
+                    let vector: Vec<Developer> = vec![mod_dev];
                     e.insert(vector);
                 }
                 Entry::Occupied(mut e) => e.get_mut().push(mod_dev),

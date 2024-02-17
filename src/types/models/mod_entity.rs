@@ -12,7 +12,7 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 use std::{io::Cursor, str::FromStr};
 
 use super::{
-    developer::{Developer, FetchedDeveloper, ModDeveloper},
+    developer::{Developer, FetchedDeveloper},
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
     tag::Tag,
 };
@@ -23,7 +23,7 @@ pub struct Mod {
     pub repository: Option<String>,
     pub latest_version: String,
     pub validated: bool,
-    pub developers: Vec<ModDeveloper>,
+    pub developers: Vec<Developer>,
     pub versions: Vec<ModVersion>,
     pub tags: Vec<String>,
     pub about: Option<String>,
