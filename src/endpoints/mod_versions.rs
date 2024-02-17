@@ -1,6 +1,9 @@
-use actix_web::{get, post, put, web, HttpResponse, Responder};
+use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
-use sqlx::Acquire;
+use sqlx::{
+    types::ipnetwork::{self, Ipv4Network},
+    Acquire,
+};
 
 use crate::{
     extractors::auth::Auth,
@@ -9,6 +12,7 @@ use crate::{
         mod_json::ModJson,
         models::{
             developer::Developer,
+            download,
             mod_entity::{download_geode_file, Mod},
             mod_version::ModVersion,
         },
@@ -62,9 +66,20 @@ pub async fn get_one(
 pub async fn download_version(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
+    info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mod_version = ModVersion::get_one(&path.id, &path.version, &mut pool).await?;
     let url = ModVersion::get_download_url(&path.id, &path.version, &mut pool).await?;
+
+    let ip = match info.realip_remote_addr() {
+        None => return Err(ApiError::InternalError),
+        Some(i) => i,
+    };
+    let net: Ipv4Network = ip.parse().or(Err(ApiError::InternalError))?;
+
+    download::create_download(ipnetwork::IpNetwork::V4(net), mod_version.id, &mut pool).await?;
+
     Ok(HttpResponse::Found()
         .append_header(("Location", url))
         .finish())

@@ -13,6 +13,7 @@ use crate::types::api::ApiError;
 mod auth;
 mod endpoints;
 mod extractors;
+mod jobs;
 mod types;
 
 pub struct AppData {

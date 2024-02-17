@@ -1,5 +1,6 @@
 pub mod dependency;
 pub mod developer;
+pub mod download;
 pub mod github_login_attempt;
 pub mod incompatibility;
 pub mod mod_entity;
