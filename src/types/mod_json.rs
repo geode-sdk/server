@@ -3,7 +3,6 @@ use std::io::{Cursor, Read};
 use actix_web::web::Bytes;
 use semver::Version;
 use serde::Deserialize;
-use sqlx::PgConnection;
 use std::io::BufReader;
 use zip::read::ZipFile;
 
