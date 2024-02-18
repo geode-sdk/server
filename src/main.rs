@@ -4,6 +4,7 @@ use actix_web::{
     web::{self, QueryConfig},
     App, HttpServer, Responder,
 };
+use clap::Parser;
 use env_logger::Env;
 use log::info;
 
@@ -16,12 +17,20 @@ mod extractors;
 mod jobs;
 mod types;
 
+#[derive(Clone)]
 pub struct AppData {
     db: sqlx::postgres::PgPool,
     debug: bool,
     app_url: String,
     github_client_id: String,
     github_client_secret: String,
+}
+
+#[derive(Debug, Parser)]
+struct Args {
+    /// Name of the script to run
+    #[arg(short, long)]
+    script: Option<String>,
 }
 
 #[get("/")]
@@ -54,16 +63,27 @@ async fn main() -> anyhow::Result<()> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
 
+    let app_data = AppData {
+        db: pool.clone(),
+        debug,
+        app_url: app_url.clone(),
+        github_client_id: github_client.clone(),
+        github_client_secret: github_secret.clone(),
+    };
+
+    let args = Args::parse();
+    if let Some(s) = args.script {
+        if let Err(e) = jobs::start_job(&s, app_data).await {
+            log::error!("Error encountered while running job: {}", e);
+        }
+        log::info!("Job {} completed", s);
+        return anyhow::Ok(());
+    }
+
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppData {
-                db: pool.clone(),
-                debug,
-                app_url: app_url.clone(),
-                github_client_id: github_client.clone(),
-                github_client_secret: github_secret.clone(),
-            }))
+            .app_data(web::Data::new(app_data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(Logger::default())
             .service(endpoints::mods::index)

@@ -12,4 +12,3 @@ alter table mods add column download_count integer not null default 0;
 alter table mods add column last_download_cache_refresh timestamptz;
 
 alter table mod_versions add column download_count integer not null default 0;
-alter table mod_versions add column last_download_cache_refresh timestamptz;
