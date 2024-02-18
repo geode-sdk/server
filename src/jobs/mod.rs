@@ -4,7 +4,7 @@ mod download_cache;
 
 pub async fn start_job(name: &str, app_data: AppData) -> Result<(), String> {
     match name {
-        "download_cache" => {
+        "download-cache" => {
             let mut pool = app_data
                 .db
                 .acquire()
