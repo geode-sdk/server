@@ -25,7 +25,7 @@ pub async fn create_download(
         }
     };
 
-    if let Some(_) = existing {
+    if existing.is_some() {
         return Ok(());
     }
 
