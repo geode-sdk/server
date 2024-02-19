@@ -1,5 +1,5 @@
 use crate::{
-    endpoints::mods::IndexQueryParams,
+    endpoints::mods::{IndexQueryParams, IndexSortType},
     types::{
         api::{ApiError, PaginatedData},
         mod_json::ModJson,
@@ -8,7 +8,10 @@ use crate::{
 };
 use actix_web::web::Bytes;
 use serde::Serialize;
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{
+    types::chrono::{DateTime, Utc},
+    PgConnection, Postgres, QueryBuilder,
+};
 use std::{io::Cursor, str::FromStr};
 
 use super::{
@@ -39,6 +42,7 @@ struct ModRecord {
     latest_version: String,
     validated: bool,
     download_count: i32,
+    updated_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -93,7 +97,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count FROM mods m
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             WHERE mv.validated = true AND LOWER(mv.name) LIKE "
@@ -128,6 +132,16 @@ impl Mod {
                 counter_builder.push(", ");
             }
         }
+
+        match query.sort {
+            IndexSortType::Downloads => {
+                builder.push(" ORDER BY m.download_count DESC, m.id DESC");
+            }
+            IndexSortType::Date => {
+                builder.push(" ORDER BY m.updated_at DESC");
+            }
+        }
+
         builder.push(" LIMIT ");
         builder.push_bind(limit);
         builder.push(" OFFSET ");

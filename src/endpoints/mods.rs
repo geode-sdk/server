@@ -10,6 +10,14 @@ use crate::types::models::mod_entity::{download_geode_file, Mod};
 use crate::types::models::mod_gd_version::GDVersionEnum;
 use crate::AppData;
 
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexSortType {
+    Downloads,
+    #[default]
+    Date,
+}
+
 #[derive(Deserialize)]
 pub struct IndexQueryParams {
     pub page: Option<i64>,
@@ -19,6 +27,8 @@ pub struct IndexQueryParams {
     pub gd: Option<GDVersionEnum>,
     #[serde(default)]
     pub platforms: Option<String>,
+    #[serde(default)]
+    pub sort: IndexSortType,
 }
 
 #[derive(Deserialize)]
