@@ -192,4 +192,44 @@ impl Tag {
 
         Ok(ret)
     }
+
+    pub async fn parse_tags(tags: &str, pool: &mut PgConnection) -> Result<Vec<i32>, ApiError> {
+        let tags = tags
+            .split(',')
+            .map(|t| t.trim().to_lowercase())
+            .collect::<Vec<String>>();
+
+        let fetched = match sqlx::query!(
+            "SELECT DISTINCT id, name FROM mod_tags WHERE name = ANY($1)",
+            &tags
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(fetched) => fetched,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let fetched_ids = fetched.iter().map(|t| t.id.clone()).collect::<Vec<i32>>();
+        let fetched_names = fetched
+            .iter()
+            .map(|t| t.name.clone())
+            .collect::<Vec<String>>();
+
+        if fetched.len() != tags.len() {
+            return Err(ApiError::BadRequest(format!(
+                "The following tags are not allowed: '{}'",
+                tags.iter()
+                    .filter(|t| !fetched_names.contains(t))
+                    .cloned()
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )));
+        }
+
+        Ok(fetched_ids)
+    }
 }

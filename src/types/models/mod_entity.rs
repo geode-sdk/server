@@ -15,7 +15,7 @@ use sqlx::{
 use std::{io::Cursor, str::FromStr};
 
 use super::{
-    developer::{Developer, FetchedDeveloper},
+    developer::{self, Developer, FetchedDeveloper},
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
     tag::Tag,
 };
@@ -72,6 +72,10 @@ impl Mod {
         pool: &mut PgConnection,
         query: IndexQueryParams,
     ) -> Result<PaginatedData<Mod>, ApiError> {
+        let tags = match query.tags {
+            Some(t) => Tag::parse_tags(&t, pool).await?,
+            None => vec![],
+        };
         let page = query.page.unwrap_or(1);
         if page <= 0 {
             return Err(ApiError::BadRequest(
@@ -99,28 +103,84 @@ impl Mod {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at as _updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true AND LOWER(mv.name) LIKE "
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(DISTINCT m.id) FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true AND LOWER(mv.name) LIKE ",
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id ",
         );
+
+        if !tags.is_empty() {
+            let sql = "INNER JOIN mods_mod_tags mmt ON mmt.mod_id = m.id ";
+            builder.push(sql);
+            counter_builder.push(sql);
+        }
+
+        if query.developer.is_some() {
+            let sql = "INNER JOIN mods_developers md ON md.mod_id = m.id ";
+            builder.push(sql);
+            counter_builder.push(sql);
+        }
+
+        builder.push("WHERE ");
+        counter_builder.push("WHERE ");
+
+        if !tags.is_empty() {
+            let sql = "mmt.tag_id = ANY(";
+            builder.push(sql);
+            counter_builder.push(sql);
+
+            builder.push_bind(&tags);
+            counter_builder.push_bind(&tags);
+            let sql = ") AND ";
+            builder.push(sql);
+            counter_builder.push(sql);
+        }
+
+        let developer = match query.developer {
+            Some(d) => match Developer::find_by_username(&d, pool).await? {
+                Some(d) => Some(d),
+                None => {
+                    return Ok(PaginatedData {
+                        data: vec![],
+                        count: 0,
+                    })
+                }
+            },
+            None => None,
+        };
+
+        if let Some(d) = developer {
+            let sql = "md.developer_id = ";
+            builder.push(sql);
+            counter_builder.push(sql);
+            builder.push_bind(d.id);
+            counter_builder.push_bind(d.id);
+            let sql = " AND ";
+            builder.push(sql);
+            counter_builder.push(sql);
+        }
+
+        let sql = "mv.validated = true AND LOWER(mv.name) LIKE ";
+        builder.push(sql);
+        counter_builder.push(sql);
+
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()).to_lowercase());
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
         if let Some(g) = query.gd {
-            builder.push(" AND mgv.gd = ");
+            let sql = " AND mgv.gd = ";
+            builder.push(sql);
             builder.push_bind(g);
-            counter_builder.push(" AND mgv.gd = ");
+            counter_builder.push(sql);
             counter_builder.push_bind(g);
         }
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
-                builder.push(" AND mgv.platform IN (");
-                counter_builder.push(" AND mgv.platform IN (");
+                let sql = " AND mgv.platform IN (";
+                builder.push(sql);
+                counter_builder.push(sql);
             }
             builder.push_bind(*platform);
             counter_builder.push_bind(*platform);
@@ -135,10 +195,13 @@ impl Mod {
 
         match query.sort {
             IndexSortType::Downloads => {
-                builder.push(" ORDER BY m.download_count DESC, m.id DESC");
+                builder.push(" ORDER BY m.download_count DESC");
             }
-            IndexSortType::Date => {
+            IndexSortType::RecentlyUpdated => {
                 builder.push(" ORDER BY m.updated_at DESC");
+            }
+            IndexSortType::RecentlyPublished => {
+                builder.push(" ORDER BY m.created_at DESC");
             }
         }
 

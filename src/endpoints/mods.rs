@@ -13,9 +13,10 @@ use crate::AppData;
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexSortType {
-    Downloads,
     #[default]
-    Date,
+    Downloads,
+    RecentlyUpdated,
+    RecentlyPublished,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +30,8 @@ pub struct IndexQueryParams {
     pub platforms: Option<String>,
     #[serde(default)]
     pub sort: IndexSortType,
+    pub developer: Option<String>,
+    pub tags: Option<String>,
 }
 
 #[derive(Deserialize)]
