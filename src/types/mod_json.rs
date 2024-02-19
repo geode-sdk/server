@@ -47,8 +47,7 @@ pub struct ModJson {
     pub hash: String,
     #[serde(default, rename = "early-load")]
     pub early_load: bool,
-    #[serde(default)]
-    pub api: bool,
+    pub api: Option<serde_json::Value>,
     pub gd: ModJsonGDVersionType,
     #[serde(skip_deserializing)]
     pub logo: Vec<u8>,
@@ -211,6 +210,15 @@ impl ModJson {
         let mut ret: Vec<DependencyCreate> = vec![];
 
         for i in deps {
+            if i.version == "*" {
+                ret.push(DependencyCreate {
+                    dependency_id: i.id.clone(),
+                    version: "*".to_string(),
+                    compare: ModVersionCompare::MoreEq,
+                    importance: i.importance,
+                });
+                continue;
+            }
             let (dependency_ver, compare) = match split_version_and_compare(i.version.as_str()) {
                 Err(_) => {
                     return Err(ApiError::BadRequest(format!(
@@ -245,6 +253,15 @@ impl ModJson {
         let mut ret: Vec<IncompatibilityCreate> = vec![];
 
         for i in incompat {
+            if i.version == "*" {
+                ret.push(IncompatibilityCreate {
+                    incompatibility_id: i.id.clone(),
+                    version: "*".to_string(),
+                    compare: ModVersionCompare::MoreEq,
+                    importance: i.importance,
+                });
+                continue;
+            }
             let (ver, compare) = match split_version_and_compare(i.version.as_str()) {
                 Err(_) => {
                     return Err(ApiError::BadRequest(format!(
@@ -342,6 +359,9 @@ fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
 }
 
 fn validate_dependency_version_str(ver: &str) -> bool {
+    if ver == "*" {
+        return true;
+    }
     let mut copy = ver.to_string();
     if ver.starts_with("<=") {
         copy = copy.trim_start_matches("<=").to_string();

@@ -190,7 +190,7 @@ impl ModVersion {
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
         separated.push_bind(json.early_load);
-        separated.push_bind(json.api);
+        separated.push_bind(json.api.is_some());
         separated.push_bind(&json.id);
         separated.push_unseparated(") RETURNING id");
         let result = builder.build().fetch_one(&mut *pool).await;
@@ -268,7 +268,13 @@ impl ModVersion {
             deps.into_iter()
                 .map(|x| ResponseDependency {
                     mod_id: x.dependency_id.clone(),
-                    version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
+                    version: {
+                        if x.version == "*" {
+                            "*".to_string()
+                        } else {
+                            format!("{}{}", x.compare, x.version.trim_start_matches('v'))
+                        }
+                    },
                     importance: x.importance,
                 })
                 .collect(),
@@ -279,7 +285,13 @@ impl ModVersion {
                 .into_iter()
                 .map(|x| ResponseIncompatibility {
                     mod_id: x.incompatibility_id.clone(),
-                    version: format!("{}{}", x.compare, x.version.trim_start_matches('v')),
+                    version: {
+                        if x.version == "*" {
+                            "*".to_string()
+                        } else {
+                            format!("{}{}", x.compare, x.version.trim_start_matches('v'))
+                        }
+                    },
                     importance: x.importance,
                 })
                 .collect(),
