@@ -42,7 +42,7 @@ struct ModRecord {
     latest_version: String,
     validated: bool,
     download_count: i32,
-    updated_at: DateTime<Utc>,
+    _updated_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -97,7 +97,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at FROM mods m
+            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at as _updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             WHERE mv.validated = true AND LOWER(mv.name) LIKE "
@@ -178,27 +178,23 @@ impl Mod {
             });
         }
 
-        let ids: Vec<_> = records.iter().map(|x| x.id.as_str()).collect();
+        let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd, platforms).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
-        for i in &versions {
-            let mut version_ids: Vec<_> = i.1.iter().map(|x| x.id).collect();
-            mod_version_ids.append(&mut version_ids);
+        for (_, mod_version) in versions.iter() {
+            mod_version_ids.push(mod_version.id);
         }
 
         let gd_versions = ModGDVersion::get_for_mod_versions(&mod_version_ids, pool).await?;
-        let tags =
-            Tag::get_tags_for_mods(&ids.iter().map(|x| String::from(*x)).collect(), pool).await?;
+        let tags = Tag::get_tags_for_mods(&ids, pool).await?;
 
         let ret = records
             .into_iter()
             .map(|x| {
-                let mut version_vec = versions.get(&x.id).cloned().unwrap_or_default();
-                for i in &mut version_vec {
-                    let gd_ver = gd_versions.get(&i.id).cloned().unwrap_or_default();
-                    i.gd = gd_ver;
-                }
+                let mut version = versions.get(&x.id).cloned().unwrap();
+                let gd_ver = gd_versions.get(&version.id).cloned().unwrap_or_default();
+                version.gd = gd_ver;
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 let tags = tags.get(&x.id).cloned().unwrap_or_default();
@@ -208,7 +204,7 @@ impl Mod {
                     latest_version: x.latest_version.clone(),
                     validated: x.validated,
                     download_count: x.download_count,
-                    versions: version_vec,
+                    versions: vec![version],
                     tags,
                     developers: devs,
                     about: None,

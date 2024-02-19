@@ -89,10 +89,10 @@ impl ModVersion {
     }
     pub async fn get_latest_for_mods(
         pool: &mut PgConnection,
-        ids: &[&str],
+        ids: &Vec<String>,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
-    ) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    ) -> Result<HashMap<String, ModVersion>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
@@ -138,18 +138,12 @@ impl ModVersion {
             Ok(r) => r,
         };
 
-        let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
+        let mut ret: HashMap<String, ModVersion> = HashMap::new();
 
         for x in records.into_iter() {
             let mod_id = x.mod_id.clone();
             let version = x.into_mod_version();
-            match ret.entry(mod_id) {
-                Entry::Vacant(e) => {
-                    let vector: Vec<ModVersion> = vec![version];
-                    e.insert(vector);
-                }
-                Entry::Occupied(mut e) => e.get_mut().push(version),
-            }
+            ret.insert(mod_id, version);
         }
         Ok(ret)
     }

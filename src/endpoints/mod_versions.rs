@@ -62,6 +62,27 @@ pub async fn get_one(
     }))
 }
 
+#[get("v1/mods/{id}/versions/latest")]
+pub async fn get_latest(
+    path: web::Path<String>,
+    data: web::Data<AppData>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let ids = vec![path.into_inner()];
+    let version = ModVersion::get_latest_for_mods(&mut pool, &ids, None, vec![]).await?;
+    match version.get(&ids[0]) {
+        None => Err(ApiError::NotFound(format!("Mod {} not found", ids[0]))),
+        Some(v) => {
+            let mut v = v.clone();
+            v.modify_download_link(&data.app_url);
+            Ok(web::Json(ApiResponse {
+                error: "".to_string(),
+                payload: v,
+            }))
+        }
+    }
+}
+
 #[get("v1/mods/{id}/versions/{version}/download")]
 pub async fn download_version(
     path: web::Path<GetOnePath>,

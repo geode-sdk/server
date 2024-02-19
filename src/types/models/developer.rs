@@ -160,7 +160,7 @@ impl Developer {
     }
 
     pub async fn fetch_for_mods(
-        mod_ids: &Vec<&str>,
+        mod_ids: &Vec<String>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<String, Vec<Developer>>, ApiError> {
         if mod_ids.is_empty() {
