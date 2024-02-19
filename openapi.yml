@@ -12,7 +12,84 @@ tags:
     description: User management
 
 paths:
-  /mods:
+  /v1/login/github:
+    post:
+      tags:
+        - user
+      summary: Login with GitHub OAuth
+      description: This endpoint is used to login with GitHub OAuth. It returns a UUID which is used for authentication.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: "null"
+                  token:
+                    type: object
+                    properties:
+                      uuid:
+                        type: string
+                        description: The UUID used to identify the login attempt at POST /v1/login/github/poll
+                        example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
+                      interval:
+                        type: integer
+                        description: The interval in seconds to poll the server for the login status
+                        example: 5
+                      uri:
+                        type: string
+                        description: The GitHub URI for OAuth verification
+                        example: "https://github.com/login/device"
+                      code:
+                        type: string
+                        description: The code used to complete the OAuth process
+                        example: "ABCD-EFGH"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/login/github/poll:
+    post:
+      tags:
+        - user
+      summary: Poll the server for the login status
+      description: Used to poll the API for the OAuth status. Returns a token if the login was successful.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uuid:
+                  type: string
+                  description: The UUID used to identify the login attempt, taken from POST /v1/login/github
+                  example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+                description: The token used for authentication
+                example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
+        "400":
+          description: Bad request - for different reasons, like IP mismatch, interval not being respected, etc.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  payload:
+                    type: "null"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/mods:
     get:
       tags:
         - mods
@@ -35,6 +112,27 @@ paths:
           in: query
           description: Platforms that mods have to support, comma separated [win,android32,android64,mac,ios]
           example: "win,android32,android64"
+          schema:
+            type: string
+        - name: tags
+          in: query
+          description: Tags that mods have to have, comma separated. Can only use allowed tags.
+          example: "gameplay,enhancement"
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort by a specific enum field, in descending order. Default is "downloads"
+          example: "downloads"
+          schema:
+            type: enum
+            enum:
+              - downloads
+              - recently_updated
+              - recently_published
+        - name: developer
+          in: query
+          description: Filter by developer username
           schema:
             type: string
         - $ref: "#/components/parameters/GeodeVersionQuery"
@@ -83,7 +181,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /mods/{id}:
+  /v1/mods/{id}:
     get:
       tags:
         - "mods"
@@ -92,7 +190,28 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ModID"
 
-  /mods/{id}/latest:
+  /v1/mods/{id}/logo:
+    get:
+      tags:
+        - mods
+      summary: Get the logo for a mod
+      description: Returns the logo for the mod
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+      responses:
+        "200":
+          description: Returns the mod logo
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/mods/{id}/latest:
     get:
       tags:
         - mods
@@ -109,7 +228,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModVersion"
 
-  /mods/{id}/versions:
+  /v1/mods/{id}/versions:
     post:
       tags:
         - mods
@@ -144,7 +263,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /mods/{id}/versions/{version}:
+  /v1/mods/{id}/versions/{version}:
     get:
       tags:
         - mods
@@ -164,7 +283,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /mods/{id}/versions/{version}/download:
+  /v1/mods/{id}/versions/{version}/download:
     get:
       tags:
         - mods
@@ -180,7 +299,22 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /mods/updates:
+  /v1/mods/{id}/versions/latest/download:
+    get:
+      tags:
+        - mods
+      summary: Download the latest version of a mod
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+      responses:
+        "302":
+          description: Redirect to the actual mod download link
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/mods/updates:
     post:
       tags:
         - mods
@@ -215,6 +349,67 @@ paths:
             application/json:
               schema:
                 type: string
+
+  /v1/mods/{id}/developers:
+    post:
+      tags:
+        - mods
+      summary: Add a developer to a mod
+      description: This endpoint is only used for adding a developer to a mod. Must be the owner the mod to access this endpoint.
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: The username of the developer. At the moment it's the same as the GitHub username of the developer.
+                  example: "fleeym"
+
+      responses:
+        "204":
+          description: No Content (Developer added)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/mods/{id}/developers/{username}:
+    delete:
+      tags:
+        - mods
+      summary: Remove a developer from a mod
+      description: This endpoint is only used for removing a developer from a mod. Must be the owner the mod to access this endpoint.
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "fleeym"
+
+      responses:
+        "204":
+          description: No Content (Developer removed)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
 components:
   securitySchemes:
