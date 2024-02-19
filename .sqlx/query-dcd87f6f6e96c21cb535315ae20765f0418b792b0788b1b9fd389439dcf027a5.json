@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO mod_downloads (ip, mod_version_id)\n        VALUES ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dcd87f6f6e96c21cb535315ae20765f0418b792b0788b1b9fd389439dcf027a5"
+}

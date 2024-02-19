@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT dev.id, dev.username, dev.display_name, dev.verified, dev.admin, md.is_owner FROM developers dev\n            INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id = $1",
+  "query": "SELECT id, username, display_name, verified, admin\n            FROM developers WHERE github_user_id = $1",
   "describe": {
     "columns": [
       {
@@ -27,16 +27,11 @@
         "ordinal": 4,
         "name": "admin",
         "type_info": "Bool"
-      },
-      {
-        "ordinal": 5,
-        "name": "is_owner",
-        "type_info": "Bool"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
@@ -44,9 +39,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "61f630cc2364cb1d71b6f5b58e221d2c1b936d83287ac328dcb20624c2cc03dd"
+  "hash": "f59b683ceb27752b572d694c67760ddcaea1b747eb5fca61776521dc6e6b0600"
 }
