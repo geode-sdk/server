@@ -291,6 +291,26 @@ impl ModVersion {
         Ok(version)
     }
 
+    pub async fn calculate_cached_downloads(
+        mod_version_id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        if let Err(e) = sqlx::query!(
+            "UPDATE mod_versions mv SET download_count = mv.download_count + (
+                SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
+                WHERE md.mod_version_id = mv.id AND md.time_downloaded > mv.last_download_cache_refresh 
+            ), last_download_cache_refresh = now()
+            WHERE mv.id = $1 AND mv.validated = true",
+            mod_version_id
+        )
+        .execute(&mut *pool)
+        .await {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
+        Ok(())
+    }
+
     pub async fn update_version(
         id: &str,
         version: &str,

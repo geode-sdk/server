@@ -18,9 +18,11 @@ pub async fn start(pool: &mut PgConnection) -> Result<(), String> {
 
     if let Err(e) = sqlx::query!(
         "UPDATE mods m SET download_count = m.download_count + (
-            SELECT SUM(mv.download_count) FROM mod_versions mv
-            WHERE mv.mod_id = m.id AND mv.validated = true
-        ), last_download_cache_refresh = now()"
+            SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
+            INNER JOIN mod_versions mv ON md.mod_version_id = mv.id
+            WHERE mv.mod_id = m.id AND md.time_downloaded > m.last_download_cache_refresh AND mv.validated = true
+        ), last_download_cache_refresh = now()
+        WHERE m.id IN (SELECT DISTINCT mv.mod_id FROM mod_versions mv WHERE mv.validated = true)"
     )
     .execute(&mut *pool)
     .await

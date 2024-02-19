@@ -6,7 +6,7 @@ pub async fn create_download(
     ip: IpNetwork,
     mod_version_id: i32,
     pool: &mut PgConnection,
-) -> Result<(), ApiError> {
+) -> Result<bool, ApiError> {
     let existing = match sqlx::query!(
         r#"
         SELECT * FROM mod_downloads
@@ -26,7 +26,7 @@ pub async fn create_download(
     };
 
     if existing.is_some() {
-        return Ok(());
+        return Ok(false);
     }
 
     match sqlx::query!(
@@ -40,7 +40,7 @@ pub async fn create_download(
     .execute(&mut *pool)
     .await
     {
-        Ok(_) => Ok(()),
+        Ok(_) => Ok(true),
         Err(e) => {
             log::error!("{}", e);
             Err(ApiError::InternalError)

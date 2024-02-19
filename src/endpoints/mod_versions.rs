@@ -78,7 +78,10 @@ pub async fn download_version(
     };
     let net: Ipv4Network = ip.parse().or(Err(ApiError::InternalError))?;
 
-    download::create_download(ipnetwork::IpNetwork::V4(net), mod_version.id, &mut pool).await?;
+    if download::create_download(ipnetwork::IpNetwork::V4(net), mod_version.id, &mut pool).await? {
+        ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await?;
+        Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await?;
+    }
 
     Ok(HttpResponse::Found()
         .append_header(("Location", url))
