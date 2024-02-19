@@ -28,7 +28,7 @@ pub struct Incompatibility {
 }
 
 #[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize)]
-#[sqlx(type_name = "dependency_importance", rename_all = "lowercase")]
+#[sqlx(type_name = "incompatibility_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum IncompatibilityImportance {
     Breaking,
@@ -49,13 +49,14 @@ impl Incompatibility {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "INSERT INTO incompatibilities (mod_id, incompatible_id, compare, importance) VALUES ",
+            "INSERT INTO incompatibilities (mod_id, incompatibility_id, version, compare, importance) VALUES ",
         );
         for (index, i) in incompats.iter().enumerate() {
             let mut separated = builder.separated(", ");
             separated.push_unseparated("(");
             separated.push_bind(id);
             separated.push_bind(&i.incompatibility_id);
+            separated.push_bind(&i.version);
             separated.push_bind(i.compare);
             separated.push_bind(i.importance);
             separated.push_unseparated(")");
