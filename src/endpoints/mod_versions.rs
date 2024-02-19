@@ -1,9 +1,6 @@
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
-use sqlx::{
-    types::ipnetwork::{self, IpNetwork, Ipv4Network},
-    Acquire,
-};
+use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
     extractors::auth::Auth,

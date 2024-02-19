@@ -15,7 +15,7 @@ use sqlx::{
 use std::{io::Cursor, str::FromStr};
 
 use super::{
-    developer::{self, Developer, FetchedDeveloper},
+    developer::{Developer, FetchedDeveloper},
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
     tag::Tag,
 };

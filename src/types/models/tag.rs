@@ -213,7 +213,7 @@ impl Tag {
             }
         };
 
-        let fetched_ids = fetched.iter().map(|t| t.id.clone()).collect::<Vec<i32>>();
+        let fetched_ids = fetched.iter().map(|t| t.id).collect::<Vec<i32>>();
         let fetched_names = fetched
             .iter()
             .map(|t| t.name.clone())

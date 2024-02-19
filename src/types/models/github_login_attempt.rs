@@ -24,6 +24,8 @@ pub struct StoredLoginAttempt {
     pub uuid: String,
     pub ip: IpNetwork,
     pub device_code: String,
+    pub uri: String,
+    pub user_code: String,
     pub interval: i32,
     pub expires_in: i32,
     pub created_at: DateTime<Utc>,
@@ -51,18 +53,22 @@ impl GithubLoginAttempt {
         device_code: String,
         interval: i32,
         expires_in: i32,
+        uri: &str,
+        user_code: &str,
         pool: &mut PgConnection,
     ) -> Result<Uuid, ApiError> {
         let result = sqlx::query!(
             "
             INSERT INTO github_login_attempts
-            (ip, device_code, interval, expires_in) VALUES
-            ($1, $2, $3, $4) RETURNING uid
+            (ip, device_code, interval, expires_in, challenge_uri, user_code) VALUES
+            ($1, $2, $3, $4, $5, $6) RETURNING uid
             ",
             ip,
             device_code,
             interval,
-            expires_in
+            expires_in,
+            uri,
+            user_code
         )
         .fetch_one(&mut *pool)
         .await;
@@ -81,7 +87,7 @@ impl GithubLoginAttempt {
     ) -> Result<Option<StoredLoginAttempt>, ApiError> {
         let result = sqlx::query_as!(
             StoredLoginAttempt,
-            "SELECT uid as uuid, ip, device_code, interval, expires_in, created_at, last_poll
+            "SELECT uid as uuid, ip, interval, expires_in, created_at, last_poll, challenge_uri as uri, device_code, user_code
             FROM github_login_attempts
             WHERE uid = $1",
             uuid
@@ -104,7 +110,7 @@ impl GithubLoginAttempt {
     ) -> Result<Option<StoredLoginAttempt>, ApiError> {
         let result = sqlx::query_as!(
             StoredLoginAttempt,
-            "SELECT uid as uuid, ip, device_code, interval, expires_in, created_at, last_poll
+            "SELECT uid as uuid, ip, device_code, interval, expires_in, created_at, last_poll, challenge_uri as uri, user_code
             FROM github_login_attempts
             WHERE ip = $1",
             ip
@@ -121,10 +127,17 @@ impl GithubLoginAttempt {
         }
     }
 
-    pub async fn remove(uuid: Uuid, pool: &mut PgConnection) {
-        let _ = sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
+    pub async fn remove(uuid: Uuid, pool: &mut PgConnection) -> Result<(), ApiError> {
+        match sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
             .execute(&mut *pool)
-            .await;
+            .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(_) => Ok(()),
+        }
     }
 
     pub async fn poll(uuid: Uuid, pool: &mut PgConnection) {

@@ -1,7 +1,4 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    vec,
-};
+use std::collections::HashMap;
 
 use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder, Row};

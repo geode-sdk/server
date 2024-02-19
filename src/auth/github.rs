@@ -3,10 +3,8 @@ use reqwest::{
     Client, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{
-    types::ipnetwork::{IpNetwork, Ipv4Network},
-    PgConnection,
-};
+use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
+use uuid::Uuid;
 
 use crate::types::{api::ApiError, models::github_login_attempt::GithubLoginAttempt};
 
@@ -42,10 +40,18 @@ impl GithubClient {
             client_id: String,
         }
         let found_request = GithubLoginAttempt::get_one_by_ip(ip, &mut *pool).await?;
-        if found_request.is_some() {
-            return Err(ApiError::BadRequest(
-                "Login attempt already running".to_string(),
-            ));
+        if let Some(r) = found_request {
+            if r.is_expired() {
+                let uuid = Uuid::parse_str(&r.uuid).unwrap();
+                GithubLoginAttempt::remove(uuid, &mut *pool).await?;
+            } else {
+                return Ok(GithubLoginAttempt {
+                    uuid: r.uuid.to_string(),
+                    interval: r.interval,
+                    uri: r.uri,
+                    code: r.user_code,
+                });
+            }
         }
         let mut headers = HeaderMap::new();
         headers.insert("Accept", HeaderValue::from_static("application/json"));
@@ -94,6 +100,8 @@ impl GithubClient {
             body.device_code,
             body.interval,
             body.expires_in,
+            &body.verification_uri,
+            &body.user_code,
             &mut *pool,
         )
         .await?;
