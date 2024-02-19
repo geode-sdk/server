@@ -348,25 +348,20 @@ impl Mod {
             )));
         }
         ModVersion::create_from_json(json, developer.verified, pool).await?;
-        Mod::update_mod_image(&json.id, &json.logo, pool).await?;
-        Ok(())
-    }
 
-    pub async fn update_mod_image(
-        id: &str,
-        image: &Vec<u8>,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        match sqlx::query!("UPDATE mods SET image = $1 WHERE id = $2", &image, id)
-            .execute(&mut *pool)
-            .await
+        if let Err(e) = sqlx::query!(
+            "UPDATE mods SET image = $1, updated_at = now() WHERE id = $2",
+            &json.logo,
+            &json.id
+        )
+        .execute(&mut *pool)
+        .await
         {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(_) => Ok(()),
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
         }
+
+        Ok(())
     }
 
     pub async fn get_logo_for_mod(

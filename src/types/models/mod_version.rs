@@ -333,7 +333,9 @@ impl ModVersion {
             query_builder.push_bind(v);
         }
 
-        query_builder.push("WHERE mod_id = ");
+        query_builder.push(", updated_at = now()");
+
+        query_builder.push(" WHERE mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(" AND version = ");
         let version = version.trim_start_matches('v');
