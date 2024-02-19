@@ -1,7 +1,7 @@
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::{
-    types::ipnetwork::{self, Ipv4Network},
+    types::ipnetwork::{self, IpNetwork, Ipv4Network},
     Acquire,
 };
 
@@ -70,6 +70,7 @@ pub async fn get_latest(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let ids = vec![path.into_inner()];
     let version = ModVersion::get_latest_for_mods(&mut pool, &ids, None, vec![]).await?;
+
     match version.get(&ids[0]) {
         None => Err(ApiError::NotFound(format!("Mod {} not found", ids[0]))),
         Some(v) => {
@@ -97,9 +98,9 @@ pub async fn download_version(
         None => return Err(ApiError::InternalError),
         Some(i) => i,
     };
-    let net: Ipv4Network = ip.parse().or(Err(ApiError::InternalError))?;
+    let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if download::create_download(ipnetwork::IpNetwork::V4(net), mod_version.id, &mut pool).await? {
+    if download::create_download(net, mod_version.id, &mut pool).await? {
         ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await?;
         Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await?;
     }

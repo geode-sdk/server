@@ -3,7 +3,10 @@ use reqwest::{
     Client, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{types::ipnetwork::Ipv4Network, PgConnection};
+use sqlx::{
+    types::ipnetwork::{IpNetwork, Ipv4Network},
+    PgConnection,
+};
 
 use crate::types::{api::ApiError, models::github_login_attempt::GithubLoginAttempt};
 
@@ -31,18 +34,14 @@ impl GithubClient {
 
     pub async fn start_auth(
         &self,
-        ip: Ipv4Network,
+        ip: IpNetwork,
         pool: &mut PgConnection,
     ) -> Result<GithubLoginAttempt, ApiError> {
         #[derive(Serialize)]
         struct GithubStartAuthBody {
             client_id: String,
         }
-        let found_request = GithubLoginAttempt::get_one_by_ip(
-            sqlx::types::ipnetwork::IpNetwork::V4(ip),
-            &mut *pool,
-        )
-        .await?;
+        let found_request = GithubLoginAttempt::get_one_by_ip(ip, &mut *pool).await?;
         if found_request.is_some() {
             return Err(ApiError::BadRequest(
                 "Login attempt already running".to_string(),
@@ -91,7 +90,7 @@ impl GithubClient {
             .await
             .or(Err(ApiError::InternalError))?;
         let uuid = GithubLoginAttempt::create(
-            sqlx::types::ipnetwork::IpNetwork::V4(ip),
+            ip,
             body.device_code,
             body.interval,
             body.expires_in,
@@ -119,7 +118,6 @@ impl GithubClient {
             device_code: String::from(device_code),
             grant_type: String::from("urn:ietf:params:oauth:grant-type:device_code"),
         };
-        log::info!("{:?}", body);
         let json = match serde_json::to_string(&body) {
             Err(e) => {
                 log::error!("{}", e);

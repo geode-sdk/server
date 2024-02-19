@@ -1,6 +1,6 @@
 use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
-use sqlx::types::ipnetwork::Ipv4Network;
+use sqlx::types::ipnetwork::{IpNetwork, Ipv4Network};
 use uuid::Uuid;
 
 use crate::{
@@ -32,7 +32,7 @@ pub async fn start_github_login(
         Some(i) => i,
     };
     log::info!("{}", ip);
-    let net: Ipv4Network = ip.parse().or(Err(ApiError::InternalError))?;
+    let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
     let result = client.start_auth(net, &mut pool).await?;
     Ok(web::Json(ApiResponse {
