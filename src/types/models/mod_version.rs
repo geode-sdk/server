@@ -28,6 +28,7 @@ pub struct ModVersion {
     pub download_link: String,
     pub hash: String,
     pub geode: String,
+    pub download_count: i32,
     pub early_load: bool,
     pub api: bool,
     pub mod_id: String,
@@ -43,6 +44,7 @@ struct ModVersionGetOne {
     description: Option<String>,
     version: String,
     download_link: String,
+    download_count: i32,
     hash: String,
     geode: String,
     early_load: bool,
@@ -61,6 +63,7 @@ impl ModVersionGetOne {
             hash: self.hash.clone(),
             geode: self.geode.clone(),
             early_load: self.early_load,
+            download_count: self.download_count,
             api: self.api,
             mod_id: self.mod_id.clone(),
             gd: DetailedGDVersion {
@@ -96,7 +99,7 @@ impl ModVersion {
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode,
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
             mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             INNER JOIN mods m ON m.id = mv.mod_id
@@ -243,7 +246,7 @@ impl ModVersion {
         let result = sqlx::query_as!(
             ModVersionGetOne,
             "SELECT
-            mv.id, mv.name, mv.description, mv.version, mv.download_link,
+            mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
             mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
