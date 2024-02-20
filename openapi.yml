@@ -498,6 +498,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ModDeveloper"
+        download_count:
+          type: integer
         tags:
           type: array
           items:
@@ -532,6 +534,8 @@ components:
             - Devtools
         validated:
           type: boolean
+        download_count:
+          type: integer
         description:
           type: string
         early_load:
