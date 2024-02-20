@@ -145,6 +145,72 @@ impl ModVersion {
         Ok(ret)
     }
 
+    pub async fn get_latest_for_mod(
+        id: &str,
+        gd: Option<GDVersionEnum>,
+        platforms: Vec<VerPlatform>,
+        pool: &mut PgConnection,
+    ) -> Result<ModVersion, ApiError> {
+        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"SELECT DISTINCT
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
+            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            WHERE mv.version = (SELECT latest_version FROM mods WHERE id = "#,
+        );
+        query_builder.push_bind(id);
+        query_builder.push(") AND mv.validated = true");
+        if let Some(g) = gd {
+            query_builder.push(" AND mgv.gd = ");
+            query_builder.push_bind(g);
+        }
+        for (i, platform) in platforms.iter().enumerate() {
+            if i == 0 {
+                query_builder.push(" AND mgv.platform IN (");
+            }
+            query_builder.push_bind(*platform);
+            if i == platforms.len() - 1 {
+                query_builder.push(")");
+            } else {
+                query_builder.push(", ");
+            }
+        }
+        query_builder.push(" AND mv.mod_id = $1");
+        let records = match query_builder
+            .build_query_as::<ModVersionGetOne>()
+            .fetch_optional(&mut *pool)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::info!("{:?}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+        let mut version = match records {
+            None => return Err(ApiError::NotFound("".to_string())),
+            Some(x) => x.into_mod_version(),
+        };
+
+        version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
+        version.dependencies = Some(
+            Dependency::get_for_mod_version(version.id, pool)
+                .await?
+                .into_iter()
+                .map(|x| x.to_response())
+                .collect(),
+        );
+        version.incompatibilities = Some(
+            Incompatibility::get_for_mod_version(version.id, pool)
+                .await?
+                .into_iter()
+                .map(|x| x.to_response())
+                .collect(),
+        );
+
+        Ok(version)
+    }
+
     pub async fn get_download_url(
         id: &str,
         version: &str,
@@ -260,39 +326,10 @@ impl ModVersion {
 
         let mut version = result.unwrap().into_mod_version();
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
-        let deps = Dependency::get_for_mod_version(&version, pool).await?;
-        version.dependencies = Some(
-            deps.into_iter()
-                .map(|x| ResponseDependency {
-                    mod_id: x.dependency_id.clone(),
-                    version: {
-                        if x.version == "*" {
-                            "*".to_string()
-                        } else {
-                            format!("{}{}", x.compare, x.version.trim_start_matches('v'))
-                        }
-                    },
-                    importance: x.importance,
-                })
-                .collect(),
-        );
+        let deps = Dependency::get_for_mod_version(version.id, pool).await?;
+        version.dependencies = Some(deps.into_iter().map(|x| x.to_response()).collect());
         let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
-        version.incompatibilities = Some(
-            incompat
-                .into_iter()
-                .map(|x| ResponseIncompatibility {
-                    mod_id: x.incompatibility_id.clone(),
-                    version: {
-                        if x.version == "*" {
-                            "*".to_string()
-                        } else {
-                            format!("{}{}", x.compare, x.version.trim_start_matches('v'))
-                        }
-                    },
-                    importance: x.importance,
-                })
-                .collect(),
-        );
+        version.incompatibilities = Some(incompat.into_iter().map(|x| x.to_response()).collect());
 
         Ok(version)
     }

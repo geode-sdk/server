@@ -5,8 +5,6 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
-use super::mod_version::ModVersion;
-
 #[derive(sqlx::FromRow, Clone)]
 pub struct Dependency {
     pub dependent_id: i32,
@@ -36,6 +34,22 @@ pub struct FetchedDependency {
     pub dependency_id: String,
     pub compare: ModVersionCompare,
     pub importance: DependencyImportance,
+}
+
+impl FetchedDependency {
+    pub fn to_response(&self) -> ResponseDependency {
+        ResponseDependency {
+            mod_id: self.dependency_id.clone(),
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
 }
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
@@ -112,13 +126,13 @@ impl Dependency {
     }
 
     pub async fn get_for_mod_version(
-        ver: &ModVersion,
+        id: i32,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedDependency>, ApiError> {
         match sqlx::query_as!(FetchedDependency,
             r#"SELECT dp.dependent_id as mod_version_id, dp.dependency_id, dp.version, dp.compare AS "compare: _", dp.importance AS "importance: _" FROM dependencies dp
             WHERE dp.dependent_id = $1"#,
-            ver.id
+            id
         )
         .fetch_all(&mut *pool)
         .await

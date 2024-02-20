@@ -12,6 +12,14 @@ tags:
     description: User management
 
 paths:
+  /:
+    get:
+      summary: Health check
+      description: Returns a 200 OK if the index is up and running
+      responses:
+        "200":
+          description: OK
+
   /v1/login/github:
     post:
       tags:
@@ -211,14 +219,21 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /v1/mods/{id}/latest:
+  /v1/mods/{id}/versions/latest:
     get:
       tags:
         - mods
-      summary: Get info for the latest version of a mod (NOT YET IMPLEMENTED)
+      summary: Get info for the latest version of a mod
       description: Returns info for the current latest version of the mod
       parameters:
         - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/Platforms"
+        - name: gd
+          in: query
+          description: Geometry Dash version
+          required: true
+          schema:
+            $ref: "#/components/schemas/GDVersionString"
 
       responses:
         "200":
@@ -625,6 +640,14 @@ components:
       example: 10
       schema:
         type: integer
+
+    Platforms:
+      name: platforms
+      in: query
+      description: Platforms that mods have to support, comma separated [win,android32,android64,mac,ios]
+      example: "win,android32,android64"
+      schema:
+        type: string
   responses:
     Unauthorized:
       description: Unauthorized

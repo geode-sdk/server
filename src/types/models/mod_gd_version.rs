@@ -28,6 +28,20 @@ pub enum GDVersionEnum {
     GD2205,
 }
 
+impl FromStr for GDVersionEnum {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "*" => Ok(GDVersionEnum::All),
+            "2.113" => Ok(GDVersionEnum::GD2113),
+            "2.200" => Ok(GDVersionEnum::GD2200),
+            "2.204" => Ok(GDVersionEnum::GD2204),
+            "2.205" => Ok(GDVersionEnum::GD2205),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[sqlx(type_name = "gd_ver_platform", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]

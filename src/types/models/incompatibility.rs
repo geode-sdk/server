@@ -42,6 +42,22 @@ pub struct ResponseIncompatibility {
     pub importance: IncompatibilityImportance,
 }
 
+impl FetchedIncompatibility {
+    pub fn to_response(&self) -> ResponseIncompatibility {
+        ResponseIncompatibility {
+            mod_id: self.incompatibility_id.clone(),
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
+}
+
 impl Incompatibility {
     pub async fn create_for_mod_version(
         id: i32,

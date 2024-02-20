@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
@@ -11,6 +13,7 @@ use crate::{
             developer::Developer,
             download,
             mod_entity::{download_geode_file, Mod},
+            mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::ModVersion,
         },
     },
@@ -45,40 +48,61 @@ struct UpdateVersionPath {
     version: String,
 }
 
+#[derive(Deserialize)]
+struct GetOneQuery {
+    platforms: Option<String>,
+    gd: Option<String>,
+}
+
 #[get("v1/mods/{id}/versions/{version}")]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
+    query: web::Query<GetOneQuery>,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut version = ModVersion::get_one(&path.id, &path.version, &mut pool).await?;
+
+    let mut version = {
+        if path.version == "latest" {
+            let gd: Option<GDVersionEnum> = match query.gd {
+                Some(ref gd) => Some(
+                    GDVersionEnum::from_str(gd)
+                        .or(Err(ApiError::BadRequest("Invalid gd".to_string())))?,
+                ),
+                None => None,
+            };
+
+            let mut platforms: Vec<VerPlatform> = vec![];
+
+            if let Some(p) = &query.platforms {
+                for x in p.split(',') {
+                    match VerPlatform::from_str(x) {
+                        Ok(v) => {
+                            if v == VerPlatform::Android {
+                                platforms.push(VerPlatform::Android32);
+                                platforms.push(VerPlatform::Android64);
+                            } else {
+                                platforms.push(v);
+                            }
+                        }
+                        Err(_) => {
+                            return Err(ApiError::BadRequest("Invalid platform".to_string()));
+                        }
+                    }
+                }
+            };
+
+            ModVersion::get_latest_for_mod(&path.id, gd, platforms, &mut pool).await?
+        } else {
+            ModVersion::get_one(&path.id, &path.version, &mut pool).await?
+        }
+    };
+
     version.modify_download_link(&data.app_url);
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: version,
     }))
-}
-
-#[get("v1/mods/{id}/versions/latest")]
-pub async fn get_latest(
-    path: web::Path<String>,
-    data: web::Data<AppData>,
-) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let ids = vec![path.into_inner()];
-    let version = ModVersion::get_latest_for_mods(&mut pool, &ids, None, vec![]).await?;
-
-    match version.get(&ids[0]) {
-        None => Err(ApiError::NotFound(format!("Mod {} not found", ids[0]))),
-        Some(v) => {
-            let mut v = v.clone();
-            v.modify_download_link(&data.app_url);
-            Ok(web::Json(ApiResponse {
-                error: "".to_string(),
-                payload: v,
-            }))
-        }
-    }
 }
 
 #[get("v1/mods/{id}/versions/{version}/download")]

@@ -91,7 +91,6 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mods::create)
             .service(endpoints::mods::get_logo)
             .service(endpoints::mod_versions::get_one)
-            .service(endpoints::mod_versions::get_latest)
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
