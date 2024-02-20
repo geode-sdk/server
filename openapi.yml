@@ -330,11 +330,11 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
   /v1/mods/updates:
-    post:
+    get:
       tags:
         - mods
       summary: Get available mod updates (NOT IMPLEMENTED)
-      description: This is only POST because i want it to have a body
+      description: okay i made it get now
 
       parameters:
         - name: platform
@@ -343,19 +343,6 @@ paths:
           schema:
             $ref: "#/components/schemas/Platform"
         - $ref: "#/components/parameters/GeodeVersionQuery"
-
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                type: object
-                properties:
-                  id:
-                    $ref: "#/components/schemas/ModID"
-                  version:
-                    $ref: "#/components/schemas/ModVersionString"
 
       responses:
         "200":
