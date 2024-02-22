@@ -36,7 +36,7 @@ paths:
                 properties:
                   error:
                     type: "null"
-                  token:
+                  payload:
                     type: object
                     properties:
                       uuid:

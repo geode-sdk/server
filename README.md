@@ -1,6 +1,8 @@
 # Geode Server
 
-WIP version of the new Geode Index, hosted on its own server rather than a Github repository. Uses Actix, PostgreSQL and SQLX in Rust.
+The new home of the Geode Index, hosted on its own server rather than a Github repository. Uses Actix, PostgreSQL and SQLX in Rust.
+
+The API documentation can be found [here](https://geode-sdk.github.io/server/)
 
 ## Checklist
 
@@ -9,14 +11,12 @@ WIP version of the new Geode Index, hosted on its own server rather than a Githu
 - [x] Support for multiple developers per mod
 - [x] Github OAuth
 - [x] A token system for authenticating the CLI
-- [ ] logo.png management
-- [ ] Download counts
-- [ ] External dependencies
-
-If you want to contribute to this project, please do so! I have no bloody clue how to write a web server.
+- [x] logo.png management
+- [x] Download counts
+- [x] External dependencies
 
 ## Required tools for development
 
-- sqlx-cli
-- PostgreSQL
+- sqlx-cli (for handling migrations)
+- PostgreSQL (best way to do this is just to get a docker container set up)
 
