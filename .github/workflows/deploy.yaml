@@ -43,4 +43,4 @@ jobs:
 
       - name: Replace current deployment
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && ./run.sh"
+          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && ./run.sh"
