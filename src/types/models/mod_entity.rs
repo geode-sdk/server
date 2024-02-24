@@ -26,6 +26,7 @@ pub struct Mod {
     pub repository: Option<String>,
     pub latest_version: String,
     pub validated: bool,
+    pub featured: bool,
     pub download_count: i32,
     pub developers: Vec<Developer>,
     pub versions: Vec<ModVersion>,
@@ -42,6 +43,7 @@ struct ModRecord {
     latest_version: String,
     validated: bool,
     download_count: i32,
+    featured: bool,
     _updated_at: DateTime<Utc>,
 }
 
@@ -51,6 +53,7 @@ struct ModRecordGetOne {
     repository: Option<String>,
     latest_version: String,
     validated: bool,
+    featured: bool,
     version_id: i32,
     mod_download_count: i32,
     name: String,
@@ -101,7 +104,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at as _updated_at FROM mods m
+            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.featured, m.updated_at as _updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
         );
@@ -278,6 +281,7 @@ impl Mod {
                     latest_version: x.latest_version.clone(),
                     validated: x.validated,
                     download_count: x.download_count,
+                    featured: x.featured,
                     versions: vec![version],
                     tags,
                     developers: devs,
@@ -293,7 +297,7 @@ impl Mod {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
-                m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count as mod_download_count,
+                m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.featured, m.download_count as mod_download_count,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -348,6 +352,7 @@ impl Mod {
             repository: records[0].repository.clone(),
             latest_version: records[0].latest_version.clone(),
             validated: records[0].validated,
+            featured: records[0].featured,
             download_count: records[0].mod_download_count,
             versions,
             tags,
