@@ -77,13 +77,9 @@ impl Mod {
             Some(t) => Tag::parse_tags(&t, pool).await?,
             None => vec![],
         };
-        let page = query.page.unwrap_or(1);
-        if page <= 0 {
-            return Err(ApiError::BadRequest(
-                "Invalid page number, must be >= 1".into(),
-            ));
-        }
-        let per_page = query.per_page.unwrap_or(10);
+        let page: i64 = query.page.unwrap_or(1).max(1);
+        let per_page = query.per_page.unwrap_or(10).clamp(1, 100);
+
         let limit = per_page;
         let offset = (page - 1) * per_page;
         let mut platforms: Vec<VerPlatform> = vec![];
