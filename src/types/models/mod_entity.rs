@@ -7,6 +7,7 @@ use crate::{
     },
 };
 use actix_web::web::Bytes;
+use reqwest::Client;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
@@ -804,9 +805,32 @@ impl Mod {
 }
 
 pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
+    let size = get_download_size(url).await?;
+    if size > 1_000_000_000 {
+        return Err(ApiError::BadRequest(
+            "File size is too large, max 100MB".to_string(),
+        ));
+    }
     let res = reqwest::get(url)
         .await
         .or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
     let content = Cursor::new(res.bytes().await.or(Err(ApiError::FilesystemError))?);
     Ok(content)
+}
+
+async fn get_download_size(url: &str) -> Result<u64, ApiError> {
+    let client = Client::new();
+
+    let res = client
+        .head(url)
+        .send()
+        .await
+        .or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
+
+    match res.content_length() {
+        Some(s) => Ok(s),
+        None => Err(ApiError::BadRequest(
+            "Couldn't extract download size from URL".to_string(),
+        )),
+    }
 }
