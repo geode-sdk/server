@@ -20,7 +20,6 @@ mod types;
 #[derive(Clone)]
 pub struct AppData {
     db: sqlx::postgres::PgPool,
-    debug: bool,
     app_url: String,
     github_client_id: String,
     github_client_secret: String,
@@ -65,7 +64,6 @@ async fn main() -> anyhow::Result<()> {
 
     let app_data = AppData {
         db: pool.clone(),
-        debug,
         app_url: app_url.clone(),
         github_client_id: github_client.clone(),
         github_client_secret: github_secret.clone(),

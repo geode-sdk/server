@@ -333,20 +333,6 @@ fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
     Ok(bytes)
 }
 
-fn compare_versions(
-    v1: &semver::Version,
-    v2: &semver::Version,
-    compare: &ModVersionCompare,
-) -> bool {
-    match compare {
-        ModVersionCompare::Exact => v1.eq(v2),
-        ModVersionCompare::Less => v1.lt(v2),
-        ModVersionCompare::LessEq => v1.le(v2),
-        ModVersionCompare::More => v1.gt(v2),
-        ModVersionCompare::MoreEq => v1.ge(v2),
-    }
-}
-
 fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
     let mut string: String = String::from("");
     match file.read_to_string(&mut string) {
