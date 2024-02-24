@@ -823,8 +823,17 @@ async fn get_download_size(url: &str) -> Result<u64, ApiError> {
         .await
         .or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
 
-    match res.content_length() {
-        Some(s) => Ok(s),
+    match res.headers().get("content-length") {
+        Some(s) => {
+            if let Ok(s) = s.to_str() {
+                if let Ok(s) = s.parse::<u64>() {
+                    return Ok(s);
+                }
+            }
+            Err(ApiError::BadRequest(
+                "Couldn't extract download size from URL".to_string(),
+            ))
+        }
         None => Err(ApiError::BadRequest(
             "Couldn't extract download size from URL".to_string(),
         )),
