@@ -101,7 +101,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at as _updated_at FROM mods m
+            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.latest_version, mv.validated, m.about, m.changelog, m.download_count, m.updated_at as _updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
         );
@@ -205,7 +205,7 @@ impl Mod {
             }
         }
 
-        builder.push(" LIMIT ");
+        builder.push(") q LIMIT ");
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
