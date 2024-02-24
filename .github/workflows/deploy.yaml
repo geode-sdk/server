@@ -43,4 +43,5 @@ jobs:
 
       - name: Replace current deployment
         run: |
-          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && ./run.sh"
+          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && \
+          docker run --name=index --env-file=.env --restart=unless-stopped --network=index-net -p 3000:3000 -dit geode-index:${{ env.RELEASE_VERSION }}"
