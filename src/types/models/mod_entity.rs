@@ -437,6 +437,47 @@ impl Mod {
         Ok(())
     }
 
+    /**
+     * At the moment this only sets the mod to featured, can be expanded with more stuff
+     */
+    pub async fn update_mod(
+        id: &str,
+        featured: bool,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        if (match sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
+            .fetch_optional(&mut *pool)
+            .await
+        {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        })
+        .is_none()
+        {
+            return Err(ApiError::NotFound(format!("Mod {} doesn't exist", id)));
+        }
+
+        let result = match sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
+            .execute(&mut *pool)
+            .await
+        {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::InternalError);
+        }
+
+        Ok(())
+    }
+
     pub async fn get_logo_for_mod(
         id: &str,
         pool: &mut PgConnection,

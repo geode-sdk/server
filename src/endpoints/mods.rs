@@ -1,7 +1,7 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{get, post, put, web, HttpResponse, Responder};
 use log::info;
-use serde::Deserialize;
-use sqlx::Acquire;
+use serde::{Deserialize, Serialize};
+use sqlx::{Acquire, Connection};
 
 use crate::extractors::auth::Auth;
 use crate::types::api::{ApiError, ApiResponse};
@@ -114,4 +114,33 @@ pub async fn get_logo(
         Some(i) => Ok(HttpResponse::Ok().content_type("image/png").body(i)),
         None => Err(ApiError::NotFound("".into())),
     }
+}
+
+#[derive(Deserialize)]
+struct UpdateModPayload {
+    featured: bool,
+}
+
+#[put("/v1/mods/{id}")]
+pub async fn update_mod(
+    data: web::Data<AppData>,
+    path: web::Path<String>,
+    payload: web::Json<UpdateModPayload>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
+    if !dev.admin {
+        return Err(ApiError::Forbidden);
+    }
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    if let Err(e) = Mod::update_mod(&path, payload.featured, &mut transaction).await {
+        let _ = transaction.rollback().await;
+        return Err(e);
+    }
+    if (transaction.commit().await).is_err() {
+        return Err(ApiError::DbError);
+    }
+
+    Ok(HttpResponse::NoContent())
 }
