@@ -138,6 +138,17 @@ impl Mod {
             counter_builder.push(sql);
         }
 
+        if let Some(f) = query.featured {
+            let sql = "m.featured = ";
+            builder.push(sql);
+            counter_builder.push(sql);
+            builder.push_bind(f);
+            counter_builder.push_bind(f);
+            let sql = " AND ";
+            builder.push(sql);
+            counter_builder.push(sql);
+        }
+
         let developer = match query.developer {
             Some(d) => match Developer::find_by_username(&d, pool).await? {
                 Some(d) => Some(d),

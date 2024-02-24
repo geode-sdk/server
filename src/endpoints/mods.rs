@@ -32,6 +32,7 @@ pub struct IndexQueryParams {
     pub sort: IndexSortType,
     pub developer: Option<String>,
     pub tags: Option<String>,
+    pub featured: Option<bool>,
 }
 
 #[derive(Deserialize)]
