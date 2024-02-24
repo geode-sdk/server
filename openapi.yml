@@ -128,6 +128,11 @@ paths:
           example: "gameplay,enhancement"
           schema:
             type: string
+        - name: featured
+          in: query
+          description: Filter by featured mods
+          schema:
+            type: boolean
         - name: sort
           in: query
           description: Sort by a specific enum field, in descending order. Default is "downloads"
@@ -197,6 +202,39 @@ paths:
       description: Returns info for the mod, without dependencies and incompatibilities
       parameters:
         - $ref: "#/components/parameters/ModID"
+
+    put:
+      tags:
+        - mods
+      summary: Update a mod (admin only)
+      description: At the moment it's only used to set a mod to featured / not featured
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                featured:
+                  type: boolean
+                  description: Whether the mod should be featured or not
+                  example: true
+
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+      responses:
+        "204":
+          description: No Content (Mod updated)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /v1/mods/{id}/logo:
     get:
@@ -519,8 +557,6 @@ components:
           type: string
           examples:
             - Devtools
-        validated:
-          type: boolean
         download_count:
           type: integer
         description:
