@@ -1,0 +1,26 @@
+name: Deploy Index
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build Docker image
+        run: docker build . -t geode-index:${{ github.ref }}
+
+      - name: Push Docker image to index server
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
+          chmod 600 ~/.ssh/index_key
+          docker save geode-index:${{ github.ref }} | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
+
+      - name: Replace current deployment
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop geode-index && docker rm geode-index && cd ${{ secrets.INDEX_DIR }} && ./run.sh"
