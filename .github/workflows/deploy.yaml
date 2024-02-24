@@ -25,6 +25,7 @@ jobs:
           file: ./Dockerfile
           tags: geode-index:${{ env.RELEASE_VERSION }}
           push: false
+          load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
