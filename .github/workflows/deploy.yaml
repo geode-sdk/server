@@ -39,7 +39,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
           chmod 600 ~/.ssh/index_key
-          docker save geode-index:${{ github.ref }} | bzip2 | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
+          docker save geode-index:${{ env.RELEASE_VERSION }} | bzip2 | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
 
       - name: Replace current deployment
         run: |
