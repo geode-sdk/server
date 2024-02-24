@@ -1,7 +1,7 @@
 use actix_web::{get, post, put, web, HttpResponse, Responder};
 use log::info;
-use serde::{Deserialize, Serialize};
-use sqlx::{Acquire, Connection};
+use serde::Deserialize;
+use sqlx::Acquire;
 
 use crate::extractors::auth::Auth;
 use crate::types::api::{ApiError, ApiResponse};
