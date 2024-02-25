@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::api::ApiError;
 use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
@@ -112,5 +114,36 @@ impl Incompatibility {
                 Err(ApiError::DbError)
             }
         }
+    }
+
+    pub async fn get_for_mod_versions(
+        ids: &Vec<i32>,
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, ApiError> {
+        let result = match sqlx::query_as!(
+            FetchedIncompatibility,
+            r#"SELECT icp.compare as "compare: _",
+            icp.importance as "importance: _",
+            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
+            INNER JOIN mod_versions mv ON mv.id = icp.mod_id
+            WHERE mv.id = ANY($1)"#,
+            &ids
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+        let mut ret: HashMap<i32, Vec<FetchedIncompatibility>> = HashMap::new();
+
+        for i in result {
+            ret.entry(i.mod_id).or_default().push(i);
+        }
+
+        Ok(ret)
     }
 }

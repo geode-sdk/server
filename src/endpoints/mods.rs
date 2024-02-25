@@ -4,10 +4,10 @@ use serde::Deserialize;
 use sqlx::Acquire;
 
 use crate::extractors::auth::Auth;
-use crate::types::api::{ApiError, ApiResponse};
+use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
-use crate::types::models::mod_entity::{download_geode_file, Mod};
-use crate::types::models::mod_gd_version::GDVersionEnum;
+use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
+use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -101,6 +101,36 @@ pub async fn create(
         info!("{:?}", tr_res);
     }
     Ok(HttpResponse::NoContent())
+}
+
+#[derive(Deserialize)]
+struct UpdateQueryParams {
+    ids: String,
+}
+#[get("/v1/mods/updates")]
+pub async fn get_mod_updates(
+    data: web::Data<AppData>,
+    query: web::Query<UpdateQueryParams>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    let ids = query
+        .ids
+        .split(';')
+        .map(String::from)
+        .collect::<Vec<String>>();
+
+    let platforms: Vec<VerPlatform> = vec![];
+
+    let mut result: Vec<ModUpdate> = Mod::get_updates(ids, platforms, &mut pool).await?;
+    for i in &mut result {
+        i.download_link = create_download_link(&data.app_url, &i.id, &i.version);
+    }
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: result,
+    }))
 }
 
 #[get("/v1/mods/{id}/logo")]

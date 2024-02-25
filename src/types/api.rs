@@ -68,3 +68,10 @@ impl actix_web::ResponseError for ApiError {
 pub fn query_error_handler(err: QueryPayloadError, _req: &HttpRequest) -> actix_web::Error {
     ApiError::BadRequest(err.to_string()).into()
 }
+
+pub fn create_download_link(app_url: &str, mod_id: &str, version: &str) -> String {
+    format!(
+        "{}/v1/mods/{}/versions/{}/download",
+        app_url, mod_id, version
+    )
+}

@@ -4,7 +4,7 @@ use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 
 use crate::types::{
-    api::ApiError,
+    api::{create_download_link, ApiError},
     mod_json::{ModJson, ModJsonGDVersionType},
 };
 
@@ -79,11 +79,9 @@ impl ModVersionGetOne {
 
 impl ModVersion {
     pub fn modify_download_link(&mut self, app_url: &str) {
-        self.download_link = format!(
-            "{}/v1/mods/{}/versions/{}/download",
-            app_url, self.mod_id, self.version
-        );
+        self.download_link = create_download_link(app_url, &self.mod_id, &self.version)
     }
+
     pub async fn get_latest_for_mods(
         pool: &mut PgConnection,
         ids: &Vec<String>,

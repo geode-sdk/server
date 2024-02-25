@@ -85,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(Logger::default())
             .service(endpoints::mods::index)
+            .service(endpoints::mods::get_mod_updates)
             .service(endpoints::mods::get)
             .service(endpoints::mods::create)
             .service(endpoints::mods::update_mod)

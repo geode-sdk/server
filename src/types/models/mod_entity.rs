@@ -3,7 +3,11 @@ use crate::{
     types::{
         api::{ApiError, PaginatedData},
         mod_json::ModJson,
-        models::mod_version::ModVersion,
+        models::{
+            dependency::{Dependency, FetchedDependency},
+            incompatibility::{FetchedIncompatibility, Incompatibility},
+            mod_version::ModVersion,
+        },
     },
 };
 use actix_web::web::Bytes;
@@ -13,10 +17,12 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
 };
-use std::{io::Cursor, str::FromStr};
+use std::{collections::HashMap, io::Cursor, str::FromStr};
 
 use super::{
+    dependency::ResponseDependency,
     developer::{Developer, FetchedDeveloper},
+    incompatibility::ResponseIncompatibility,
     mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
     tag::Tag,
 };
@@ -33,6 +39,15 @@ pub struct Mod {
     pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ModUpdate {
+    pub id: String,
+    pub version: String,
+    pub download_link: String,
+    pub dependencies: Vec<ResponseDependency>,
+    pub incompatibilities: Vec<ResponseIncompatibility>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -797,6 +812,85 @@ impl Mod {
             }
             Ok(_) => Ok(()),
         }
+    }
+
+    pub async fn get_updates(
+        ids: Vec<String>,
+        platforms: Vec<VerPlatform>,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<ModUpdate>, ApiError> {
+        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT m.id, mv.version, mv.id as mod_version_id FROM mods m
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id WHERE 
+            mv.validated = true AND m.id = ANY(",
+        );
+        query_builder.push_bind(&ids);
+        query_builder.push(") ");
+
+        if !platforms.is_empty() {
+            query_builder.push("AND mv.platform IN (");
+
+            let mut separated = query_builder.separated(", ");
+            for p in &platforms {
+                separated.push_bind(p);
+            }
+
+            query_builder.push(")");
+        }
+
+        #[derive(sqlx::FromRow)]
+        struct Result {
+            id: String,
+            version: String,
+            mod_version_id: i32,
+        }
+
+        let result = match query_builder
+            .build_query_as::<Result>()
+            .fetch_all(&mut *pool)
+            .await
+        {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
+
+        let deps: HashMap<i32, Vec<FetchedDependency>> =
+            Dependency::get_for_mod_versions(&ids, pool).await?;
+
+        let incompat: HashMap<i32, Vec<FetchedIncompatibility>> =
+            Incompatibility::get_for_mod_versions(&ids, pool).await?;
+
+        let mut ret: Vec<ModUpdate> = vec![];
+
+        for r in result {
+            let update = ModUpdate {
+                id: r.id,
+                version: r.version,
+                download_link: "".to_string(),
+                dependencies: deps
+                    .get(&r.mod_version_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|x| x.to_response())
+                    .collect(),
+                incompatibilities: incompat
+                    .get(&r.mod_version_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|x| x.to_response())
+                    .collect(),
+            };
+            ret.push(update);
+        }
+
+        Ok(ret)
     }
 }
 
