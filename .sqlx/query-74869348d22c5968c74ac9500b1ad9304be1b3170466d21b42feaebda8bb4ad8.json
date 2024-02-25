@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT dp.dependent_id as mod_version_id, dp.dependency_id, dp.version, dp.compare AS \"compare: _\", dp.importance AS \"importance: _\" FROM dependencies dp\n            WHERE dp.dependent_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "dependency_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "compare: _",
+        "type_info": {
+          "Custom": {
+            "name": "version_compare",
+            "kind": {
+              "Enum": [
+                "=",
+                ">",
+                "<",
+                ">=",
+                "<="
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "importance: _",
+        "type_info": {
+          "Custom": {
+            "name": "dependency_importance",
+            "kind": {
+              "Enum": [
+                "required",
+                "recommended",
+                "suggested"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4Array"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "74869348d22c5968c74ac9500b1ad9304be1b3170466d21b42feaebda8bb4ad8"
+}
