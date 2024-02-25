@@ -28,7 +28,7 @@ pub struct GetOnePath {
 
 #[derive(Deserialize)]
 pub struct CreateQueryParams {
-    download_url: String,
+    download_link: String,
 }
 
 #[derive(Deserialize)]
@@ -149,8 +149,8 @@ pub async fn create_version(
         return Err(ApiError::Forbidden);
     }
 
-    let mut file_path = download_geode_file(&payload.download_url).await?;
-    let json = ModJson::from_zip(&mut file_path, payload.download_url.as_str())
+    let mut file_path = download_geode_file(&payload.download_link).await?;
+    let json = ModJson::from_zip(&mut file_path, &payload.download_link)
         .or(Err(ApiError::FilesystemError))?;
     if json.id != path.id {
         return Err(ApiError::BadRequest(format!(
