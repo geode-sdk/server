@@ -1,4 +1,4 @@
-use actix_web::{delete, post, web, HttpResponse, Responder};
+use actix_web::{delete, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
@@ -117,6 +117,34 @@ pub async fn delete_tokens(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = token::invalidate_tokens_for_developer(dev.id, &mut transaction).await {
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
+        return Err(e);
+    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
+    Ok(HttpResponse::NoContent())
+}
+
+#[derive(Deserialize)]
+struct UploadProfilePayload {
+    display_name: String,
+}
+
+#[put("v1/me")]
+pub async fn update_profile(
+    data: web::Data<AppData>,
+    json: web::Json<UploadProfilePayload>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    if let Err(e) = Developer::update_profile(dev.id, &json.display_name, &mut transaction).await {
         transaction
             .rollback()
             .await

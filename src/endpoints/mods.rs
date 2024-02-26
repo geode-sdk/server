@@ -1,5 +1,4 @@
 use actix_web::{get, post, put, web, HttpResponse, Responder};
-use log::info;
 use serde::Deserialize;
 use sqlx::Acquire;
 
@@ -100,7 +99,6 @@ pub async fn create(
     let mut file_path = download_geode_file(&payload.download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &payload.download_link)?;
     json.validate()?;
-    return Err(ApiError::InternalError);
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let result = Mod::from_json(&json, dev, &mut transaction).await;
     if result.is_err() {

@@ -1,7 +1,6 @@
 use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
 use sqlx::{
-    migrate::Migrate,
     types::ipnetwork::{IpNetwork, Ipv4Network},
     Acquire,
 };

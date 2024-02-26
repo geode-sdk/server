@@ -218,4 +218,31 @@ impl Developer {
 
         Ok(ret)
     }
+
+    pub async fn update_profile(
+        id: i32,
+        display_name: &str,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let result = match sqlx::query!(
+            "UPDATE developers SET display_name = $1 WHERE id = $2",
+            display_name,
+            id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(r) => r,
+        };
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::InternalError);
+        }
+
+        Ok(())
+    }
 }

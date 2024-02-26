@@ -128,16 +128,22 @@ impl GithubLoginAttempt {
     }
 
     pub async fn remove(uuid: Uuid, pool: &mut PgConnection) -> Result<(), ApiError> {
-        match sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
+        let result = match sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
             .execute(&mut *pool)
             .await
         {
             Err(e) => {
                 log::error!("{}", e);
-                Err(ApiError::DbError)
+                return Err(ApiError::DbError);
             }
-            Ok(_) => Ok(()),
+            Ok(r) => r,
+        };
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::InternalError);
         }
+
+        Ok(())
     }
 
     pub async fn poll(uuid: Uuid, pool: &mut PgConnection) {
