@@ -822,7 +822,8 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT m.id, mv.version, mv.id as mod_version_id FROM mods m
+            "SELECT q.id, q.version, q.mod_version_id FROM (SELECT m.id, mv.version, mv.id as mod_version_id,
+            row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON mv.mod_id = m.id WHERE 
             mv.validated = true AND m.id = ANY(",
         );
@@ -839,6 +840,8 @@ impl Mod {
 
             query_builder.push(")");
         }
+
+        query_builder.push(") q where q.rn = 1");
 
         #[derive(sqlx::FromRow)]
         struct Result {
