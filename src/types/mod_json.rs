@@ -5,6 +5,7 @@ use image::{
     codecs::png::{PngDecoder, PngEncoder},
     DynamicImage, GenericImageView, ImageEncoder,
 };
+use regex::Regex;
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
@@ -280,6 +281,23 @@ impl ModJson {
         }
 
         Ok(ret)
+    }
+
+    pub fn validate(&self) -> Result<(), ApiError> {
+        let id_regex = Regex::new(r#"^[a-z0-9_\-]+\.[a-z0-9_\-]+$"#).unwrap();
+        if !id_regex.is_match(&self.id) {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid mod id {} (lowercase and numbers only, needs to look like 'dev.mod')",
+                self.id
+            )));
+        }
+
+        if self.id.len() > 64 {
+            return Err(ApiError::BadRequest(
+                "Mod id too long (max 64 characters)".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 

@@ -99,6 +99,8 @@ pub async fn create(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &payload.download_link)?;
+    json.validate()?;
+    return Err(ApiError::InternalError);
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
     let result = Mod::from_json(&json, dev, &mut transaction).await;
     if result.is_err() {

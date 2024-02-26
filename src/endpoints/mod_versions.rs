@@ -158,6 +158,7 @@ pub async fn create_version(
             path.id, json.id
         )));
     }
+    json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
     if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
         let _ = transaction.rollback().await;
