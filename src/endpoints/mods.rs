@@ -33,6 +33,7 @@ pub struct IndexQueryParams {
     pub developer: Option<String>,
     pub tags: Option<String>,
     pub featured: Option<bool>,
+    pub pending_validation: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -44,8 +45,16 @@ pub struct CreateQueryParams {
 pub async fn index(
     data: web::Data<AppData>,
     query: web::Query<IndexQueryParams>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    if query.pending_validation.is_some() {
+        let dev = auth.into_developer()?;
+        if !dev.admin {
+            return Err(ApiError::Forbidden);
+        }
+    }
 
     let mut result = Mod::get_index(&mut pool, query.0).await?;
     for i in &mut result.data {
@@ -89,7 +98,7 @@ pub async fn create(
     let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &payload.download_link.as_str())?;
+    let json = ModJson::from_zip(&mut file_path, &payload.download_link)?;
     let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
     let result = Mod::from_json(&json, dev, &mut transaction).await;
     if result.is_err() {

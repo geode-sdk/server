@@ -143,6 +143,54 @@ impl ModVersion {
         Ok(ret)
     }
 
+    // WIP
+
+    pub async fn get_not_valid_for_mods(
+        ids: &Vec<String>,
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+        if ids.is_empty() {
+            return Ok(Default::default());
+        }
+
+        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"SELECT DISTINCT
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
+            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
+            WHERE mv.validated = false AND mv.mod_id IN ("#,
+        );
+        let mut separated = query_builder.separated(",");
+
+        for id in ids.iter() {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+        let records = query_builder
+            .build_query_as::<ModVersionGetOne>()
+            .fetch_all(&mut *pool)
+            .await;
+        let records = match records {
+            Err(e) => {
+                log::info!("{:?}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(r) => r,
+        };
+
+        let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
+
+        for x in records.into_iter() {
+            let mod_id = x.mod_id.clone();
+            let version = x.into_mod_version();
+            if ret.contains_key(&mod_id) {
+                ret.get_mut(&mod_id).unwrap().push(version);
+            } else {
+                ret.insert(mod_id, vec![version]);
+            }
+        }
+        Ok(ret)
+    }
+
     pub async fn get_latest_for_mod(
         id: &str,
         gd: Option<GDVersionEnum>,

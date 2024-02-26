@@ -185,7 +185,16 @@ impl Mod {
             counter_builder.push(sql);
         }
 
-        let sql = "mv.validated = true AND LOWER(mv.name) LIKE ";
+        let sql = "mv.validated = ";
+        builder.push(sql);
+        counter_builder.push(sql);
+
+        let pending_validation = query.pending_validation.unwrap_or(false);
+
+        builder.push_bind(!pending_validation);
+        counter_builder.push_bind(!pending_validation);
+
+        let sql = " AND mv.name LIKE ";
         builder.push(sql);
         counter_builder.push(sql);
 
