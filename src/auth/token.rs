@@ -35,7 +35,7 @@ pub async fn create_token_for_developer(
         id,
         hash
     )
-    .fetch_one(&mut *pool)
+    .execute(&mut *pool)
     .await
     {
         log::error!("{}", e);
