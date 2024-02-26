@@ -58,6 +58,8 @@ struct ModRecord {
     latest_version: String,
     download_count: i32,
     featured: bool,
+    about: Option<String>,
+    changelog: Option<String>,
     _updated_at: DateTime<Utc>,
 }
 
@@ -273,6 +275,10 @@ impl Mod {
             });
         }
 
+        if pending_validation {
+            return Mod::get_pending(records, count, pool).await;
+        }
+
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, &ids, query.gd, platforms).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
@@ -308,6 +314,52 @@ impl Mod {
             })
             .collect();
         Ok(PaginatedData { data: ret, count })
+    }
+
+    async fn get_pending(
+        records: Vec<ModRecord>,
+        total_count: i64,
+        pool: &mut PgConnection,
+    ) -> Result<PaginatedData<Mod>, ApiError> {
+        let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
+        let versions = ModVersion::get_not_valid_for_mods(&ids, pool).await?;
+        let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let mut mod_version_ids: Vec<i32> = vec![];
+        for (_, mod_version) in versions.iter() {
+            mod_version_ids.append(&mut mod_version.iter().map(|x| x.id).collect());
+        }
+
+        let gd_versions = ModGDVersion::get_for_mod_versions(&mod_version_ids, pool).await?;
+        let tags = Tag::get_tags_for_mods(&ids, pool).await?;
+
+        let ret = records
+            .into_iter()
+            .map(|x| {
+                let mut version = versions.get(&x.id).cloned().unwrap_or_default();
+                let gd_ver = gd_versions.get(&version[0].id).cloned().unwrap_or_default();
+                version[0].gd = gd_ver;
+
+                let devs = developers.get(&x.id).cloned().unwrap_or_default();
+                let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                Mod {
+                    id: x.id.clone(),
+                    repository: x.repository.clone(),
+                    latest_version: x.latest_version.clone(),
+                    download_count: x.download_count,
+                    featured: x.featured,
+                    versions: version,
+                    tags,
+                    developers: devs,
+                    about: x.about,
+                    changelog: x.changelog,
+                }
+            })
+            .collect::<Vec<Mod>>();
+
+        Ok(PaginatedData {
+            data: ret,
+            count: total_count,
+        })
     }
 
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {

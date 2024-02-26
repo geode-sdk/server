@@ -93,12 +93,14 @@ impl ModVersion {
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT DISTINCT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.version = m.latest_version AND mv.validated = true"#,
+            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
+                q.early_load, q.api, q.mod_id FROM (SELECT
+                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
+                mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
+                INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                WHERE mv.validated = true
+            "#,
         );
         if let Some(g) = gd {
             query_builder.push(" AND mgv.gd = ");
@@ -121,6 +123,7 @@ impl ModVersion {
             separated.push_bind(id);
         }
         separated.push_unseparated(")");
+        query_builder.push(") q WHERE q.rn = 1");
         let records = query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_all(&mut *pool)
@@ -182,11 +185,8 @@ impl ModVersion {
         for x in records.into_iter() {
             let mod_id = x.mod_id.clone();
             let version = x.into_mod_version();
-            if ret.contains_key(&mod_id) {
-                ret.get_mut(&mod_id).unwrap().push(version);
-            } else {
-                ret.insert(mod_id, vec![version]);
-            }
+
+            ret.entry(mod_id).or_default().push(version);
         }
         Ok(ret)
     }
@@ -198,14 +198,14 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT DISTINCT
+            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
+            q.early_load, q.api, q.mod_id FROM (SELECT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
+            mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.version = (SELECT latest_version FROM mods WHERE id = "#,
+            WHERE mv.validated = true"#,
         );
-        query_builder.push_bind(id);
-        query_builder.push(") AND mv.validated = true");
         if let Some(g) = gd {
             query_builder.push(" AND mgv.gd = ");
             query_builder.push_bind(g);
@@ -221,7 +221,10 @@ impl ModVersion {
                 query_builder.push(", ");
             }
         }
-        query_builder.push(" AND mv.mod_id = $1");
+        query_builder.push(" AND mv.mod_id = ");
+        query_builder.push_bind(id);
+        query_builder.push(") q WHERE q.rn = 1");
+        log::info!("{}", query_builder.sql());
         let records = match query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_optional(&mut *pool)
