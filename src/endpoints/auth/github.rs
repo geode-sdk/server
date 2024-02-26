@@ -1,6 +1,7 @@
 use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
 use sqlx::{
+    migrate::Migrate,
     types::ipnetwork::{IpNetwork, Ipv4Network},
     Acquire,
 };
@@ -51,7 +52,7 @@ pub async fn poll_github_login(
     connection_info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let uuid = match Uuid::parse_str(&json.uuid) {
         Err(e) => {
             log::error!("{}", e);
@@ -61,7 +62,10 @@ pub async fn poll_github_login(
     };
     let attempt = match GithubLoginAttempt::get_one(uuid, &mut transaction).await? {
         None => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             return Err(ApiError::BadRequest(format!(
                 "No attempt made for uuid {}",
                 json.uuid
@@ -76,32 +80,47 @@ pub async fn poll_github_login(
     };
     let net: Ipv4Network = match ip.parse() {
         Err(e) => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             log::error!("{}", e);
             return Err(ApiError::BadRequest("Invalid IP".to_string()));
         }
         Ok(n) => n,
     };
     if attempt.ip.ip() != net.ip() {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         log::error!("{} compared to {}", attempt.ip, net);
         return Err(ApiError::BadRequest(
             "Request IP does not match stored attempt IP".to_string(),
         ));
     }
     if !attempt.interval_passed() {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(ApiError::BadRequest("Too fast".to_string()));
     }
     if attempt.is_expired() {
         match GithubLoginAttempt::remove(uuid, &mut transaction).await {
             Err(e) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .or(Err(ApiError::TransactionError))?;
                 log::error!("{}", e);
                 return Err(ApiError::InternalError);
             }
             Ok(_) => {
-                let _ = transaction.commit().await;
+                transaction
+                    .commit()
+                    .await
+                    .or(Err(ApiError::TransactionError))?;
                 return Err(ApiError::BadRequest("Login attempt expired".to_string()));
             }
         };
@@ -114,13 +133,19 @@ pub async fn poll_github_login(
     GithubLoginAttempt::poll(uuid, &mut transaction).await;
     let token = client.poll_github(&attempt.device_code).await?;
     if let Err(e) = GithubLoginAttempt::remove(uuid, &mut transaction).await {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         log::error!("{}", e);
         return Err(ApiError::InternalError);
     };
     let user = match client.get_user(token).await {
         Err(e) => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             log::error!("{}", e);
             return Err(ApiError::InternalError);
         }
@@ -129,12 +154,12 @@ pub async fn poll_github_login(
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt
 
-    if let Err(e) = transaction.commit().await {
-        log::error!("{}", e);
-        return Err(ApiError::InternalError);
-    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
 
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let id = match user.get("id") {
         None => return Err(ApiError::InternalError),
@@ -143,15 +168,18 @@ pub async fn poll_github_login(
     if let Some(x) = Developer::get_by_github_id(id, &mut transaction).await? {
         let token = match create_token_for_developer(x.id, &mut transaction).await {
             Err(_) => {
-                let _ = transaction.rollback().await;
+                transaction
+                    .rollback()
+                    .await
+                    .or(Err(ApiError::TransactionError))?;
                 return Err(ApiError::InternalError);
             }
             Ok(t) => t,
         };
-        if let Err(e) = transaction.commit().await {
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
+        transaction
+            .commit()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Ok(web::Json(ApiResponse {
             error: "".to_string(),
             payload: token.to_string(),
@@ -159,14 +187,20 @@ pub async fn poll_github_login(
     }
     let username = match user.get("login") {
         None => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             return Err(ApiError::InternalError);
         }
         Some(user) => user.to_string(),
     };
     let id = match Developer::create(id, username, &mut transaction).await {
         Err(e) => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             log::error!("{}", e);
             return Err(ApiError::InternalError);
         }
@@ -174,16 +208,19 @@ pub async fn poll_github_login(
     };
     let token = match create_token_for_developer(id, &mut transaction).await {
         Err(e) => {
-            let _ = transaction.rollback().await;
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             log::error!("{}", e);
             return Err(ApiError::InternalError);
         }
         Ok(t) => t,
     };
-    if let Err(e) = transaction.commit().await {
-        log::error!("{}", e);
-        return Err(ApiError::InternalError);
-    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),

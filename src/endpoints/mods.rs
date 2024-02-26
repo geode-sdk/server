@@ -101,16 +101,19 @@ pub async fn create(
     let json = ModJson::from_zip(&mut file_path, &payload.download_link)?;
     json.validate()?;
     return Err(ApiError::InternalError);
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let result = Mod::from_json(&json, dev, &mut transaction).await;
     if result.is_err() {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(result.err().unwrap());
     }
-    let tr_res = transaction.commit().await;
-    if tr_res.is_err() {
-        info!("{:?}", tr_res);
-    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
     Ok(HttpResponse::NoContent())
 }
 
@@ -175,14 +178,18 @@ pub async fn update_mod(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Mod::update_mod(&path, payload.featured, &mut transaction).await {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-    if (transaction.commit().await).is_err() {
-        return Err(ApiError::DbError);
-    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
 
     Ok(HttpResponse::NoContent())
 }

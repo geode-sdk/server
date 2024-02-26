@@ -159,12 +159,18 @@ pub async fn create_version(
         )));
     }
     json.validate()?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
-        let _ = transaction.rollback().await;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-    let _ = transaction.commit().await;
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
     Ok(HttpResponse::NoContent())
 }
 
@@ -180,7 +186,7 @@ pub async fn update_version(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let r = ModVersion::update_version(
         &path.id,
         &path.version,
@@ -190,15 +196,24 @@ pub async fn update_version(
     )
     .await;
     if r.is_err() {
-        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(r.err().unwrap());
     }
     let r = Mod::try_update_latest_version(&path.id, &mut transaction).await;
     if r.is_err() {
-        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(r.err().unwrap());
     }
-    transaction.commit().await.or(Err(ApiError::DbError))?;
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
 
     Ok(HttpResponse::NoContent())
 }

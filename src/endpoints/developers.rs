@@ -3,6 +3,7 @@ use serde::Deserialize;
 use sqlx::Acquire;
 
 use crate::{
+    auth::token,
     extractors::auth::Auth,
     types::{
         api::ApiError,
@@ -36,7 +37,7 @@ pub async fn add_developer_to_mod(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
         return Err(ApiError::Forbidden);
     }
@@ -55,10 +56,16 @@ pub async fn add_developer_to_mod(
     }
 
     if let Err(e) = Mod::assign_dev(&path.id, dev.id, &mut transaction).await {
-        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-    transaction.commit().await.or(Err(ApiError::DbError))?;
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
     Ok(HttpResponse::NoContent())
 }
 
@@ -70,7 +77,7 @@ pub async fn remove_dev_from_mod(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.into_developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::DbError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
         return Err(ApiError::Forbidden);
     }
@@ -88,9 +95,37 @@ pub async fn remove_dev_from_mod(
     }
 
     if let Err(e) = Mod::unassign_dev(&path.id, dev.id, &mut transaction).await {
-        transaction.rollback().await.or(Err(ApiError::DbError))?;
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-    transaction.commit().await.or(Err(ApiError::DbError))?;
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
+    Ok(HttpResponse::NoContent())
+}
+
+#[delete("v1/me/tokens")]
+pub async fn delete_tokens(
+    data: web::Data<AppData>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    if let Err(e) = token::invalidate_tokens_for_developer(dev.id, &mut transaction).await {
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
+        return Err(e);
+    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
     Ok(HttpResponse::NoContent())
 }

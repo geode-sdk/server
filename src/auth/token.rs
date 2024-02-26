@@ -44,3 +44,17 @@ pub async fn create_token_for_developer(
 
     Ok(token)
 }
+
+pub async fn invalidate_tokens_for_developer(
+    id: i32,
+    pool: &mut PgConnection,
+) -> Result<(), ApiError> {
+    if let Err(e) = sqlx::query!("DELETE FROM auth_tokens WHERE developer_id = $1", id)
+        .execute(&mut *pool)
+        .await
+    {
+        log::error!("{}", e);
+        return Err(ApiError::DbError);
+    };
+    Ok(())
+}
