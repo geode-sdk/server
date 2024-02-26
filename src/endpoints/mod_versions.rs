@@ -202,14 +202,6 @@ pub async fn update_version(
             .or(Err(ApiError::TransactionError))?;
         return Err(r.err().unwrap());
     }
-    let r = Mod::try_update_latest_version(&path.id, &mut transaction).await;
-    if r.is_err() {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(r.err().unwrap());
-    }
     transaction
         .commit()
         .await

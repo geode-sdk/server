@@ -31,7 +31,6 @@ use super::{
 pub struct Mod {
     pub id: String,
     pub repository: Option<String>,
-    pub latest_version: String,
     pub featured: bool,
     pub download_count: i32,
     pub developers: Vec<Developer>,
@@ -55,7 +54,6 @@ struct ModRecord {
     id: String,
     #[sqlx(default)]
     repository: Option<String>,
-    latest_version: String,
     download_count: i32,
     featured: bool,
     about: Option<String>,
@@ -67,7 +65,6 @@ struct ModRecord {
 struct ModRecordGetOne {
     id: String,
     repository: Option<String>,
-    latest_version: String,
     featured: bool,
     version_id: i32,
     mod_download_count: i32,
@@ -115,7 +112,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.latest_version, m.about, m.changelog, m.download_count, m.featured, m.updated_at as _updated_at FROM mods m
+            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.updated_at as _updated_at FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
         );
@@ -302,7 +299,6 @@ impl Mod {
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
-                    latest_version: x.latest_version.clone(),
                     download_count: x.download_count,
                     featured: x.featured,
                     versions: vec![version],
@@ -344,7 +340,6 @@ impl Mod {
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
-                    latest_version: x.latest_version.clone(),
                     download_count: x.download_count,
                     featured: x.featured,
                     versions: version,
@@ -366,7 +361,7 @@ impl Mod {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
-                m.id, m.repository, m.latest_version, m.about, m.changelog, m.featured, m.download_count as mod_download_count,
+                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -419,7 +414,6 @@ impl Mod {
         let mod_entity = Mod {
             id: records[0].id.clone(),
             repository: records[0].repository.clone(),
-            latest_version: records[0].latest_version.clone(),
             featured: records[0].featured,
             download_count: records[0].mod_download_count,
             versions,
@@ -585,58 +579,6 @@ impl Mod {
         }
     }
 
-    pub async fn try_update_latest_version(
-        id: &str,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let latest = sqlx::query!(
-            "SELECT mv.version, mv.id FROM mod_versions mv
-            INNER JOIN mods m ON mv.mod_id = m.id
-            WHERE m.id = $1 AND mv.validated = true
-            ORDER BY mv.id DESC LIMIT 1",
-            id
-        )
-        .fetch_optional(&mut *pool)
-        .await;
-
-        let latest = match latest {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(l) => l,
-        };
-
-        if latest.is_none() {
-            return Ok(());
-        }
-
-        let latest = latest.unwrap();
-
-        let result = sqlx::query!(
-            "UPDATE mods SET latest_version = $1 WHERE id = $2",
-            latest.version,
-            id
-        )
-        .execute(&mut *pool)
-        .await;
-
-        match result {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(r) => {
-                if r.rows_affected() == 0 {
-                    log::info!("Something really bad happened with mod {}", id);
-                    return Err(ApiError::InternalError);
-                }
-
-                Ok(())
-            }
-        }
-    }
-
     async fn create(
         json: &ModJson,
         developer: FetchedDeveloper,
@@ -662,7 +604,7 @@ impl Mod {
         if json.about.is_some() {
             query_builder.push("about, ");
         }
-        query_builder.push("id, latest_version, image) VALUES (");
+        query_builder.push("id, image) VALUES (");
         let mut separated = query_builder.separated(", ");
         if json.repository.is_some() {
             separated.push_bind(json.repository.as_ref().unwrap());
@@ -674,7 +616,6 @@ impl Mod {
             separated.push_bind(&json.about);
         }
         separated.push_bind(&json.id);
-        separated.push_bind(&json.version);
         separated.push_bind(&json.logo);
         separated.push_unseparated(")");
 

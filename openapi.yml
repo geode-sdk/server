@@ -517,8 +517,6 @@ components:
             - type: string
           examples:
             - "https://github.com/geode-sdk/geode"
-        latest_version:
-          $ref: "#/components/schemas/ModVersionString"
         developers:
           type: array
           items:
@@ -546,7 +544,6 @@ components:
             - "Fixed a bug with the mod"
       required:
         - id
-        - latest_version
 
     ModVersion:
       type: object
