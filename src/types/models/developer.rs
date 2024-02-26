@@ -224,6 +224,13 @@ impl Developer {
         display_name: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        let str = String::from(display_name);
+        if !str.is_ascii() {
+            return Err(ApiError::BadRequest(
+                "Display name must contain only ASCII characters".to_string(),
+            ));
+        }
+
         let result = match sqlx::query!(
             "UPDATE developers SET display_name = $1 WHERE id = $2",
             display_name,
