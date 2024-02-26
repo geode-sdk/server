@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT d.id, d.username, d.display_name, d.verified, d.admin FROM developers d\n                INNER JOIN auth_tokens at ON at.developer_id = d.id\n                WHERE at.token = $1",
+  "query": "SELECT d.id, d.username, d.display_name, d.verified, d.admin FROM developers d\n                INNER JOIN auth_tokens a ON d.id = a.developer_id\n                WHERE a.token = $1",
   "describe": {
     "columns": [
       {
@@ -31,7 +31,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -42,5 +42,5 @@
       false
     ]
   },
-  "hash": "2e27c382a1f9fcff66602fd5fe5b1b3291bf0d13a290258192005760f315592a"
+  "hash": "f086540770d130d47c8f01c5de048528a5eb41525984985786dc0b824bd5cd12"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.latest_version, m.about, m.changelog, m.featured, m.download_count as mod_download_count,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            WHERE m.id = $1 AND mv.validated = true",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            WHERE m.id = $1 AND mv.validated = true",
   "describe": {
     "columns": [
       {
@@ -15,81 +15,76 @@
       },
       {
         "ordinal": 2,
-        "name": "latest_version",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 3,
         "name": "about",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "changelog",
         "type_info": "Text"
       },
       {
-        "ordinal": 5,
+        "ordinal": 4,
         "name": "featured",
         "type_info": "Bool"
       },
       {
-        "ordinal": 6,
+        "ordinal": 5,
         "name": "mod_download_count",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "version_id",
         "type_info": "Int4"
       },
       {
-        "ordinal": 8,
+        "ordinal": 7,
         "name": "name",
         "type_info": "Text"
       },
       {
-        "ordinal": 9,
+        "ordinal": 8,
         "name": "description",
         "type_info": "Text"
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "version",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 10,
         "name": "download_link",
         "type_info": "Text"
       },
       {
-        "ordinal": 12,
+        "ordinal": 11,
         "name": "mod_version_download_count",
         "type_info": "Int4"
       },
       {
-        "ordinal": 13,
+        "ordinal": 12,
         "name": "hash",
         "type_info": "Text"
       },
       {
-        "ordinal": 14,
+        "ordinal": 13,
         "name": "geode",
         "type_info": "Text"
       },
       {
-        "ordinal": 15,
+        "ordinal": 14,
         "name": "early_load",
         "type_info": "Bool"
       },
       {
-        "ordinal": 16,
+        "ordinal": 15,
         "name": "api",
         "type_info": "Bool"
       },
       {
-        "ordinal": 17,
+        "ordinal": 16,
         "name": "mod_id",
         "type_info": "Text"
       }
@@ -102,7 +97,6 @@
     "nullable": [
       false,
       true,
-      false,
       true,
       true,
       false,
@@ -120,5 +114,5 @@
       false
     ]
   },
-  "hash": "f0e5810f83650f0369e1c4a8f300f74e7b901852b7e1b7857adb0afae181fc55"
+  "hash": "a16bf88e50a6cbe38e8fe39449016ddb33a436230eca8599f8785217ac5a2c15"
 }
