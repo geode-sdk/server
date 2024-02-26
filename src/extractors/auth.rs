@@ -57,12 +57,13 @@ impl FromRequest for Auth {
             };
 
             let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+            let hash = sha256::digest(token.to_string());
             let developer = sqlx::query_as!(
                 FetchedDeveloper,
                 "SELECT d.id, d.username, d.display_name, d.verified, d.admin FROM developers d
-                INNER JOIN auth_tokens at ON at.developer_id = d.id
-                WHERE at.token = $1",
-                token
+                INNER JOIN auth_tokens a ON d.id = a.developer_id
+                WHERE a.token = $1",
+                hash
             )
             .fetch_optional(&mut *pool)
             .await;
