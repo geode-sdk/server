@@ -225,9 +225,9 @@ impl Developer {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let str = String::from(display_name);
-        if !str.is_ascii() {
+        if !str.chars().all(char::is_alphanumeric) {
             return Err(ApiError::BadRequest(
-                "Display name must contain only ASCII characters".to_string(),
+                "Display name must contain only alphanumeric characters".to_string(),
             ));
         }
 
