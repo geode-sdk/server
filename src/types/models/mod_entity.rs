@@ -13,17 +13,14 @@ use crate::{
 use actix_web::web::Bytes;
 use reqwest::Client;
 use serde::Serialize;
-use sqlx::{
-    types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder,
-};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 use std::{collections::HashMap, io::Cursor, str::FromStr};
 
 use super::{
     dependency::ResponseDependency,
     developer::{Developer, FetchedDeveloper},
     incompatibility::ResponseIncompatibility,
-    mod_gd_version::{DetailedGDVersion, ModGDVersion, VerPlatform},
+    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     tag::Tag,
 };
 
@@ -58,7 +55,6 @@ struct ModRecord {
     featured: bool,
     about: Option<String>,
     changelog: Option<String>,
-    _updated_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -112,7 +108,9 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT * FROM (SELECT DISTINCT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.updated_at as _updated_at FROM mods m
+            "SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured
+            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.updated_at,
+            row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
         );
@@ -201,12 +199,21 @@ impl Mod {
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
         if let Some(g) = query.gd {
-            let sql = " AND mgv.gd = ";
+            let sql = " AND (mgv.gd = ";
             builder.push(sql);
             builder.push_bind(g);
             counter_builder.push(sql);
             counter_builder.push_bind(g);
+            let sql = " OR mgv.gd = ";
+            builder.push(sql);
+            counter_builder.push(sql);
+            builder.push_bind(GDVersionEnum::All);
+            counter_builder.push_bind(GDVersionEnum::All);
+            let sql = ")";
+            builder.push(sql);
+            counter_builder.push(sql);
         }
+
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
                 let sql = " AND mgv.platform IN (";
@@ -234,9 +241,15 @@ impl Mod {
             IndexSortType::RecentlyPublished => {
                 builder.push(" ORDER BY m.created_at DESC");
             }
+            IndexSortType::Name => {
+                builder.push(" ORDER BY mv.name ASC");
+            }
+            IndexSortType::NameReverse => {
+                builder.push(" ORDER BY mv.name DESC");
+            }
         }
 
-        builder.push(") q LIMIT ");
+        builder.push(") q WHERE q.rn = 1 LIMIT ");
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);

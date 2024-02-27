@@ -103,8 +103,11 @@ impl ModVersion {
             "#,
         );
         if let Some(g) = gd {
-            query_builder.push(" AND mgv.gd = ");
+            query_builder.push(" AND (mgv.gd = ");
             query_builder.push_bind(g);
+            query_builder.push(" OR mgv.gd = ");
+            query_builder.push_bind(GDVersionEnum::All);
+            query_builder.push(")");
         }
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
@@ -207,8 +210,11 @@ impl ModVersion {
             WHERE mv.validated = true"#,
         );
         if let Some(g) = gd {
-            query_builder.push(" AND mgv.gd = ");
+            query_builder.push(" AND (mgv.gd = ");
             query_builder.push_bind(g);
+            query_builder.push(" OR mgv.gd = ");
+            query_builder.push_bind(GDVersionEnum::All);
+            query_builder.push(")");
         }
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {

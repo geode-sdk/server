@@ -16,6 +16,8 @@ pub enum IndexSortType {
     Downloads,
     RecentlyUpdated,
     RecentlyPublished,
+    Name,
+    NameReverse,
 }
 
 #[derive(Deserialize)]
