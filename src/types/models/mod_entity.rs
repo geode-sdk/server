@@ -191,7 +191,7 @@ impl Mod {
         builder.push_bind(!pending_validation);
         counter_builder.push_bind(!pending_validation);
 
-        let sql = " AND mv.name LIKE ";
+        let sql = " AND mv.name ILIKE ";
         builder.push(sql);
         counter_builder.push(sql);
 
