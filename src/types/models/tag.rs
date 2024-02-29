@@ -13,6 +13,21 @@ pub struct FetchedTag {
 pub struct Tag;
 
 impl Tag {
+    pub async fn get_tags(pool: &mut PgConnection) -> Result<Vec<String>, ApiError> {
+        let tags = match sqlx::query!("SELECT name FROM mod_tags")
+            .fetch_all(&mut *pool)
+            .await
+        {
+            Ok(tags) => tags,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        Ok(tags.into_iter().map(|x| x.name).collect::<Vec<String>>())
+    }
+
     pub async fn get_tag_ids(
         tags: Vec<String>,
         pool: &mut PgConnection,
