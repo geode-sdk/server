@@ -284,7 +284,7 @@ impl Mod {
         if records.is_empty() {
             return Ok(PaginatedData {
                 data: vec![],
-                count: 0,
+                count,
             });
         }
 
