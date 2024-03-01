@@ -7,7 +7,10 @@ use crate::{
     extractors::auth::Auth,
     types::{
         api::{ApiError, ApiResponse},
-        models::{developer::Developer, mod_entity::Mod},
+        models::{
+            developer::{Developer, DeveloperProfile},
+            mod_entity::Mod,
+        },
     },
     AppData,
 };
@@ -192,5 +195,20 @@ pub async fn get_own_mods(
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
         payload: mods,
+    }))
+}
+
+#[get("v1/me")]
+pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        error: "".to_string(),
+        payload: DeveloperProfile {
+            id: dev.id,
+            username: dev.username,
+            display_name: dev.display_name,
+            verified: dev.verified,
+            admin: dev.admin,
+        },
     }))
 }

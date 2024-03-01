@@ -13,6 +13,15 @@ pub struct Developer {
     pub is_owner: bool,
 }
 
+#[derive(Serialize, Clone)]
+pub struct DeveloperProfile {
+    pub id: i32,
+    pub username: String,
+    pub display_name: String,
+    pub verified: bool,
+    pub admin: bool,
+}
+
 pub struct FetchedDeveloper {
     pub id: i32,
     pub username: String,
