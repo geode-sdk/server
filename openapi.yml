@@ -527,7 +527,7 @@ paths:
       parameters:
         - name: validated
           in: query
-          description: "False: show mods that have not been approved yet | True: show mods that have been approved"
+          description: "False: show mods that have not been approved yet, True: show mods that have been approved."
           example: true
           schema:
             type: boolean
