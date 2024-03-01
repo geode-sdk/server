@@ -4,6 +4,9 @@ info:
   description: Documentation for the Geode Index API
   version: "1.0.0"
 
+servers:
+  - url: https://api.geode-sdk.org/
+
 tags:
   - name: mods
     description: Access to Index mods
