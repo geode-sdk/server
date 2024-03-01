@@ -1,5 +1,8 @@
 use crate::{
-    endpoints::mods::{IndexQueryParams, IndexSortType},
+    endpoints::{
+        developers::{SimpleDevMod, SimpleDevModVersion},
+        mods::{IndexQueryParams, IndexSortType},
+    },
     types::{
         api::{ApiError, PaginatedData},
         mod_json::ModJson,
@@ -368,6 +371,79 @@ impl Mod {
             data: ret,
             count: total_count,
         })
+    }
+
+    pub async fn get_all_for_dev(
+        id: i32,
+        validated: bool,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<SimpleDevMod>, ApiError> {
+        struct Record {
+            id: String,
+            featured: bool,
+            mod_download_count: i32,
+            name: String,
+            version: String,
+            mod_version_download_count: i32,
+            validated: bool,
+        }
+        let records: Vec<Record> = match sqlx::query_as!(
+            Record,
+            "SELECT
+                m.id, m.featured, m.download_count as mod_download_count,
+                mv.name, mv.version, mv.download_count as mod_version_download_count,
+                mv.validated
+            FROM mods m
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mods_developers md ON md.mod_id = m.id
+            WHERE md.developer_id = $1 AND mv.validated = $2",
+            id,
+            validated
+        )
+        .fetch_all(&mut *pool)
+        .await
+        {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        if records.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut versions: HashMap<String, Vec<SimpleDevModVersion>> = HashMap::new();
+
+        for record in &records {
+            let version = SimpleDevModVersion {
+                name: record.name.clone(),
+                version: record.version.clone(),
+                download_count: record.mod_version_download_count,
+                validated: record.validated,
+            };
+
+            versions.entry(record.id.clone()).or_default().push(version);
+        }
+
+        let mut map: HashMap<String, SimpleDevMod> = HashMap::new();
+
+        for i in records {
+            let mod_entity = SimpleDevMod {
+                id: i.id.clone(),
+                featured: i.featured,
+                download_count: i.mod_download_count,
+                versions: versions.entry(i.id.clone()).or_default().clone(),
+            };
+            if !map.contains_key(&i.id) {
+                map.insert(i.id.clone(), mod_entity);
+            }
+        }
+
+        let mods: Vec<SimpleDevMod> = map.into_iter().map(|x| x.1).collect();
+
+        Ok(mods)
     }
 
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {

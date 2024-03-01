@@ -1,0 +1,59 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                m.id, m.featured, m.download_count as mod_download_count,\n                mv.name, mv.version, mv.download_count as mod_version_download_count,\n                mv.validated\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mods_developers md ON md.mod_id = m.id\n            WHERE md.developer_id = $1 AND mv.validated = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "featured",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "mod_download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "mod_version_download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "validated",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9b381f34a80942aaec709ee2470e8fab3d403059a4ccbf1110f4eb46f796405e"
+}

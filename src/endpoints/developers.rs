@@ -1,16 +1,32 @@
-use actix_web::{delete, post, put, web, HttpResponse, Responder};
-use serde::Deserialize;
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
 
 use crate::{
     auth::token,
     extractors::auth::Auth,
     types::{
-        api::ApiError,
+        api::{ApiError, ApiResponse},
         models::{developer::Developer, mod_entity::Mod},
     },
     AppData,
 };
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct SimpleDevMod {
+    pub id: String,
+    pub featured: bool,
+    pub download_count: i32,
+    pub versions: Vec<SimpleDevModVersion>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct SimpleDevModVersion {
+    pub name: String,
+    pub version: String,
+    pub download_count: i32,
+    pub validated: bool,
+}
 
 #[derive(Deserialize)]
 struct AddDevPath {
@@ -156,4 +172,25 @@ pub async fn update_profile(
         .await
         .or(Err(ApiError::TransactionError))?;
     Ok(HttpResponse::NoContent())
+}
+
+#[derive(Deserialize)]
+struct GetOwnModsQuery {
+    validated: Option<bool>,
+}
+
+#[get("v1/me/mods")]
+pub async fn get_own_mods(
+    data: web::Data<AppData>,
+    query: web::Query<GetOwnModsQuery>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.into_developer()?;
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let validated = query.validated.unwrap_or(true);
+    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, validated, &mut pool).await?;
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        error: "".to_string(),
+        payload: mods,
+    }))
 }
