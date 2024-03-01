@@ -100,6 +100,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::remove_dev_from_mod)
             .service(endpoints::developers::delete_tokens)
             .service(endpoints::developers::update_profile)
+            .service(endpoints::developers::get_own_mods)
             .service(endpoints::tags::index)
             .service(health)
     })
