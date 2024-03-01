@@ -205,11 +205,20 @@ paths:
   /v1/mods/{id}:
     get:
       tags:
-        - "mods"
+        - mods
       summary: Get info for a mod
       description: Returns info for the mod, without dependencies and incompatibilities
       parameters:
         - $ref: "#/components/parameters/ModID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mod"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
     put:
       tags:
@@ -505,6 +514,42 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /v1/me/mods:
+    get:
+      tags:
+        - user
+      summary: Get an authenticated user\'s mods
+      description: Returns info for mods made by the user currently logged in [maybe], without dependencies and incompatibilities
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - name: validated
+          in: query
+          description: False: show mods that have not been approved yet | True: show mods that have been approved
+          example: "true"
+          schema:
+            type: boolean
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Mod"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 
 components:
   securitySchemes:
