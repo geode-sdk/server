@@ -1,9 +1,6 @@
 use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
-use sqlx::{
-    types::ipnetwork::{IpNetwork, Ipv4Network},
-    Acquire,
-};
+use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
 
 use crate::{
@@ -77,7 +74,7 @@ pub async fn poll_github_login(
         None => return Err(ApiError::InternalError),
         Some(i) => i,
     };
-    let net: Ipv4Network = match ip.parse() {
+    let net: IpNetwork = match ip.parse() {
         Err(e) => {
             transaction
                 .rollback()
