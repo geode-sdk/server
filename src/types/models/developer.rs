@@ -1,11 +1,11 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Developer {
     pub id: i32,
     pub username: String,

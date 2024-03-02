@@ -21,6 +21,7 @@ pub struct SimpleDevMod {
     pub featured: bool,
     pub download_count: i32,
     pub versions: Vec<SimpleDevModVersion>,
+    pub developers: Vec<Developer>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

@@ -440,6 +440,8 @@ impl Mod {
 
             versions.entry(record.id.clone()).or_default().push(version);
         }
+        let ids: Vec<String> = records.iter().map(|x| x.id.clone()).collect();
+        let developers = Developer::fetch_for_mods(&ids, pool).await?;
 
         let mut map: HashMap<String, SimpleDevMod> = HashMap::new();
 
@@ -449,6 +451,7 @@ impl Mod {
                 featured: i.featured,
                 download_count: i.mod_download_count,
                 versions: versions.entry(i.id.clone()).or_default().clone(),
+                developers: developers.get(&i.id).cloned().unwrap_or_default(),
             };
             if !map.contains_key(&i.id) {
                 map.insert(i.id.clone(), mod_entity);
