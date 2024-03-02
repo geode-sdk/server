@@ -205,11 +205,22 @@ paths:
   /v1/mods/{id}:
     get:
       tags:
-        - "mods"
+        - mods
       summary: Get info for a mod
       description: Returns info for the mod, without dependencies and incompatibilities
       parameters:
         - $ref: "#/components/parameters/ModID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mod"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
     put:
       tags:
