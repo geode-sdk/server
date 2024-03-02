@@ -12,6 +12,7 @@ use super::{
     dependency::{Dependency, ResponseDependency},
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
+    rejection,
     tag::Tag,
 };
 
@@ -347,6 +348,11 @@ impl ModVersion {
                 Incompatibility::create_for_mod_version(id, incompat, pool).await?;
             }
         }
+
+        let version = semver::Version::parse(&json.version).unwrap();
+
+        let _ = rejection::remove_rejection(&json.id, version, pool).await;
+
         Ok(())
     }
 
@@ -387,6 +393,25 @@ impl ModVersion {
         version.incompatibilities = Some(incompat.into_iter().map(|x| x.to_response()).collect());
 
         Ok(version)
+    }
+
+    pub async fn delete_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let result = match sqlx::query!("DELETE FROM mod_versions WHERE id = $1", id)
+            .execute(&mut *pool)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        if result.rows_affected() == 0 {
+            return Err(ApiError::InternalError);
+        }
+
+        Ok(())
     }
 
     pub async fn calculate_cached_downloads(
