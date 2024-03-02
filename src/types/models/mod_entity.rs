@@ -14,9 +14,13 @@ use crate::{
     },
 };
 use actix_web::web::Bytes;
+use chrono::SecondsFormat;
 use reqwest::Client;
 use serde::Serialize;
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{
+    types::chrono::{DateTime, Utc},
+    PgConnection, Postgres, QueryBuilder,
+};
 use std::{collections::HashMap, io::Cursor, str::FromStr};
 
 use super::{
@@ -38,6 +42,8 @@ pub struct Mod {
     pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -58,6 +64,8 @@ struct ModRecord {
     featured: bool,
     about: Option<String>,
     changelog: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -79,6 +87,8 @@ struct ModRecordGetOne {
     mod_id: String,
     about: Option<String>,
     changelog: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
 impl Mod {
@@ -111,8 +121,8 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured
-            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.updated_at,
+            "SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at
+            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.created_at, m.updated_at,
             row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
@@ -320,6 +330,8 @@ impl Mod {
                     versions: vec![version],
                     tags,
                     developers: devs,
+                    created_at: x.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: None,
                     changelog: None,
                 }
@@ -361,6 +373,8 @@ impl Mod {
                     versions: version,
                     tags,
                     developers: devs,
+                    created_at: x.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: x.about,
                     changelog: x.changelog,
                 }
@@ -450,7 +464,7 @@ impl Mod {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
-                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count,
+                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
             FROM mods m
@@ -508,6 +522,12 @@ impl Mod {
             versions,
             tags,
             developers: devs,
+            created_at: records[0]
+                .created_at
+                .to_rfc3339_opts(SecondsFormat::Secs, true),
+            updated_at: records[0]
+                .updated_at
+                .to_rfc3339_opts(SecondsFormat::Secs, true),
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
         };
