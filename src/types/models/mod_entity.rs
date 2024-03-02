@@ -612,17 +612,7 @@ impl Mod {
         }
         ModVersion::create_from_json(json, developer.verified, pool).await?;
 
-        if let Err(e) = sqlx::query!(
-            "UPDATE mods SET image = $1, updated_at = now() WHERE id = $2",
-            &json.logo,
-            &json.id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
+        Mod::update_existing_with_json(json, pool).await?;
 
         Ok(())
     }
