@@ -22,6 +22,7 @@ pub struct DeveloperProfile {
     pub admin: bool,
 }
 
+#[derive(Clone)]
 pub struct FetchedDeveloper {
     pub id: i32,
     pub username: String,

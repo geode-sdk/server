@@ -51,7 +51,7 @@ pub async fn index(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     if query.pending_validation.is_some() {
-        let dev = auth.into_developer()?;
+        let dev = auth.developer()?;
         if !dev.admin {
             return Err(ApiError::Forbidden);
         }
@@ -96,7 +96,7 @@ pub async fn create(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut file_path = download_geode_file(&payload.download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &payload.download_link)?;
@@ -173,7 +173,7 @@ pub async fn update_mod(
     payload: web::Json<UpdateModPayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     if !dev.admin {
         return Err(ApiError::Forbidden);
     }

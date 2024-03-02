@@ -138,7 +138,7 @@ pub async fn create_version(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     if Mod::get_one(&path.id, &mut pool).await?.is_none() {
@@ -181,7 +181,7 @@ pub async fn update_version(
     payload: web::Json<UpdatePayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     if !dev.admin {
         return Err(ApiError::Forbidden);
     }

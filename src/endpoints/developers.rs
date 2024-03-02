@@ -54,7 +54,7 @@ pub async fn add_developer_to_mod(
     json: web::Json<AddDevPayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
@@ -94,7 +94,7 @@ pub async fn remove_dev_from_mod(
     path: web::Path<RemoveDevPath>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
@@ -127,12 +127,37 @@ pub async fn remove_dev_from_mod(
     Ok(HttpResponse::NoContent())
 }
 
+#[delete("v1/me/token")]
+pub async fn delete_token(
+    data: web::Data<AppData>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.developer()?;
+    let token = auth.token()?;
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    if let Err(e) =
+        token::invalidate_token_for_developer(dev.id, token.to_string(), &mut transaction).await
+    {
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
+        return Err(e);
+    }
+    transaction
+        .commit()
+        .await
+        .or(Err(ApiError::TransactionError))?;
+    Ok(HttpResponse::NoContent())
+}
+
 #[delete("v1/me/tokens")]
 pub async fn delete_tokens(
     data: web::Data<AppData>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = token::invalidate_tokens_for_developer(dev.id, &mut transaction).await {
@@ -160,7 +185,7 @@ pub async fn update_profile(
     json: web::Json<UploadProfilePayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Developer::update_profile(dev.id, &json.display_name, &mut transaction).await {
@@ -188,7 +213,7 @@ pub async fn get_own_mods(
     query: web::Query<GetOwnModsQuery>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let validated = query.validated.unwrap_or(true);
     let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, validated, &mut pool).await?;
@@ -200,7 +225,7 @@ pub async fn get_own_mods(
 
 #[get("v1/me")]
 pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
-    let dev = auth.into_developer()?;
+    let dev = auth.developer()?;
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
         payload: DeveloperProfile {

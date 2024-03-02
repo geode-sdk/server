@@ -466,6 +466,23 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
   /v1/me:
+    get:
+      tags:
+        - user
+      summary: Get your own info
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeveloperProfile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     put:
       tags:
         - user
@@ -486,6 +503,55 @@ paths:
           description: No Content (User updated)
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/me/mods:
+    get:
+      tags:
+        - user
+      summary: Get your own mods
+      parameters:
+        - name: validated
+          in: query
+          description: Filter by validation status
+          schema:
+            type: boolean
+          required: false
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: ""
+                  payload:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeveloperMod"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/me/token:
+    delete:
+      tags:
+        - user
+      summary: Revoke current token
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: No Content (Token revoked)
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -668,6 +734,64 @@ components:
           description: Whether the developer is the owner of the mod
           examples:
             - true
+
+    DeveloperProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+          description: The username of the developer. At the moment it's the same as the GitHub username of the developer.
+          examples:
+            - fleeym
+        display_name:
+          type: string
+          examples:
+            - Flame
+        verified:
+          type: boolean,
+          description: Whether the developer can post mods without admin verification
+          examples:
+            - true
+        admin:
+          type: boolean,
+          description: Whether the developer is an admin (which can verify mods and developers)
+          examples:
+            - true
+
+    DeveloperMod:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ModID"
+        featured:
+          type: boolean
+          description: Whether the mod should is featured or not
+          example: true
+        download_count:
+          type: integer
+          example: 500
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeveloperModVersion"
+
+    DeveloperModVersion:
+      type: object
+      properties:
+        name:
+          type: string
+          examples:
+            - Devtools
+        version:
+          $ref: "#/components/schemas/ModVersionString"
+        download_count:
+          type: integer
+          example: 500
+        validated:
+          type: boolean
+          example: true
 
     Platform:
       type: string
