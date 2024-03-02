@@ -701,43 +701,100 @@ impl Mod {
             .await
             .or(Err(ApiError::DbError))?;
         if res.is_some() {
-            return Err(ApiError::BadRequest(format!(
-                "Mod {} already exists, consider creating a new version",
+            let version_count = match sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM mod_versions WHERE mod_id = $1",
                 json.id
-            )));
-        }
-        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mods (");
-        if json.repository.is_some() {
-            query_builder.push("repository, ");
-        }
-        if json.changelog.is_some() {
-            query_builder.push("changelog, ");
-        }
-        if json.about.is_some() {
-            query_builder.push("about, ");
-        }
-        query_builder.push("id, image) VALUES (");
-        let mut separated = query_builder.separated(", ");
-        if json.repository.is_some() {
-            separated.push_bind(json.repository.as_ref().unwrap());
-        }
-        if json.changelog.is_some() {
-            separated.push_bind(&json.changelog);
-        }
-        if json.about.is_some() {
-            separated.push_bind(&json.about);
-        }
-        separated.push_bind(&json.id);
-        separated.push_bind(&json.logo);
-        separated.push_unseparated(")");
-
-        let _ = query_builder
-            .build()
-            .execute(&mut *pool)
+            )
+            .fetch_one(&mut *pool)
             .await
-            .or(Err(ApiError::DbError))?;
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                }
+            };
 
-        Mod::assign_owner(&json.id, developer.id, pool).await?;
+            if let Some(c) = version_count {
+                if c > 0 {
+                    return Err(ApiError::BadRequest(format!(
+                        "Mod {} already exists, consider creating a new version",
+                        json.id
+                    )));
+                }
+            }
+
+            if !Developer::has_access_to_mod(developer.id, &json.id, pool).await? {
+                return Err(ApiError::Forbidden);
+            }
+
+            Mod::update_existing_with_json(json, pool).await?;
+        } else {
+            let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mods (");
+            if json.repository.is_some() {
+                query_builder.push("repository, ");
+            }
+            if json.changelog.is_some() {
+                query_builder.push("changelog, ");
+            }
+            if json.about.is_some() {
+                query_builder.push("about, ");
+            }
+            query_builder.push("id, image) VALUES (");
+            let mut separated = query_builder.separated(", ");
+            if json.repository.is_some() {
+                separated.push_bind(json.repository.as_ref().unwrap());
+            }
+            if json.changelog.is_some() {
+                separated.push_bind(&json.changelog);
+            }
+            if json.about.is_some() {
+                separated.push_bind(&json.about);
+            }
+            separated.push_bind(&json.id);
+            separated.push_bind(&json.logo);
+            separated.push_unseparated(")");
+
+            if let Err(e) = query_builder.build().execute(&mut *pool).await {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Mod::assign_owner(&json.id, developer.id, pool).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn update_existing_with_json(
+        json: &ModJson,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE mods SET ");
+        if json.repository.is_some() {
+            query_builder.push("repository = ");
+            query_builder.push_bind(&json.repository);
+            query_builder.push(", ");
+        }
+        if json.changelog.is_some() {
+            query_builder.push("changelog = ");
+            query_builder.push_bind(&json.changelog);
+            query_builder.push(", ");
+        }
+        if json.about.is_some() {
+            query_builder.push("about = ");
+            query_builder.push_bind(&json.about);
+            query_builder.push(", ");
+        }
+        query_builder.push("image = ");
+        query_builder.push_bind(&json.logo);
+        query_builder.push(" WHERE id = ");
+        query_builder.push_bind(&json.id);
+        log::info!("{}", query_builder.sql());
+
+        if let Err(e) = query_builder.build().execute(&mut *pool).await {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
         Ok(())
     }
 
