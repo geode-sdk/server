@@ -409,25 +409,6 @@ impl ModVersion {
         Ok(version)
     }
 
-    pub async fn delete_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
-        let result = match sqlx::query!("DELETE FROM mod_versions WHERE id = $1", id)
-            .execute(&mut *pool)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        if result.rows_affected() == 0 {
-            return Err(ApiError::InternalError);
-        }
-
-        Ok(())
-    }
-
     pub async fn calculate_cached_downloads(
         mod_version_id: i32,
         pool: &mut PgConnection,

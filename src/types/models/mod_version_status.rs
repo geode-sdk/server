@@ -40,7 +40,7 @@ impl ModVersionStatus {
         match result {
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::DbError);
+                Err(ApiError::DbError)
             }
             Ok(_) => Ok(()),
         }

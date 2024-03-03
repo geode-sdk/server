@@ -730,6 +730,17 @@ impl Mod {
                     return Err(ApiError::Forbidden);
                 }
                 Mod::update_existing_with_json(json, pool).await?;
+
+                if let Err(e) = sqlx::query!(
+                    "delete from mod_versions mv
+                    using mod_version_statuses mvs
+                    where mv.id = mvs.mod_version_id and mv.mod_id = $1 and mvs.status = 'rejected'",
+                    &json.id
+                ).execute(&mut *pool).await {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                }
+
                 true
             },
             CheckExistingResult::NotExists => true
@@ -827,6 +838,8 @@ impl Mod {
                 if counts.rejected > 0 {
                     return Ok(CheckExistingResult::ExistsWithRejected)
                 }
+
+                // This probably shouldn't ever happen. If it does I'm jumping off a cliff.
                 Ok(CheckExistingResult::NotExists)
             }
         }
