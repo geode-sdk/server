@@ -824,7 +824,10 @@ impl Mod {
                 if counts.validated == 0 && counts.not_rejected > 0 {
                     return Ok(CheckExistingResult::ExistsNotValidated);
                 } 
-                Ok(CheckExistingResult::ExistsWithRejected)
+                if counts.rejected > 0 {
+                    return Ok(CheckExistingResult::ExistsWithRejected)
+                }
+                Ok(CheckExistingResult::NotExists)
             }
         }
     }
