@@ -15,6 +15,7 @@ use crate::{
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::ModVersion,
+            mod_version_status::ModVersionStatusEnum,
         },
     },
     AppData,
@@ -33,8 +34,8 @@ pub struct CreateQueryParams {
 
 #[derive(Deserialize)]
 struct UpdatePayload {
-    validated: Option<bool>,
-    unlisted: Option<bool>,
+    status: ModVersionStatusEnum,
+    info: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -190,8 +191,8 @@ pub async fn update_version(
     let r = ModVersion::update_version(
         &path.id,
         &path.version,
-        payload.validated,
-        payload.unlisted,
+        payload.status,
+        payload.info.clone(),
         &mut transaction,
     )
     .await;

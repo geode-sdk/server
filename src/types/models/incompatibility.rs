@@ -102,7 +102,7 @@ impl Incompatibility {
             icp.importance as "importance: _",
             icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
             INNER JOIN mod_versions mv ON mv.id = icp.mod_id
-            WHERE mv.id = $1 AND mv.validated = true"#,
+            WHERE mv.id = $1"#,
             id
         )
         .fetch_all(&mut *pool)

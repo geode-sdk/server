@@ -7,7 +7,8 @@ pub async fn start(pool: &mut PgConnection) -> Result<(), String> {
             SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
             WHERE md.mod_version_id = mv.id AND md.time_downloaded > mv.last_download_cache_refresh 
         ), last_download_cache_refresh = now()
-        WHERE mv.validated = true"
+        FROM mod_version_statuses mvs
+        WHERE mv.status_id = mvs.id AND mvs.status = 'accepted'"
     )
     .execute(&mut *pool)
     .await
@@ -20,9 +21,14 @@ pub async fn start(pool: &mut PgConnection) -> Result<(), String> {
         "UPDATE mods m SET download_count = m.download_count + (
             SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
             INNER JOIN mod_versions mv ON md.mod_version_id = mv.id
-            WHERE mv.mod_id = m.id AND md.time_downloaded > m.last_download_cache_refresh AND mv.validated = true
+            INNER JOIN mod_version_statuses mvs_inner ON mv.status_id = mvs_inner.id
+            WHERE mv.mod_id = m.id AND md.time_downloaded > m.last_download_cache_refresh AND mvs_inner.status = 'accepted'
         ), last_download_cache_refresh = now()
-        WHERE m.id IN (SELECT DISTINCT mv.mod_id FROM mod_versions mv WHERE mv.validated = true)"
+        WHERE m.id IN (
+            SELECT DISTINCT mv.mod_id FROM mod_versions mv 
+            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
+            WHERE mvs.status = 'accepted'
+        )"
     )
     .execute(&mut *pool)
     .await

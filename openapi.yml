@@ -354,6 +354,37 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
+    put:
+      tags:
+        - mods
+      summary: Update a specific version of a mod (admin only)
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: "#/components/schemas/ModVersionStatus"
+
+      responses:
+        "204":
+          description: No Content (Mod updated)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /v1/mods/{id}/versions/{version}/download:
     get:
@@ -715,6 +746,12 @@ components:
             - $ref: "#/components/schemas/GDVersionObject"
         mod_id:
           $ref: "#/components/schemas/ModID"
+
+    ModVersionStatus:
+      type: string
+      enum:
+        - approved
+        - rejected
 
     ModDeveloper:
       type: object

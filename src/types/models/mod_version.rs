@@ -12,7 +12,7 @@ use super::{
     dependency::{Dependency, ResponseDependency},
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    rejection,
+    mod_version_status::ModVersionStatusEnum,
     tag::Tag,
 };
 
@@ -99,8 +99,9 @@ impl ModVersion {
                 mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
                 mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE mv.validated = true
+                WHERE mvs.status = 'accepted' 
             "#,
         );
         if let Some(g) = gd {
@@ -152,7 +153,7 @@ impl ModVersion {
 
     // WIP
 
-    pub async fn get_not_valid_for_mods(
+    pub async fn get_pending_for_mods(
         ids: &Vec<String>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
@@ -164,7 +165,8 @@ impl ModVersion {
             r#"SELECT DISTINCT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
             mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
-            WHERE mv.validated = false AND mv.mod_id IN ("#,
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mvs.status = 'pending' AND mv.mod_id IN ("#,
         );
         let mut separated = query_builder.separated(",");
 
@@ -208,7 +210,8 @@ impl ModVersion {
             mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true"#,
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mvs.status = 'accepted'"#,
         );
         if let Some(g) = gd {
             query_builder.push(" AND (mgv.gd = ");
@@ -272,9 +275,15 @@ impl ModVersion {
         version: &str,
         pool: &mut PgConnection,
     ) -> Result<String, ApiError> {
-        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2 AND validated = true", id, version)
-            .fetch_optional(&mut *pool)
-            .await;
+        let result = sqlx::query!(
+            "SELECT mv.download_link FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
+            id,
+            version
+        )
+        .fetch_optional(&mut *pool)
+        .await;
         if result.is_err() {
             return Err(ApiError::DbError);
         }
@@ -292,12 +301,15 @@ impl ModVersion {
         dev_verified: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        // TODO CREATE STATUS
+
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
             builder.push("description, ");
         }
-        builder.push("name, version, download_link, validated, hash, geode, early_load, api, mod_id) VALUES (");
+        builder
+            .push("name, version, download_link, hash, geode, early_load, api, mod_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -305,7 +317,6 @@ impl ModVersion {
         separated.push_bind(&json.name);
         separated.push_bind(&json.version);
         separated.push_bind(&json.download_url);
-        separated.push_bind(dev_verified);
         separated.push_bind(&json.hash);
         separated.push_bind(&json.geode);
         separated.push_bind(json.early_load);
@@ -349,10 +360,6 @@ impl ModVersion {
             }
         }
 
-        let version = semver::Version::parse(&json.version).unwrap();
-
-        let _ = rejection::remove_rejection(&json.id, version, pool).await;
-
         Ok(())
     }
 
@@ -367,7 +374,8 @@ impl ModVersion {
             mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
             mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id 
+            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
             id,
             version
         )
@@ -419,11 +427,13 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         if let Err(e) = sqlx::query!(
-            "UPDATE mod_versions mv SET download_count = mv.download_count + (
+            "UPDATE mod_versions mv 
+            SET download_count = mv.download_count + (
                 SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
                 WHERE md.mod_version_id = mv.id AND md.time_downloaded > mv.last_download_cache_refresh 
             ), last_download_cache_refresh = now()
-            WHERE mv.id = $1 AND mv.validated = true",
+            FROM mod_version_statuses mvs
+            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
             mod_version_id
         )
         .execute(&mut *pool)
@@ -437,20 +447,19 @@ impl ModVersion {
     pub async fn update_version(
         id: &str,
         version: &str,
-        validated: Option<bool>,
-        unlisted: Option<bool>,
+        new_status: ModVersionStatusEnum,
+        info: Option<String>,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if validated.is_none() && unlisted.is_none() {
-            return Ok(());
-        }
-
+        // TODO CHANGE WITH STATUS
         let mut query_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("UPDATE mod_versions SET ");
+            QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
-        if let Some(v) = validated {
-            query_builder.push("validated = ");
-            query_builder.push_bind(v);
+        query_builder.push("status = ");
+        query_builder.push_bind(new_status);
+        if let Some(i) = info {
+            query_builder.push(", info = ");
+            query_builder.push_bind(i);
         }
 
         query_builder.push(" WHERE mod_id = ");
