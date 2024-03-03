@@ -193,6 +193,7 @@ pub async fn update_version(
         &path.version,
         payload.status,
         payload.info.clone(),
+        dev.id,
         &mut transaction,
     )
     .await;

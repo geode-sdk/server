@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
+use sqlx::PgConnection;
+
+use crate::types::api::ApiError;
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
-#[sqlx(type_name = "mod_version_status")]
+#[sqlx(rename_all = "lowercase", type_name = "mod_version_status")]
 pub enum ModVersionStatusEnum {
     Pending,
     Accepted,
@@ -15,4 +18,31 @@ pub struct ModVersionStatus {
     pub status: ModVersionStatusEnum,
     pub info: Option<String>,
     pub admin_id: i32,
+}
+
+impl ModVersionStatus {
+    pub async fn create_for_mod_version(
+        id: i32,
+        status: ModVersionStatusEnum,
+        info: Option<String>,
+        admin_id: Option<i32>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let result = sqlx::query!(
+            "INSERT INTO mod_version_statuses (mod_version_id, status, info, admin_id) VALUES ($1, $2, $3, $4)",
+            id,
+            status as ModVersionStatusEnum,
+            info,
+            admin_id
+        )
+        .execute(&mut *pool)
+        .await;
+        match result {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(_) => Ok(()),
+        }
+    }
 }

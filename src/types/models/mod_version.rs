@@ -12,7 +12,7 @@ use super::{
     dependency::{Dependency, ResponseDependency},
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    mod_version_status::ModVersionStatusEnum,
+    mod_version_status::{ModVersionStatus, ModVersionStatusEnum},
     tag::Tag,
 };
 
@@ -301,8 +301,6 @@ impl ModVersion {
         dev_verified: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        // TODO CREATE STATUS
-
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
@@ -359,6 +357,14 @@ impl ModVersion {
                 Incompatibility::create_for_mod_version(id, incompat, pool).await?;
             }
         }
+
+        let status = if dev_verified {
+            ModVersionStatusEnum::Accepted
+        } else {
+            ModVersionStatusEnum::Pending
+        };
+
+        ModVersionStatus::create_for_mod_version(id, status, None, None, pool).await?;
 
         Ok(())
     }
@@ -449,14 +455,16 @@ impl ModVersion {
         version: &str,
         new_status: ModVersionStatusEnum,
         info: Option<String>,
+        admin_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        // TODO CHANGE WITH STATUS
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
         query_builder.push("status = ");
         query_builder.push_bind(new_status);
+        query_builder.push(", admin_id = ");
+        query_builder.push_bind(admin_id);
         if let Some(i) = info {
             query_builder.push(", info = ");
             query_builder.push_bind(i);
