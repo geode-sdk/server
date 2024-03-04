@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT dp.dependent_id as mod_version_id, dp.dependency_id, \n            dp.version, dp.compare AS \"compare: _\", dp.importance AS \"importance: _\" \n            FROM dependencies dp\n            WHERE dp.dependent_id = $1",
+  "query": "SELECT dp.dependent_id as mod_version_id, dp.dependency_id, dp.version, dp.compare AS \"compare: _\", dp.importance AS \"importance: _\" FROM dependencies dp\n            WHERE dp.dependent_id = $1",
   "describe": {
     "columns": [
       {
@@ -66,5 +66,5 @@
       false
     ]
   },
-  "hash": "3c8230db90dc4eb75487637807c46ecdfefb634a4b86a653a0a20b7513efc334"
+  "hash": "24942775ec0226c98bb31fce430b35af6b8fa8bd18364781bc23cfca0bb8846f"
 }

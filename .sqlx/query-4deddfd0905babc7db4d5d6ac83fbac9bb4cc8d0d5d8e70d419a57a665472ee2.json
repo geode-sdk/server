@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT icp.compare as \"compare: _\",\n            icp.importance as \"importance: _\",\n            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp\n            INNER JOIN mod_versions mv ON mv.id = icp.mod_id\n            WHERE mv.id = $1",
+  "query": "SELECT icp.compare as \"compare: _\",\n            icp.importance as \"importance: _\",\n            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp\n            INNER JOIN mod_versions mv ON mv.id = icp.mod_id\n            WHERE mv.id = $1 AND mv.validated = true",
   "describe": {
     "columns": [
       {
@@ -65,5 +65,5 @@
       false
     ]
   },
-  "hash": "ddef8117c5f97a1dbef19f8248b9b90a0b101b5f2abf3e2c3acb2df18cf2d001"
+  "hash": "4deddfd0905babc7db4d5d6ac83fbac9bb4cc8d0d5d8e70d419a57a665472ee2"
 }
