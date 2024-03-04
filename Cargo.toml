@@ -29,3 +29,4 @@ semver = "1.0.21"
 clap = { version = "4.5.1", features = ["derive"] }
 regex = "1.10.3"
 chrono = "0.4.34"
+actix-cors = "0.7.0"
