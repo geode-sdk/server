@@ -1,5 +1,7 @@
+use actix_cors::Cors;
 use actix_web::{
     get,
+    http::header,
     middleware::Logger,
     web::{self, QueryConfig},
     App, HttpServer, Responder,
@@ -77,12 +79,25 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Job {} completed", s);
         return anyhow::Ok(());
     }
+    let cors = Cors::default()
+        .allow_any_origin()
+        .allow_any_method()
+        .allow_any_header()
+        .max_age(3600);
 
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
+                    .allow_any_header()
+                    .supports_credentials()
+                    .max_age(3600),
+            )
             .wrap(Logger::default())
             .service(endpoints::mods::index)
             .service(endpoints::mods::get_mod_updates)
