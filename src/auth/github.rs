@@ -1,5 +1,5 @@
 use reqwest::{
-    header::{HeaderMap, HeaderValue, ACCEPT},
+    header::{HeaderMap, HeaderValue},
     Client, StatusCode,
 };
 use serde::{Deserialize, Serialize};
