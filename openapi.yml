@@ -715,6 +715,8 @@ components:
             - $ref: "#/components/schemas/GDVersionObject"
         mod_id:
           $ref: "#/components/schemas/ModID"
+        validated:
+          type: boolean
 
     ModDeveloper:
       type: object

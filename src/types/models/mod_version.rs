@@ -32,6 +32,7 @@ pub struct ModVersion {
     pub gd: DetailedGDVersion,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
+    pub validated: bool,
 }
 
 #[derive(sqlx::FromRow)]
@@ -47,6 +48,7 @@ struct ModVersionGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
+    validated: bool,
 }
 
 impl ModVersionGetOne {
@@ -73,6 +75,7 @@ impl ModVersionGetOne {
             },
             dependencies: None,
             incompatibilities: None,
+            validated: self.validated,
         }
     }
 }
@@ -162,7 +165,7 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
+            mv.early_load, mv.api, mv.mod_id, mv.validated FROM mod_versions mv
             WHERE mv.validated = false AND mv.mod_id IN ("#,
         );
         let mut separated = query_builder.separated(",");
@@ -359,7 +362,7 @@ impl ModVersion {
             ModVersionGetOne,
             "SELECT
             mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
-            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv
+            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mv.validated FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
             id,

@@ -89,6 +89,7 @@ struct ModRecordGetOne {
     changelog: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    mod_version_validated: bool
 }
 
 impl Mod {
@@ -469,7 +470,7 @@ impl Mod {
             "SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
-                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
+                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mv.validated as mod_version_validated
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             WHERE m.id = $1 AND mv.validated = true",
@@ -505,6 +506,7 @@ impl Mod {
                 },
                 dependencies: None,
                 incompatibilities: None,
+                validated: x.mod_version_validated
             })
             .collect();
         let ids = versions.iter().map(|x| x.id).collect();
