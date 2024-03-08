@@ -464,7 +464,11 @@ impl Mod {
         Ok(mods)
     }
 
-    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
+    pub async fn get_one(
+        id: &str,
+        allow_invalid: bool,
+        pool: &mut PgConnection
+    ) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
@@ -473,8 +477,8 @@ impl Mod {
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mv.validated as mod_version_validated
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            WHERE m.id = $1 AND mv.validated = true",
-            id
+            WHERE m.id = $1 AND (mv.validated = true OR $2)",
+            id, allow_invalid
         )
         .fetch_all(&mut *pool)
         .await
@@ -672,12 +676,14 @@ impl Mod {
 
     pub async fn get_logo_for_mod(
         id: &str,
+        allow_invalid: bool,
         pool: &mut PgConnection,
     ) -> Result<Option<Vec<u8>>, ApiError> {
         match sqlx::query!(
             "SELECT DISTINCT m.image FROM mods m
-        INNER JOIN mod_versions mv ON mv.mod_id = m.id WHERE m.id = $1 AND mv.validated = true",
-            id
+        INNER JOIN mod_versions mv ON mv.mod_id = m.id
+        WHERE m.id = $1 AND (mv.validated = true OR $2)",
+            id, allow_invalid
         )
         .fetch_optional(&mut *pool)
         .await

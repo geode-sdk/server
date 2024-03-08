@@ -97,9 +97,9 @@ impl ModVersion {
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
-                q.early_load, q.api, q.mod_id FROM (SELECT
+                q.early_load, q.api, q.mod_id, q.validated FROM (SELECT
                 mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-                mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
+                mv.early_load, mv.api, mv.mod_id, mv.validated, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
                 INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
                 WHERE mv.validated = true
@@ -201,6 +201,7 @@ impl ModVersion {
         id: &str,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
+        allow_invalid: bool,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -210,8 +211,13 @@ impl ModVersion {
             mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            WHERE mv.validated = true"#,
+            WHERE"#,
         );
+
+        if !allow_invalid {
+            query_builder.push(" mv.validated = true");
+        }
+
         if let Some(g) = gd {
             query_builder.push(" AND (mgv.gd = ");
             query_builder.push_bind(g);
@@ -272,9 +278,10 @@ impl ModVersion {
     pub async fn get_download_url(
         id: &str,
         version: &str,
+        allow_invalid: bool,
         pool: &mut PgConnection,
     ) -> Result<String, ApiError> {
-        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2 AND validated = true", id, version)
+        let result = sqlx::query!("SELECT download_link FROM mod_versions WHERE mod_id = $1 AND version = $2 AND (validated = true OR $3)", id, version, allow_invalid)
             .fetch_optional(&mut *pool)
             .await;
         if result.is_err() {
@@ -356,6 +363,7 @@ impl ModVersion {
     pub async fn get_one(
         id: &str,
         version: &str,
+        allow_invalid: bool,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
@@ -364,9 +372,10 @@ impl ModVersion {
             mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
             mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mv.validated FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
-            WHERE mv.mod_id = $1 AND mv.version = $2 AND mv.validated = true",
+            WHERE mv.mod_id = $1 AND mv.version = $2 AND (mv.validated = true OR $3)",
             id,
-            version
+            version,
+            allow_invalid
         )
         .fetch_optional(&mut *pool)
         .await;

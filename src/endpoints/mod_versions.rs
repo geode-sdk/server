@@ -59,8 +59,17 @@ pub async fn get_one(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
     query: web::Query<GetOneQuery>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    let allow_invalid = if let Ok(dev) = auth.developer() {
+        dev.admin ||
+            Developer::has_access_to_mod(dev.id, &path.id, &mut pool)
+                .await.unwrap_or(false)
+    } else {
+        false
+    };
 
     let mut version = {
         if path.version == "latest" {
@@ -92,9 +101,9 @@ pub async fn get_one(
                 }
             };
 
-            ModVersion::get_latest_for_mod(&path.id, gd, platforms, &mut pool).await?
+            ModVersion::get_latest_for_mod(&path.id, gd, platforms, allow_invalid, &mut pool).await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, allow_invalid, &mut pool).await?
         }
     };
 
@@ -110,10 +119,20 @@ pub async fn download_version(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
     info: ConnectionInfo,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mod_version = ModVersion::get_one(&path.id, &path.version, &mut pool).await?;
-    let url = ModVersion::get_download_url(&path.id, &path.version, &mut pool).await?;
+
+    let allow_invalid = if let Ok(dev) = auth.developer() {
+        dev.admin ||
+            Developer::has_access_to_mod(dev.id, &path.id, &mut pool)
+                .await.unwrap_or(false)
+    } else {
+        false
+    };
+
+    let mod_version = ModVersion::get_one(&path.id, &path.version, allow_invalid, &mut pool).await?;
+    let url = ModVersion::get_download_url(&path.id, &path.version, allow_invalid, &mut pool).await?;
 
     let ip = match info.realip_remote_addr() {
         None => return Err(ApiError::InternalError),
@@ -141,7 +160,7 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if Mod::get_one(&path.id, &mut pool).await?.is_none() {
+    if Mod::get_one(&path.id, true, &mut pool).await?.is_none() {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 

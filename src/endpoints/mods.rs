@@ -5,6 +5,7 @@ use sqlx::Acquire;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
+use crate::types::models::developer::Developer;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::AppData;
@@ -73,9 +74,21 @@ pub async fn index(
 pub async fn get(
     data: web::Data<AppData>,
     id: web::Path<String>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let found = Mod::get_one(&id, &mut pool).await?;
+
+    // honestly might be worth putting this into a separate function
+    // but i don't actually know where it'd go. yay
+    let allow_invalid = if let Ok(dev) = auth.developer() {
+        dev.admin ||
+            Developer::has_access_to_mod(dev.id, &id, &mut pool)
+                .await.unwrap_or(false)
+    } else {
+        false
+    };
+
+    let found = Mod::get_one(&id, allow_invalid, &mut pool).await?;
     match found {
         Some(mut m) => {
             for i in &mut m.versions {
@@ -151,9 +164,19 @@ pub async fn get_mod_updates(
 pub async fn get_logo(
     data: web::Data<AppData>,
     path: web::Path<String>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let image = Mod::get_logo_for_mod(&path, &mut pool).await?;
+
+    let allow_invalid = if let Ok(dev) = auth.developer() {
+        dev.admin ||
+            Developer::has_access_to_mod(dev.id, &path, &mut pool)
+                .await.unwrap_or(false)
+    } else {
+        false
+    };
+
+    let image = Mod::get_logo_for_mod(&path, allow_invalid, &mut pool).await?;
 
     match image {
         Some(i) => Ok(HttpResponse::Ok().content_type("image/png").body(i)),

@@ -71,7 +71,7 @@ pub async fn add_developer_to_mod(
         Some(d) => d,
     };
 
-    if (Mod::get_one(&path.id, &mut transaction).await?).is_none() {
+    if (Mod::get_one(&path.id, true, &mut transaction).await?).is_none() {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
 
@@ -110,7 +110,7 @@ pub async fn remove_dev_from_mod(
         }
         Some(d) => d,
     };
-    if (Mod::get_one(&path.id, &mut transaction).await?).is_none() {
+    if (Mod::get_one(&path.id, true, &mut transaction).await?).is_none() {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
 
