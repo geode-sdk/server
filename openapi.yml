@@ -363,7 +363,19 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ModID"
         - $ref: "#/components/parameters/ModVersion"
+        - name: no_redirect
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return the mod download link instead of a redirect
       responses:
+        "200":
+          description: The direct download link for the mod, when no_redirect is enabled
+          content:
+            application/json:
+              schema:
+                type: string
         "302":
           description: Redirect to the actual mod download link
         "404":
@@ -378,7 +390,19 @@ paths:
       summary: Download the latest version of a mod
       parameters:
         - $ref: "#/components/parameters/ModID"
+        - name: no_redirect
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Returns the URL of the mod download instead of a redirect
       responses:
+        "200":
+          description: Contains the mod direct download when no_redirect is enabled
+          content:
+            application/json:
+              schema:
+                type: string
         "302":
           description: Redirect to the actual mod download link
         "404":

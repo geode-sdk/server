@@ -114,10 +114,16 @@ pub async fn get_one(
     }))
 }
 
+#[derive(Deserialize, Debug)]
+struct DownloadVersionQuery {
+    no_redirect: Option<bool>
+}
+
 #[get("v1/mods/{id}/versions/{version}/download")]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
+    query: web::Query<DownloadVersionQuery>,
     info: ConnectionInfo,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
@@ -145,9 +151,19 @@ pub async fn download_version(
         Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await?;
     }
 
-    Ok(HttpResponse::Found()
-        .append_header(("Location", url))
-        .finish())
+    if query.no_redirect.is_some_and(|x| x) {
+        Ok(HttpResponse::Ok()
+            .json(ApiResponse {
+                error: "".to_string(),
+                payload: url,
+            })
+        )
+    } else {
+        Ok(HttpResponse::Found()
+            .append_header(("Location", url))
+            .finish())
+    }
+
 }
 
 #[post("v1/mods/{id}/versions")]
