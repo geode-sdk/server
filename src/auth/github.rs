@@ -55,12 +55,13 @@ impl GithubClient {
         }
         let mut headers = HeaderMap::new();
         headers.insert("Accept", HeaderValue::from_static("application/json"));
-        let client = Client::builder().default_headers(headers).build();
-        if client.is_err() {
-            log::error!("{}", client.err().unwrap());
-            return Err(ApiError::InternalError);
-        }
-        let client = client.unwrap();
+        let client = match Client::builder().default_headers(headers).build() {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(c) => c,
+        };
         let body = GithubStartAuthBody {
             client_id: String::from(&self.client_id),
         };
@@ -71,30 +72,31 @@ impl GithubClient {
             }
             Ok(j) => j,
         };
-        let result = client
-            .execute(
-                client
-                    .post("https://github.com/login/device/code")
-                    .basic_auth(&self.client_id, Some(&self.client_secret))
-                    .body(json)
-                    .build()
-                    .or(Err(ApiError::InternalError))?,
-            )
-            .await;
-        if result.is_err() {
-            log::error!("{}", result.err().unwrap());
-            return Err(ApiError::InternalError);
-        }
+        let result = match client
+            .post("https://github.com/login/device/code")
+            .basic_auth(&self.client_id, Some(&self.client_secret))
+            .body(json)
+            .send()
+            .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(r) => r,
+        };
 
-        let result = result.unwrap();
         if result.status() != StatusCode::OK {
             log::error!("Couldn't connect to GitHub");
             return Err(ApiError::InternalError);
         }
-        let body = result
-            .json::<GithubStartAuth>()
-            .await
-            .or(Err(ApiError::InternalError))?;
+        let body = match result.json::<GithubStartAuth>().await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(b) => b,
+        };
         let uuid = GithubLoginAttempt::create(
             ip,
             body.device_code,
@@ -152,29 +154,33 @@ impl GithubClient {
         let resp = resp.unwrap();
         let body = resp.json::<serde_json::Value>().await.unwrap();
         match body.get("access_token") {
-            None => Err(ApiError::BadRequest(
-                "Request not accepted by user".to_string(),
-            )),
+            None => {
+                log::error!("{:?}", body);
+                Err(ApiError::BadRequest(
+                    "Request not accepted by user".to_string(),
+                ))
+            }
             Some(t) => Ok(String::from(t.as_str().unwrap())),
         }
     }
 
     pub async fn get_user(&self, token: String) -> Result<serde_json::Value, ApiError> {
         let client = Client::new();
-        let resp = client
+        let resp = match client
             .get("https://api.github.com/user")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")
             .bearer_auth(token)
             .send()
-            .await;
+            .await
+        {
+            Err(e) => {
+                log::info!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(r) => r,
+        };
 
-        if resp.is_err() {
-            log::info!("{}", resp.err().unwrap());
-            return Err(ApiError::InternalError);
-        }
-
-        let resp = resp.unwrap();
         if !resp.status().is_success() {
             return Err(ApiError::InternalError);
         }

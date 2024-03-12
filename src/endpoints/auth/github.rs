@@ -31,7 +31,6 @@ pub async fn start_github_login(
         None => return Err(ApiError::InternalError),
         Some(i) => i,
     };
-    log::info!("{}", ip);
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
     let result = client.start_auth(net, &mut pool).await?;
@@ -71,7 +70,10 @@ pub async fn poll_github_login(
     };
 
     let ip = match connection_info.realip_remote_addr() {
-        None => return Err(ApiError::InternalError),
+        None => {
+            log::error!("Couldn't parse IP from request");
+            return Err(ApiError::InternalError);
+        }
         Some(i) => i,
     };
     let net: IpNetwork = match ip.parse() {
