@@ -162,7 +162,7 @@ impl Mod {
             builder.push(sql);
             counter_builder.push(sql);
 
-            builder.push_bind(&tags);
+            builder.push_bind(&tags); 
             counter_builder.push_bind(&tags);
             let sql = ") AND ";
             builder.push(sql);

@@ -79,11 +79,6 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Job {} completed", s);
         return anyhow::Ok(());
     }
-    let cors = Cors::default()
-        .allow_any_origin()
-        .allow_any_method()
-        .allow_any_header()
-        .max_age(3600);
 
     info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {

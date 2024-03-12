@@ -188,7 +188,7 @@ pub async fn update_version(
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let r = ModVersion::update_version(
+    if let Err(e) = ModVersion::update_version(
         &path.id,
         &path.version,
         payload.status,
@@ -196,13 +196,13 @@ pub async fn update_version(
         dev.id,
         &mut transaction,
     )
-    .await;
-    if r.is_err() {
+    .await
+    {
         transaction
             .rollback()
             .await
             .or(Err(ApiError::TransactionError))?;
-        return Err(r.err().unwrap());
+        return Err(e);
     }
     transaction
         .commit()
