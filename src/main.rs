@@ -1,7 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{
     get,
-    http::header,
     middleware::Logger,
     web::{self, QueryConfig},
     App, HttpServer, Responder,
