@@ -53,6 +53,7 @@ struct UpdateVersionPath {
 struct GetOneQuery {
     platforms: Option<String>,
     gd: Option<String>,
+    major: Option<u32>,
 }
 
 #[get("v1/mods/{id}/versions/{version}")]
@@ -93,7 +94,7 @@ pub async fn get_one(
                 }
             };
 
-            ModVersion::get_latest_for_mod(&path.id, gd, platforms, &mut pool).await?
+            ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
             ModVersion::get_one(&path.id, &path.version, &mut pool).await?
         }

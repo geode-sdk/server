@@ -201,6 +201,7 @@ impl ModVersion {
         id: &str,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
+        major: Option<u32>,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -213,6 +214,11 @@ impl ModVersion {
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE mvs.status = 'accepted'"#,
         );
+        if let Some(m) = major {
+            let major_ver = format!("{}.%", m);
+            query_builder.push(" AND mgv.version LIKE ");
+            query_builder.push_bind(major_ver);
+        }
         if let Some(g) = gd {
             query_builder.push(" AND (mgv.gd = ");
             query_builder.push_bind(g);
