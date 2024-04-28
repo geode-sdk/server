@@ -408,6 +408,7 @@ impl ModVersion {
     pub async fn get_one(
         id: &str,
         version: &str,
+        fetch_extras: bool,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
@@ -436,11 +437,14 @@ impl ModVersion {
         }
 
         let mut version = result.unwrap().into_mod_version();
-        version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
-        let deps = Dependency::get_for_mod_version(version.id, pool).await?;
-        version.dependencies = Some(deps.into_iter().map(|x| x.to_response()).collect());
-        let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
-        version.incompatibilities = Some(incompat.into_iter().map(|x| x.to_response()).collect());
+        if fetch_extras {
+            version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
+            let deps = Dependency::get_for_mod_version(version.id, pool).await?;
+            version.dependencies = Some(deps.into_iter().map(|x| x.to_response()).collect());
+            let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
+            version.incompatibilities =
+                Some(incompat.into_iter().map(|x| x.to_response()).collect());
+        }
 
         Ok(version)
     }
@@ -468,13 +472,15 @@ impl ModVersion {
     }
 
     pub async fn update_version(
-        id: &str,
-        version: &str,
+        id: i32,
         new_status: ModVersionStatusEnum,
-        info: Option<String>,
+        mut info: Option<String>,
         admin_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        if new_status == ModVersionStatusEnum::Accepted {
+            info = Some("".to_string());
+        }
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
@@ -487,25 +493,14 @@ impl ModVersion {
             query_builder.push_bind(i);
         }
 
-        query_builder.push(" WHERE mod_id = ");
+        query_builder.push(" WHERE mod_version_id = ");
         query_builder.push_bind(id);
-        query_builder.push(" AND version = ");
-        let version = version.trim_start_matches('v');
-        query_builder.push_bind(version);
 
-        let result = query_builder.build().execute(&mut *pool).await;
-
-        match result {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(r) => {
-                if r.rows_affected() == 0 {
-                    return Err(ApiError::NotFound(format!("{} {} not found", id, version)));
-                }
-                Ok(())
-            }
+        if let Err(e) = query_builder.build().execute(&mut *pool).await {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
         }
+
+        Ok(())
     }
 }

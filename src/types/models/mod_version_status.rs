@@ -3,7 +3,8 @@ use sqlx::PgConnection;
 
 use crate::types::api::ApiError;
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
 #[sqlx(rename_all = "lowercase", type_name = "mod_version_status")]
 pub enum ModVersionStatusEnum {
     Pending,

@@ -18,7 +18,7 @@ create table mod_version_statuses(
 );
 
 create index mod_version_statuses_admin_id_idx on mod_version_statuses(admin_id);
-create index mod_version_statuses_mod_version_id_idx on mod_version_statuses(mod_version_id);
+create unique index mod_version_statuses_mod_version_id_idx on mod_version_statuses(mod_version_id);
 create index mod_version_statuses_updated_at_idx on mod_version_statuses(updated_at);
 
 alter table mod_versions add column status_id integer;
