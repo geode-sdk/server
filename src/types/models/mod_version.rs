@@ -10,6 +10,7 @@ use crate::types::{
 
 use super::{
     dependency::{Dependency, ResponseDependency},
+    developer::Developer,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_version_status::{ModVersionStatus, ModVersionStatusEnum},
@@ -33,6 +34,8 @@ pub struct ModVersion {
     pub gd: DetailedGDVersion,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
+    pub developers: Option<Vec<Developer>>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -72,6 +75,8 @@ impl ModVersionGetOne {
                 android32: None,
                 android64: None,
             },
+            developers: None,
+            tags: None,
             dependencies: None,
             incompatibilities: None,
         }
@@ -85,7 +90,7 @@ impl ModVersion {
 
     pub async fn get_latest_for_mods(
         pool: &mut PgConnection,
-        ids: &Vec<String>,
+        ids: Vec<String>,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
     ) -> Result<HashMap<String, ModVersion>, ApiError> {
@@ -240,7 +245,6 @@ impl ModVersion {
         query_builder.push(" AND mv.mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(") q WHERE q.rn = 1");
-        log::info!("{}", query_builder.sql());
         let records = match query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_optional(&mut *pool)
@@ -272,6 +276,8 @@ impl ModVersion {
                 .map(|x| x.to_response())
                 .collect(),
         );
+        version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+        version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
         Ok(version)
     }
@@ -444,6 +450,8 @@ impl ModVersion {
             let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
             version.incompatibilities =
                 Some(incompat.into_iter().map(|x| x.to_response()).collect());
+            version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+            version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
         }
 
         Ok(version)
