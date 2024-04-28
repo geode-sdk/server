@@ -129,8 +129,11 @@ impl Dependency {
         id: i32,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedDependency>, ApiError> {
-        match sqlx::query_as!(FetchedDependency,
-            r#"SELECT dp.dependent_id as mod_version_id, dp.dependency_id, dp.version, dp.compare AS "compare: _", dp.importance AS "importance: _" FROM dependencies dp
+        match sqlx::query_as!(
+            FetchedDependency,
+            r#"SELECT dp.dependent_id as mod_version_id, dp.dependency_id, 
+            dp.version, dp.compare AS "compare: _", dp.importance AS "importance: _" 
+            FROM dependencies dp
             WHERE dp.dependent_id = $1"#,
             id
         )

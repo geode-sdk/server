@@ -15,6 +15,7 @@ use crate::{
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::ModVersion,
+            mod_version_status::ModVersionStatusEnum,
         },
     },
     AppData,
@@ -33,8 +34,8 @@ pub struct CreateQueryParams {
 
 #[derive(Deserialize)]
 struct UpdatePayload {
-    validated: Option<bool>,
-    unlisted: Option<bool>,
+    status: ModVersionStatusEnum,
+    info: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +53,7 @@ struct UpdateVersionPath {
 struct GetOneQuery {
     platforms: Option<String>,
     gd: Option<String>,
+    major: Option<u32>,
 }
 
 #[get("v1/mods/{id}/versions/{version}")]
@@ -92,9 +94,9 @@ pub async fn get_one(
                 }
             };
 
-            ModVersion::get_latest_for_mod(&path.id, gd, platforms, &mut pool).await?
+            ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, true, &mut pool).await?
         }
     };
 
@@ -112,7 +114,7 @@ pub async fn download_version(
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mod_version = ModVersion::get_one(&path.id, &path.version, &mut pool).await?;
+    let mod_version = ModVersion::get_one(&path.id, &path.version, false, &mut pool).await?;
     let url = ModVersion::get_download_url(&path.id, &path.version, &mut pool).await?;
 
     let ip = match info.realip_remote_addr() {
@@ -187,20 +189,37 @@ pub async fn update_version(
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let r = ModVersion::update_version(
+    let id = match sqlx::query!(
+        "select id from mod_versions where mod_id = $1 and version = $2",
         &path.id,
-        &path.version,
-        payload.validated,
-        payload.unlisted,
+        path.version.trim_start_matches('v')
+    )
+    .fetch_optional(&mut *transaction)
+    .await
+    {
+        Ok(Some(id)) => id.id,
+        Ok(None) => {
+            return Err(ApiError::NotFound(String::from("Not Found")));
+        }
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
+    };
+    if let Err(e) = ModVersion::update_version(
+        id,
+        payload.status,
+        payload.info.clone(),
+        dev.id,
         &mut transaction,
     )
-    .await;
-    if r.is_err() {
+    .await
+    {
         transaction
             .rollback()
             .await
             .or(Err(ApiError::TransactionError))?;
-        return Err(r.err().unwrap());
+        return Err(e);
     }
     transaction
         .commit()

@@ -10,6 +10,7 @@ use crate::{
         models::{
             developer::{Developer, DeveloperProfile},
             mod_entity::Mod,
+            mod_version_status::ModVersionStatusEnum,
         },
     },
     AppData,
@@ -205,7 +206,12 @@ pub async fn update_profile(
 
 #[derive(Deserialize)]
 struct GetOwnModsQuery {
-    validated: Option<bool>,
+    #[serde(default = "default_own_mods_status")]
+    status: ModVersionStatusEnum,
+}
+
+pub fn default_own_mods_status() -> ModVersionStatusEnum {
+    ModVersionStatusEnum::Accepted
 }
 
 #[get("v1/me/mods")]
@@ -216,8 +222,7 @@ pub async fn get_own_mods(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let validated = query.validated.unwrap_or(true);
-    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, validated, &mut pool).await?;
+    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, query.status, &mut pool).await?;
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
         payload: mods,
