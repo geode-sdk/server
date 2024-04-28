@@ -175,7 +175,7 @@ impl ModVersion {
         );
         let mut separated = query_builder.separated(",");
 
-        for id in ids.iter() {
+        for id in ids {
             separated.push_bind(id);
         }
         separated.push_unseparated(")");
@@ -482,7 +482,7 @@ impl ModVersion {
     pub async fn update_version(
         id: i32,
         new_status: ModVersionStatusEnum,
-        mut info: Option<String>,
+        info: Option<String>,
         admin_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
