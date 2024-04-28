@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            WHERE m.id = $1 AND mv.validated = true",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 AND mvs.status = 'accepted'",
   "describe": {
     "columns": [
       {
@@ -126,5 +126,5 @@
       false
     ]
   },
-  "hash": "458b230315529d6304fa81c503391cfc3f72d40f7ed05a6e31bb8ba1b4404e8c"
+  "hash": "a8c000a8c2cfe16c90c2719e049818c28c146a7b7cb47c52d2d44e8770d91f44"
 }

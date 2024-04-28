@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "delete from mod_versions mv\n                    using mod_version_statuses mvs\n                    where mv.id = mvs.mod_version_id and mv.mod_id = $1 and mvs.status = 'rejected'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5e4d075340356ba691a6b91fed72f9d2fd478395ba627961bf302ab73d70f73a"
+}

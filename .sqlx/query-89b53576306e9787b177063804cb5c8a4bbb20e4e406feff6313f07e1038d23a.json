@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "89b53576306e9787b177063804cb5c8a4bbb20e4e406feff6313f07e1038d23a"
+}
