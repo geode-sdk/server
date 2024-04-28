@@ -38,7 +38,8 @@ update mod_versions set status_id = mvs.id
 alter table mod_versions alter column status_id set not null;
 alter table mod_versions 
     add foreign key (status_id) 
-    references mod_version_statuses(id);
+    references mod_version_statuses(id)
+    deferrable;
 alter table mod_versions drop column validated;
 
 create index mod_versions_status_id_idx on mod_versions(status_id);

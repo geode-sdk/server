@@ -307,13 +307,21 @@ impl ModVersion {
         dev_verified: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
+            .execute(&mut *pool)
+            .await
+        {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        };
+
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
             builder.push("description, ");
         }
         builder
-            .push("name, version, download_link, hash, geode, early_load, api, mod_id) VALUES (");
+            .push("name, version, download_link, hash, geode, early_load, api, mod_id, status_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -326,6 +334,8 @@ impl ModVersion {
         separated.push_bind(json.early_load);
         separated.push_bind(json.api.is_some());
         separated.push_bind(&json.id);
+        // set status_id = 0, will be checked by foreign key at the end of the transaction
+        separated.push_bind(0);
         separated.push_unseparated(") RETURNING id");
         let result = builder.build().fetch_one(&mut *pool).await;
         let result = match result {
@@ -370,7 +380,27 @@ impl ModVersion {
             ModVersionStatusEnum::Pending
         };
 
-        ModVersionStatus::create_for_mod_version(id, status, None, None, pool).await?;
+        let status_id =
+            ModVersionStatus::create_for_mod_version(id, status, None, None, pool).await?;
+        if let Err(e) = sqlx::query!(
+            "update mod_versions set status_id = $1 where id = $2",
+            status_id,
+            id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
+
+        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey IMMEDIATE")
+            .execute(&mut *pool)
+            .await
+        {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        };
 
         Ok(())
     }

@@ -27,22 +27,22 @@ impl ModVersionStatus {
         info: Option<String>,
         admin_id: Option<i32>,
         pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
+    ) -> Result<i32, ApiError> {
         let result = sqlx::query!(
-            "INSERT INTO mod_version_statuses (mod_version_id, status, info, admin_id) VALUES ($1, $2, $3, $4)",
+            "INSERT INTO mod_version_statuses (mod_version_id, status, info, admin_id) VALUES ($1, $2, $3, $4) RETURNING id",
             id,
             status as ModVersionStatusEnum,
             info,
             admin_id
         )
-        .execute(&mut *pool)
+        .fetch_one(&mut *pool)
         .await;
         match result {
             Err(e) => {
                 log::error!("{}", e);
                 Err(ApiError::DbError)
             }
-            Ok(_) => Ok(()),
+            Ok(r) => Ok(r.id),
         }
     }
 }

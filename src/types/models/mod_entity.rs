@@ -743,7 +743,7 @@ impl Mod {
 
                 true
             },
-            CheckExistingResult::NotExists => true
+            CheckExistingResult::NotExists => false 
         };
 
         if updated {
