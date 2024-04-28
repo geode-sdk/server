@@ -373,6 +373,10 @@ paths:
               properties:
                 status:
                   $ref: "#/components/schemas/ModVersionStatus"
+                info:
+                  required: false
+                  type: string
+                  description: "Extra information about why that status was picked"
 
       responses:
         "204":
@@ -744,6 +748,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/GDVersionString"
             - $ref: "#/components/schemas/GDVersionObject"
+        tags:
+          type: array
+          items:
+            type: string
+
         mod_id:
           $ref: "#/components/schemas/ModID"
 
@@ -752,6 +761,8 @@ components:
       enum:
         - approved
         - rejected
+        - pending
+        - unlisted
 
     ModDeveloper:
       type: object
