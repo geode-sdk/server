@@ -486,9 +486,6 @@ impl ModVersion {
         admin_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if new_status == ModVersionStatusEnum::Accepted {
-            info = Some("".to_string());
-        }
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
