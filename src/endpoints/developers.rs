@@ -49,6 +49,17 @@ struct AddDevPayload {
     username: String,
 }
 
+#[derive(Deserialize)]
+struct DeveloperUpdatePayload {
+    admin: Option<bool>,
+    verified: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct UpdateDeveloperPath {
+    id: i32,
+}
+
 #[post("v1/mods/{id}/developers")]
 pub async fn add_developer_to_mod(
     data: web::Data<AppData>,
@@ -242,4 +253,44 @@ pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
             admin: dev.admin,
         },
     }))
+}
+
+#[put("v1/developers/{id}")]
+pub async fn update_developer(
+    auth: Auth,
+    data: web::Data<AppData>,
+    path: web::Path<UpdateDeveloperPath>,
+    payload: web::Json<DeveloperUpdatePayload>,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.developer()?;
+    if !dev.admin {
+        return Err(ApiError::Forbidden);
+    }
+
+    if payload.admin.is_none() && payload.verified.is_none() {
+        return Ok(HttpResponse::Ok());
+    }
+
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+
+    if payload.admin.is_some() && dev.id == path.id {
+        return Err(ApiError::BadRequest(
+            "Can't override your own admin status".to_string(),
+        ));
+    }
+
+    if let Err(api_err) =
+        Developer::update(path.id, payload.admin, payload.verified, &mut transaction).await
+    {
+        if let Err(e) = transaction.rollback().await {
+            log::error!("{}", e);
+        }
+        return Err(api_err);
+    }
+    if let Err(e) = transaction.commit().await {
+        log::error!("{}", e);
+        return Err(ApiError::DbError);
+    }
+    Ok(HttpResponse::Ok())
 }

@@ -111,6 +111,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::update_profile)
             .service(endpoints::developers::get_own_mods)
             .service(endpoints::developers::get_me)
+            .service(endpoints::developers::update_developer)
             .service(endpoints::tags::index)
             .service(health)
     })

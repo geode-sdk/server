@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{query_builder, PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
@@ -260,6 +260,40 @@ impl Developer {
             return Err(ApiError::InternalError);
         }
 
+        Ok(())
+    }
+
+    pub async fn update(
+        id: i32,
+        admin: Option<bool>,
+        verified: Option<bool>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let mut query: QueryBuilder<Postgres> = QueryBuilder::new("update developers set ");
+        if let Some(a) = admin {
+            query.push("admin = ");
+            query.push_bind(a);
+            if verified.is_some() {
+                query.push(", ");
+            }
+        }
+        if let Some(v) = verified {
+            query.push("verified = ");
+            query.push_bind(v);
+        }
+        query.push(" where id = ");
+        query.push_bind(id);
+
+        let result = match query.build().execute(&mut *pool).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+        if result.rows_affected() == 0 {
+            return Err(ApiError::DbError);
+        }
         Ok(())
     }
 }
