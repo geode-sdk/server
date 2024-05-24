@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,\n            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id \n            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
+  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,\n            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\" FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id \n            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,23 @@
         "ordinal": 10,
         "name": "mod_id",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        }
       }
     ],
     "parameters": {
@@ -76,8 +93,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "37a1ae436e8622d64bc8a58f7b46b585ccb7e219fdfd7852698fdc08b6a8c8c8"
+  "hash": "4abc4f3d4ecd6ccb07948086234a24bceacc1c2516b3a524b19b68dc871805bd"
 }

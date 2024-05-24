@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 AND mvs.status = 'accepted'",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\"\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 AND mvs.status = 'accepted'",
   "describe": {
     "columns": [
       {
@@ -97,6 +97,23 @@
         "ordinal": 18,
         "name": "mod_id",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        }
       }
     ],
     "parameters": {
@@ -123,8 +140,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "a8c000a8c2cfe16c90c2719e049818c28c146a7b7cb47c52d2d44e8770d91f44"
+  "hash": "ddf942e532d6f91537090cb5df10407334d0191507235fbc7214ebf03617b3b0"
 }
