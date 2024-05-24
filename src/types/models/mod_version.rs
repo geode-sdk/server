@@ -32,6 +32,7 @@ pub struct ModVersion {
     pub api: bool,
     pub mod_id: String,
     pub gd: DetailedGDVersion,
+    pub status: ModVersionStatusEnum,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
     pub developers: Option<Vec<Developer>>,
@@ -51,6 +52,7 @@ struct ModVersionGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
+    status: ModVersionStatusEnum,
 }
 
 impl ModVersionGetOne {
@@ -67,6 +69,7 @@ impl ModVersionGetOne {
             download_count: self.download_count,
             api: self.api,
             mod_id: self.mod_id.clone(),
+            status: self.status,
             gd: DetailedGDVersion {
                 win: None,
                 android: None,
@@ -100,13 +103,14 @@ impl ModVersion {
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
-                q.early_load, q.api, q.mod_id FROM (SELECT
-                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-                mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
-                INNER JOIN mod_versions mv ON m.id = mv.mod_id
-                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE mvs.status = 'accepted' 
+                q.early_load, q.api, q.mod_id, q.status FROM (
+                    SELECT
+                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count, mvs.status as status,
+                    mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
+                    INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                    INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                    INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                    WHERE mvs.status = 'accepted' 
             "#,
         );
         if let Some(g) = gd {
@@ -169,7 +173,7 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-            mv.early_load, mv.api, mv.mod_id FROM mod_versions mv 
+            mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _" FROM mod_versions mv 
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE mvs.status = 'pending' AND mv.mod_id IN ("#,
         );
@@ -211,8 +215,8 @@ impl ModVersion {
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
-            q.early_load, q.api, q.mod_id FROM (SELECT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
+            q.early_load, q.api, q.mod_id, q.status FROM (SELECT
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count, mvs.status,
             mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
@@ -419,12 +423,12 @@ impl ModVersion {
     ) -> Result<ModVersion, ApiError> {
         let result = sqlx::query_as!(
             ModVersionGetOne,
-            "SELECT
+            r#"SELECT
             mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
-            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id FROM mod_versions mv
+            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _" FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id 
-            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
+            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'"#,
             id,
             version
         )

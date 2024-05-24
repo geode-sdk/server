@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{query_builder, PgConnection, Postgres, QueryBuilder};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 

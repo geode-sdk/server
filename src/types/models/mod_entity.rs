@@ -85,6 +85,7 @@ struct ModRecordGetOne {
     early_load: bool,
     api: bool,
     mod_id: String,
+    status: ModVersionStatusEnum,
     about: Option<String>,
     changelog: Option<String>,
     created_at: DateTime<Utc>,
@@ -128,12 +129,12 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at
-            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.created_at, m.updated_at,
+            r#"SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at, q.status as "status: _"
+            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.created_at, m.updated_at, mvs.status,
             row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "#
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(DISTINCT m.id) FROM mods m
@@ -280,6 +281,8 @@ impl Mod {
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
+
+        log::info!("{}", builder.sql());
 
         let result = builder
             .build_query_as::<ModRecord>()
@@ -488,14 +491,14 @@ impl Mod {
     pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
-            "SELECT
+            r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
-                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id
+                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _"
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1 AND mvs.status = 'accepted'",
+            WHERE m.id = $1 AND mvs.status = 'accepted'"#,
             id
         )
         .fetch_all(&mut *pool)
@@ -517,6 +520,7 @@ impl Mod {
                 geode: x.geode.clone(),
                 early_load: x.early_load,
                 api: x.api,
+                status: x.status,
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion {
                     win: None,
