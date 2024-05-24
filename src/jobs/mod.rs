@@ -1,6 +1,7 @@
 use crate::AppData;
 
 mod download_cache;
+mod geode_versions;
 
 pub async fn start_job(name: &str, app_data: AppData) -> Result<(), String> {
     match name {
