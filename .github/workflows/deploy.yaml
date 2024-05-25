@@ -26,6 +26,23 @@ jobs:
           cargo check
           cargo build --release
 
+      - name: Create ssh key
+        run: |
+          mkdir ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
+          chmod 600 ~/.ssh/index_key
+
+      - name: Upload target to server
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no" \
+          --progress target/release/geode-index \
+          ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+
+      - name: Run update script
+        run: |
+          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} \
+          ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }}
+
       # - name: Push Docker image to index server
       #   run: |
       #     mkdir -p ~/.ssh
