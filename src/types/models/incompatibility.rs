@@ -35,6 +35,7 @@ pub struct Incompatibility {
 pub enum IncompatibilityImportance {
     Breaking,
     Conflicting,
+    Superseeded,
 }
 
 #[derive(Serialize, Debug, Clone)]
