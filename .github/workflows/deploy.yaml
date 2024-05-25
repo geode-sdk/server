@@ -42,5 +42,5 @@ jobs:
 
       - name: Run update script
         run: |
-          ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }}
+          ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "cd ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }} && ./update.sh"
         if: steps.build.outcome == 'success' && steps.upload.outcome == 'success'
