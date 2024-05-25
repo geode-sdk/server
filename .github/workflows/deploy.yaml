@@ -28,20 +28,17 @@ jobs:
 
       - name: Create ssh key
         run: |
-          mkdir ~/.ssh
-          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
-          chmod 600 ~/.ssh/index_key
+          install -m 600 -D /dev/null ~/.ssh/id_rsa
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.INDEX_SERVER }} > ~/.ssh/known_hosts
 
       - name: Upload target to server
         run: |
-          rsync -avz -e "ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no" \
-          --progress target/release/geode-index \
-          ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avz target/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
 
       - name: Run update script
         run: |
-          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} \
-          ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }}
+          ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }}
 
       # - name: Push Docker image to index server
       #   run: |
