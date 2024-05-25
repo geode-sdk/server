@@ -22,6 +22,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build
+        id: build
         run: |
           cargo build --release
 
@@ -30,24 +31,16 @@ jobs:
           install -m 600 -D /dev/null ~/.ssh/id_rsa
           echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.INDEX_SERVER }} > ~/.ssh/known_hosts
+        if: steps.build.outcome == 'success'
 
       - name: Upload target to server
+        id: upload
         run: |
           rsync -avz ./target/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
           rsync -avzr ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
+        if: steps.build.outcome == 'success'
 
       - name: Run update script
         run: |
           ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }}
-
-      # - name: Push Docker image to index server
-      #   run: |
-      #     mkdir -p ~/.ssh
-      #     echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
-      #     chmod 600 ~/.ssh/index_key
-      #     docker save geode-index:${{ env.RELEASE_VERSION }} | bzip2 | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
-
-      # - name: Replace current deployment
-      #   run: |
-      #     ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && \
-      #     docker run --name=index --env-file=.env --restart=unless-stopped --network=index-net -p 3000:3000 -dit geode-index:${{ env.RELEASE_VERSION }}"
+        if: steps.build.outcome == 'success' && steps.upload.outcome == 'success'
