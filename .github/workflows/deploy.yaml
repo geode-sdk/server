@@ -12,36 +12,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Install needed tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bzip2
-
       - name: Setup env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install rust
+        run: rustup toolchain install stable --profile minimal
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          tags: geode-index:${{ env.RELEASE_VERSION }}
-          push: false
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
 
-      - name: Push Docker image to index server
+      - name: Build
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
-          chmod 600 ~/.ssh/index_key
-          docker save geode-index:${{ env.RELEASE_VERSION }} | bzip2 | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
+          cargo check
+          cargo build --release
 
-      - name: Replace current deployment
-        run: |
-          ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && \
-          docker run --name=index --env-file=.env --restart=unless-stopped --network=index-net -p 3000:3000 -dit geode-index:${{ env.RELEASE_VERSION }}"
+      # - name: Push Docker image to index server
+      #   run: |
+      #     mkdir -p ~/.ssh
+      #     echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/index_key
+      #     chmod 600 ~/.ssh/index_key
+      #     docker save geode-index:${{ env.RELEASE_VERSION }} | bzip2 | ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} docker load
+
+      # - name: Replace current deployment
+      #   run: |
+      #     ssh -i ~/.ssh/index_key -o StrictHostKeyChecking=no ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "docker stop index && docker rm index && cd ${{ secrets.INDEX_DIR }} && \
+      #     docker run --name=index --env-file=.env --restart=unless-stopped --network=index-net -p 3000:3000 -dit geode-index:${{ env.RELEASE_VERSION }}"
