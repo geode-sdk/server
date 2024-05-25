@@ -23,8 +23,10 @@ jobs:
 
       - name: Build
         run: |
-          cargo check
           cargo build --release
+
+      - name: Install rsync
+        run: sudo apt-get install rsync -y
 
       - name: Create ssh key
         run: |
