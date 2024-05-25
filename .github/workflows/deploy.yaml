@@ -25,9 +25,6 @@ jobs:
         run: |
           cargo build --release
 
-      - name: Install rsync
-        run: sudo apt-get install rsync -y
-
       - name: Create ssh key
         run: |
           install -m 600 -D /dev/null ~/.ssh/id_rsa
@@ -36,7 +33,8 @@ jobs:
 
       - name: Upload target to server
         run: |
-          rsync -avz target/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avz ./target/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avzr ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
 
       - name: Run update script
         run: |
