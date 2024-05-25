@@ -30,7 +30,8 @@
             "kind": {
               "Enum": [
                 "breaking",
-                "conflicting"
+                "conflicting",
+                "superseeded"
               ]
             }
           }
