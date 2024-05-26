@@ -129,7 +129,7 @@ impl Mod {
             }
         }
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at, q.status as "status: _"
+            r#"SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at, q.status
             FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.created_at, m.updated_at, mvs.status,
             row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
