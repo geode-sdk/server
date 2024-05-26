@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::Utc;
 use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 
@@ -491,6 +492,29 @@ impl ModVersion {
         admin_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        struct CurrentStatusRes {
+            status: ModVersionStatusEnum,
+        }
+        let current_status = match sqlx::query_as!(
+            CurrentStatusRes,
+            r#"select status as "status: _" from mod_version_statuses
+            where mod_version_id = $1"#,
+            id
+        )
+        .fetch_one(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(s) => s,
+        };
+
+        if current_status.status == new_status {
+            return Ok(());
+        }
+
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
@@ -509,6 +533,29 @@ impl ModVersion {
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
             return Err(ApiError::DbError);
+        }
+
+        if new_status == ModVersionStatusEnum::Accepted {
+            match sqlx::query!(
+                "UPDATE mods m
+            SET updated_at = $1
+            WHERE m.id = (select mv.mod_id from mod_versions mv where mv.id = $2)",
+                Utc::now(),
+                id
+            )
+            .execute(&mut *pool)
+            .await
+            {
+                Err(e) => {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                }
+                Ok(r) => {
+                    if r.rows_affected() == 0 {
+                        log::error!("No mods affected by updated_at update.");
+                    }
+                }
+            };
         }
 
         Ok(())

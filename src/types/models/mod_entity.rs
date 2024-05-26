@@ -282,8 +282,6 @@ impl Mod {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        log::info!("{}", builder.sql());
-
         let result = builder
             .build_query_as::<ModRecord>()
             .fetch_all(&mut *pool)
@@ -642,7 +640,7 @@ impl Mod {
         }
         ModVersion::create_from_json(json, developer.verified, pool).await?;
 
-        Mod::update_existing_with_json(json, pool).await?;
+        Mod::update_existing_with_json(json, developer.verified, pool).await?;
 
         Ok(())
     }
@@ -735,7 +733,7 @@ impl Mod {
                 if !Developer::has_access_to_mod(developer.id, &json.id, pool).await? {
                     return Err(ApiError::Forbidden);
                 }
-                Mod::update_existing_with_json(json, pool).await?;
+                Mod::update_existing_with_json(json, developer.verified, pool).await?;
 
                 if let Err(e) = sqlx::query!(
                     "delete from mod_versions mv
@@ -853,6 +851,7 @@ impl Mod {
 
     async fn update_existing_with_json(
         json: &ModJson,
+        update_timestamp: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE mods SET ");
@@ -875,12 +874,33 @@ impl Mod {
         query_builder.push_bind(&json.logo);
         query_builder.push(" WHERE id = ");
         query_builder.push_bind(&json.id);
-        log::info!("{}", query_builder.sql());
 
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
+
+        if update_timestamp {
+            match sqlx::query!(
+                "update mods m
+                set updated_at = $1
+                where id = $2",
+                Utc::now(),
+                &json.id
+            ).execute(&mut *pool).await
+            {
+                Err(e) => {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                },
+                Ok(r) => {
+                    if r.rows_affected() == 0 {
+                        log::error!("Couldn't update timestamp on mod. No rows affected.");
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
