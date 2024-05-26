@@ -31,7 +31,8 @@
               "Enum": [
                 "breaking",
                 "conflicting",
-                "superseeded"
+                "superseeded",
+                "superseded"
               ]
             }
           }
