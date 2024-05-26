@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update mods m\n                set updated_at = $1\n                where id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "487baf1435e8d011ed5318ac2e8585b730cfbd55ae2646d730149a152fb5f456"
+}

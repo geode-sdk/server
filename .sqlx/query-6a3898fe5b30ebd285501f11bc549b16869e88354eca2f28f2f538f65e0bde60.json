@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select status as \"status: _\" from mod_version_statuses\n            where mod_version_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6a3898fe5b30ebd285501f11bc549b16869e88354eca2f28f2f538f65e0bde60"
+}
