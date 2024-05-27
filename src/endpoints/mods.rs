@@ -86,7 +86,7 @@ pub async fn get(
                 payload: m,
             }))
         }
-        None => Err(ApiError::NotFound("".into())),
+        None => Err(ApiError::NotFound(format!("Mod '{id}' not found"))),
     }
 }
 
