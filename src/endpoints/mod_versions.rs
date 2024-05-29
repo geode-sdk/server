@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
@@ -74,25 +74,8 @@ pub async fn get_one(
                 None => None,
             };
 
-            let mut platforms: Vec<VerPlatform> = vec![];
-
-            if let Some(p) = &query.platforms {
-                for x in p.split(',') {
-                    match VerPlatform::from_str(x) {
-                        Ok(v) => {
-                            if v == VerPlatform::Android {
-                                platforms.push(VerPlatform::Android32);
-                                platforms.push(VerPlatform::Android64);
-                            } else {
-                                platforms.push(v);
-                            }
-                        }
-                        Err(_) => {
-                            return Err(ApiError::BadRequest("Invalid platform".to_string()));
-                        }
-                    }
-                }
-            };
+            let platform_string = query.platforms.clone().unwrap_or_default();
+            let platforms = VerPlatform::parse_query_string(&platform_string);
 
             ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
@@ -107,14 +90,32 @@ pub async fn get_one(
     }))
 }
 
+#[derive(Deserialize)]
+struct DownloadQuery {
+    gd: Option<GDVersionEnum>,
+    // platform1,platform2,...
+    platforms: Option<String>,
+    major: Option<u32>,
+}
+
 #[get("v1/mods/{id}/versions/{version}/download")]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
+    query: web::Query<DownloadQuery>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mod_version = ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?;
+    let mod_version = {
+        if path.version == "latest" {
+            let platform_str = query.platforms.clone().unwrap_or_default();
+            let platforms = VerPlatform::parse_query_string(&platform_str);
+            ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
+                .await?
+        } else {
+            ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
+        }
+    };
     let url = mod_version.download_link;
 
     let ip = match info.realip_remote_addr() {

@@ -74,6 +74,29 @@ impl FromStr for VerPlatform {
     }
 }
 
+impl VerPlatform {
+    pub fn parse_query_string(s: &str) -> Vec<VerPlatform> {
+        let mut ret = vec![];
+
+        for x in s.split(',') {
+            match VerPlatform::from_str(x) {
+                Ok(v) => {
+                    if v == VerPlatform::Android {
+                        ret.push(VerPlatform::Android32);
+                        ret.push(VerPlatform::Android64);
+                    } else {
+                        ret.push(v);
+                    }
+                }
+                Err(_) => {
+                    log::error!("invalid platform {}", x);
+                }
+            }
+        }
+        ret
+    }
+}
+
 #[derive(sqlx::FromRow, Clone, Copy, Debug, Serialize)]
 pub struct ModGDVersion {
     id: i32,
