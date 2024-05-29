@@ -96,7 +96,7 @@ pub async fn get_one(
 
             ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, true, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
         }
     };
 
@@ -114,8 +114,8 @@ pub async fn download_version(
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mod_version = ModVersion::get_one(&path.id, &path.version, false, &mut pool).await?;
-    let url = ModVersion::get_download_url(&path.id, &path.version, &mut pool).await?;
+    let mod_version = ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?;
+    let url = mod_version.download_link;
 
     let ip = match info.realip_remote_addr() {
         None => return Err(ApiError::InternalError),
@@ -124,8 +124,25 @@ pub async fn download_version(
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
     if download::create_download(net, mod_version.id, &mut pool).await? {
-        ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await?;
-        Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await?;
+        let name = mod_version.mod_id.clone();
+        let version = mod_version.version.clone();
+        tokio::spawn(async move {
+            if let Err(e) = ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await
+            {
+                log::error!(
+                    "Failed to calculate cached downloads for mod version {}. Error: {}",
+                    version,
+                    e
+                );
+            }
+            if let Err(e) = Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await {
+                log::error!(
+                    "Failed to calculate cached downloads for mod {}. Error: {}",
+                    name,
+                    e
+                );
+            }
+        });
     }
 
     Ok(HttpResponse::Found()

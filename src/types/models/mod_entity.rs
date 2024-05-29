@@ -690,11 +690,16 @@ impl Mod {
         id: &str,
         pool: &mut PgConnection,
     ) -> Result<Option<Vec<u8>>, ApiError> {
-        match sqlx::query!(
-            "SELECT DISTINCT m.image FROM mods m
-        INNER JOIN mod_versions mv ON mv.mod_id = m.id 
-        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-        WHERE m.id = $1 AND mvs.status = 'accepted'",
+        struct QueryResult {
+            image: Option<Vec<u8>>
+        }
+        match sqlx::query_as!(
+            QueryResult,
+            "SELECT m.image 
+            FROM mods m
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE m.id = $1",
             id
         )
         .fetch_optional(&mut *pool)
@@ -704,10 +709,8 @@ impl Mod {
                 log::error!("{}", e);
                 Err(ApiError::DbError)
             }
-            Ok(r) => match r {
-                Some(r) => Ok(r.image),
-                None => Ok(None),
-            },
+            Ok(Some(r)) => Ok(r.image),
+            Ok(None) => Ok(None)
         }
     }
 

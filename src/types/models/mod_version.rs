@@ -216,14 +216,19 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
-            q.early_load, q.api, q.mod_id, q.status FROM (SELECT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count, mvs.status,
-            mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
-            INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE mvs.status = 'accepted'"#,
+            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, 
+                q.hash, q.geode, q.download_count,
+                q.early_load, q.api, q.mod_id, q.status 
+            FROM (
+                SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link, 
+                    mv.hash, mv.geode, mv.download_count, mvs.status,
+                    mv.early_load, mv.api, mv.mod_id, 
+                    row_number() over (partition by m.id order by mv.id desc) rn 
+                FROM mods m 
+                INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                WHERE mvs.status = 'accepted'"#,
         );
         if let Some(m) = major {
             let major_ver = format!("{}.%", m);
@@ -251,20 +256,19 @@ impl ModVersion {
         query_builder.push(" AND mv.mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(") q WHERE q.rn = 1");
-        let records = match query_builder
+        let mut version = match query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_optional(&mut *pool)
             .await
         {
-            Ok(r) => r,
+            Ok(Some(r)) => r.into_mod_version(),
+            Ok(None) => {
+                return Err(ApiError::NotFound("".to_string()));
+            }
             Err(e) => {
                 log::info!("{:?}", e);
                 return Err(ApiError::DbError);
             }
-        };
-        let mut version = match records {
-            None => return Err(ApiError::NotFound("".to_string())),
-            Some(x) => x.into_mod_version(),
         };
 
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
@@ -286,32 +290,6 @@ impl ModVersion {
         version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
         Ok(version)
-    }
-
-    pub async fn get_download_url(
-        id: &str,
-        version: &str,
-        pool: &mut PgConnection,
-    ) -> Result<String, ApiError> {
-        let result = sqlx::query!(
-            "SELECT mv.download_link FROM mod_versions mv
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'",
-            id,
-            version
-        )
-        .fetch_optional(&mut *pool)
-        .await;
-        if result.is_err() {
-            return Err(ApiError::DbError);
-        }
-        match result.unwrap() {
-            None => Err(ApiError::NotFound(format!(
-                "Mod {}, version {} doesn't exist",
-                id, version
-            ))),
-            Some(r) => Ok(r.download_link),
-        }
     }
 
     pub async fn create_from_json(
@@ -421,34 +399,36 @@ impl ModVersion {
         id: &str,
         version: &str,
         fetch_extras: bool,
+        fetch_only_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
-        let result = sqlx::query_as!(
+        let result = match sqlx::query_as!(
             ModVersionGetOne,
-            r#"SELECT
-            mv.id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count,
-            mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _" FROM mod_versions mv
+            r#"SELECT mv.id, mv.name, mv.description, mv.version, 
+                mv.download_link, mv.download_count,
+                mv.hash, mv.geode, mv.early_load, mv.api, 
+                mv.mod_id, mvs.status as "status: _" 
+            FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id 
-            WHERE mv.mod_id = $1 AND mv.version = $2 AND mvs.status = 'accepted'"#,
+            WHERE mv.mod_id = $1 AND mv.version = $2 
+                AND (mvs.status = 'accepted' OR $3 = false)"#,
             id,
-            version
+            version,
+            fetch_only_accepted
         )
         .fetch_optional(&mut *pool)
-        .await;
-
-        let result = match result {
+        .await
+        {
             Err(e) => {
                 log::error!("{}", e);
                 return Err(ApiError::DbError);
             }
-            Ok(r) => r,
+            Ok(None) => return Err(ApiError::NotFound("Not found".to_string())),
+            Ok(Some(r)) => r,
         };
-        if result.is_none() {
-            return Err(ApiError::NotFound("Not found".to_string()));
-        }
 
-        let mut version = result.unwrap().into_mod_version();
+        let mut version = result.into_mod_version();
         if fetch_extras {
             version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
             let deps = Dependency::get_for_mod_version(version.id, pool).await?;
