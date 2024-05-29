@@ -14,12 +14,17 @@ use crate::{
             download,
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
-            mod_version::ModVersion,
+            mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
     },
     AppData,
 };
+
+#[derive(Deserialize)]
+struct IndexPath {
+    id: String,
+}
 
 #[derive(Deserialize)]
 pub struct GetOnePath {
@@ -56,6 +61,46 @@ struct GetOneQuery {
     major: Option<u32>,
 }
 
+#[derive(Deserialize)]
+struct IndexQuery {
+    page: Option<i64>,
+    per_page: Option<i64>,
+    #[serde(default)]
+    gd: Option<GDVersionEnum>,
+    platforms: Option<String>,
+    status: Option<ModVersionStatusEnum>,
+}
+
+#[get("v1/mods/{id}/versions")]
+pub async fn get_version_index(
+    path: web::Path<IndexPath>,
+    data: web::Data<AppData>,
+    query: web::Query<IndexQuery>,
+) -> Result<impl Responder, ApiError> {
+    let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default());
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut result = ModVersion::get_index(
+        mod_version::IndexQuery {
+            mod_id: path.id.clone(),
+            page: query.page.unwrap_or(1),
+            per_page: query.per_page.unwrap_or(10),
+            gd: query.gd,
+            platforms,
+            status: query.status.unwrap_or(ModVersionStatusEnum::Accepted),
+        },
+        &mut pool,
+    )
+    .await?;
+    for i in &mut result.data {
+        i.modify_download_link(&data.app_url);
+    }
+
+    Ok(web::Json(ApiResponse {
+        payload: result,
+        error: "".to_string(),
+    }))
+}
+
 #[get("v1/mods/{id}/versions/{version}")]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -74,29 +119,12 @@ pub async fn get_one(
                 None => None,
             };
 
-            let mut platforms: Vec<VerPlatform> = vec![];
-
-            if let Some(p) = &query.platforms {
-                for x in p.split(',') {
-                    match VerPlatform::from_str(x) {
-                        Ok(v) => {
-                            if v == VerPlatform::Android {
-                                platforms.push(VerPlatform::Android32);
-                                platforms.push(VerPlatform::Android64);
-                            } else {
-                                platforms.push(v);
-                            }
-                        }
-                        Err(_) => {
-                            return Err(ApiError::BadRequest("Invalid platform".to_string()));
-                        }
-                    }
-                }
-            };
+            let platform_string = query.platforms.clone().unwrap_or_default();
+            let platforms = VerPlatform::parse_query_string(&platform_string);
 
             ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, true, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
         }
     };
 
@@ -107,15 +135,33 @@ pub async fn get_one(
     }))
 }
 
+#[derive(Deserialize)]
+struct DownloadQuery {
+    gd: Option<GDVersionEnum>,
+    // platform1,platform2,...
+    platforms: Option<String>,
+    major: Option<u32>,
+}
+
 #[get("v1/mods/{id}/versions/{version}/download")]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
+    query: web::Query<DownloadQuery>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mod_version = ModVersion::get_one(&path.id, &path.version, false, &mut pool).await?;
-    let url = ModVersion::get_download_url(&path.id, &path.version, &mut pool).await?;
+    let mod_version = {
+        if path.version == "latest" {
+            let platform_str = query.platforms.clone().unwrap_or_default();
+            let platforms = VerPlatform::parse_query_string(&platform_str);
+            ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
+                .await?
+        } else {
+            ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
+        }
+    };
+    let url = mod_version.download_link;
 
     let ip = match info.realip_remote_addr() {
         None => return Err(ApiError::InternalError),
@@ -124,8 +170,25 @@ pub async fn download_version(
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
     if download::create_download(net, mod_version.id, &mut pool).await? {
-        ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await?;
-        Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await?;
+        let name = mod_version.mod_id.clone();
+        let version = mod_version.version.clone();
+        tokio::spawn(async move {
+            if let Err(e) = ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await
+            {
+                log::error!(
+                    "Failed to calculate cached downloads for mod version {}. Error: {}",
+                    version,
+                    e
+                );
+            }
+            if let Err(e) = Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await {
+                log::error!(
+                    "Failed to calculate cached downloads for mod {}. Error: {}",
+                    name,
+                    e
+                );
+            }
+        });
     }
 
     Ok(HttpResponse::Found()

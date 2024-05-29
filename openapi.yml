@@ -207,7 +207,7 @@ paths:
       tags:
         - mods
       summary: Get info for a mod
-      description: Returns info for the mod, without dependencies and incompatibilities
+      description: Returns info for the mod, without dependencies and incompatibilities.
       parameters:
         - $ref: "#/components/parameters/ModID"
       responses:
@@ -281,14 +281,13 @@ paths:
       tags:
         - mods
       summary: Get info for the latest version of a mod
-      description: Returns info for the current latest version of the mod
+      description: Returns info for the current latest approved version of the mod
       parameters:
         - $ref: "#/components/parameters/ModID"
         - $ref: "#/components/parameters/Platforms"
         - name: gd
           in: query
           description: Geometry Dash version
-          required: true
           schema:
             $ref: "#/components/schemas/GDVersionString"
 
@@ -410,7 +409,7 @@ paths:
     get:
       tags:
         - mods
-      summary: Download the latest version of a mod
+      summary: Download the latest available version of a mod
       parameters:
         - $ref: "#/components/parameters/ModID"
       responses:

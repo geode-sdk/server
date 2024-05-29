@@ -26,6 +26,9 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.205")]
     #[sqlx(rename = "2.205")]
     GD2205,
+    #[serde(rename = "2.206")]
+    #[sqlx(rename = "2.206")]
+    GD2206,
 }
 
 impl FromStr for GDVersionEnum {
@@ -71,6 +74,32 @@ impl FromStr for VerPlatform {
             "macos" => Ok(VerPlatform::Mac),
             _ => Err(()),
         }
+    }
+}
+
+impl VerPlatform {
+    pub fn parse_query_string(s: &str) -> Vec<VerPlatform> {
+        let mut ret = vec![];
+        if s.is_empty() {
+            return ret;
+        }
+
+        for x in s.split(',') {
+            match VerPlatform::from_str(x) {
+                Ok(v) => {
+                    if v == VerPlatform::Android {
+                        ret.push(VerPlatform::Android32);
+                        ret.push(VerPlatform::Android64);
+                    } else {
+                        ret.push(v);
+                    }
+                }
+                Err(_) => {
+                    log::error!("invalid platform {}", x);
+                }
+            }
+        }
+        ret
     }
 }
 
