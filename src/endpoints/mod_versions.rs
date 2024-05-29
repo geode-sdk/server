@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
@@ -14,12 +14,17 @@ use crate::{
             download,
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
-            mod_version::ModVersion,
+            mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
     },
     AppData,
 };
+
+#[derive(Deserialize)]
+struct IndexPath {
+    id: String,
+}
 
 #[derive(Deserialize)]
 pub struct GetOnePath {
@@ -54,6 +59,46 @@ struct GetOneQuery {
     platforms: Option<String>,
     gd: Option<String>,
     major: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct IndexQuery {
+    page: Option<i64>,
+    per_page: Option<i64>,
+    #[serde(default)]
+    gd: Option<GDVersionEnum>,
+    platforms: Option<String>,
+    status: Option<ModVersionStatusEnum>,
+}
+
+#[get("v1/mods/{id}/versions")]
+pub async fn get_version_index(
+    path: web::Path<IndexPath>,
+    data: web::Data<AppData>,
+    query: web::Query<IndexQuery>,
+) -> Result<impl Responder, ApiError> {
+    let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default());
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut result = ModVersion::get_index(
+        mod_version::IndexQuery {
+            mod_id: path.id.clone(),
+            page: query.page.unwrap_or(1),
+            per_page: query.per_page.unwrap_or(10),
+            gd: query.gd,
+            platforms,
+            status: query.status.unwrap_or(ModVersionStatusEnum::Accepted),
+        },
+        &mut pool,
+    )
+    .await?;
+    for i in &mut result.data {
+        i.modify_download_link(&data.app_url);
+    }
+
+    Ok(web::Json(ApiResponse {
+        payload: result,
+        error: "".to_string(),
+    }))
 }
 
 #[get("v1/mods/{id}/versions/{version}")]

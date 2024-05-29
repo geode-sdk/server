@@ -26,6 +26,9 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.205")]
     #[sqlx(rename = "2.205")]
     GD2205,
+    #[serde(rename = "2.206")]
+    #[sqlx(rename = "2.206")]
+    GD2206,
 }
 
 impl FromStr for GDVersionEnum {
@@ -77,6 +80,9 @@ impl FromStr for VerPlatform {
 impl VerPlatform {
     pub fn parse_query_string(s: &str) -> Vec<VerPlatform> {
         let mut ret = vec![];
+        if s.is_empty() {
+            return ret;
+        }
 
         for x in s.split(',') {
             match VerPlatform::from_str(x) {

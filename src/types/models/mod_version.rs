@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 
 use crate::types::{
-    api::{create_download_link, ApiError},
+    api::{create_download_link, ApiError, PaginatedData},
     mod_json::{ModJson, ModJsonGDVersionType},
 };
 
@@ -56,6 +56,15 @@ struct ModVersionGetOne {
     status: ModVersionStatusEnum,
 }
 
+pub struct IndexQuery {
+    pub mod_id: String,
+    pub page: i64,
+    pub per_page: i64,
+    pub gd: Option<GDVersionEnum>,
+    pub platforms: Vec<VerPlatform>,
+    pub status: ModVersionStatusEnum,
+}
+
 impl ModVersionGetOne {
     pub fn into_mod_version(self) -> ModVersion {
         ModVersion {
@@ -90,6 +99,138 @@ impl ModVersionGetOne {
 impl ModVersion {
     pub fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = create_download_link(app_url, &self.mod_id, &self.version)
+    }
+
+    pub async fn get_index(
+        query: IndexQuery,
+        pool: &mut PgConnection,
+    ) -> Result<PaginatedData<ModVersion>, ApiError> {
+        let limit = query.per_page;
+        let offset = (query.page - 1) * query.per_page;
+
+        let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"
+            SELECT mv.id, mv.name, mv.description, mv.version,
+            mv.download_link, mv.download_count, mv.hash, mv.geode,
+            mv.early_load, mv.api, mv.mod_id, mvs.status
+            FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            "#,
+        );
+        let mut counter_q: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"
+            SELECT COUNT(DISTINCT mv.id) 
+            FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            "#,
+        );
+        let sql = "WHERE mv.mod_id = ";
+        q.push(sql);
+        counter_q.push(sql);
+        q.push_bind(&query.mod_id);
+        counter_q.push_bind(&query.mod_id);
+        let sql = " AND mvs.status = ";
+        q.push(sql);
+        counter_q.push(sql);
+        q.push_bind(query.status);
+        counter_q.push_bind(query.status);
+        q.push(" ");
+        counter_q.push(" ");
+        if let Some(gd) = query.gd {
+            let sql = "AND (mgv.gd = ";
+            q.push(sql);
+            counter_q.push(sql);
+            q.push_bind(gd);
+            counter_q.push_bind(gd);
+            let sql = " OR mgv.gd = ";
+            q.push(sql);
+            counter_q.push(sql);
+            q.push_bind(GDVersionEnum::All);
+            counter_q.push_bind(GDVersionEnum::All);
+            q.push(" ");
+            counter_q.push(" ");
+        }
+        if !query.platforms.is_empty() {
+            let sql = "AND mgv.platform IN (";
+            q.push(sql);
+            counter_q.push(sql);
+            let mut separated = q.separated(", ");
+            let mut counter_separated = counter_q.separated(", ");
+            for platform in query.platforms {
+                separated.push_bind(platform);
+                counter_separated.push_bind(platform);
+            }
+            q.push(") ");
+            counter_q.push(") ");
+        }
+        let sql = "GROUP BY mv.id, mvs.status LIMIT ";
+        q.push(sql);
+        q.push_bind(limit);
+        let sql = " OFFSET ";
+        q.push(sql);
+        q.push_bind(offset);
+
+        let records = match q
+            .build_query_as::<ModVersionGetOne>()
+            .fetch_all(&mut *pool)
+            .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(r) => r,
+        };
+
+        let count: i64 = match counter_q.build_query_scalar().fetch_one(&mut *pool).await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(c) => c,
+        };
+
+        if records.is_empty() {
+            return Ok(PaginatedData {
+                data: vec![],
+                count,
+            });
+        }
+
+        let version_ids: Vec<i32> = records.iter().map(|x| x.id).collect();
+        let deps = Dependency::get_for_mod_versions(&version_ids, pool).await?;
+        let incompat = Incompatibility::get_for_mod_versions(&version_ids, pool).await?;
+
+        let gd_versions = ModGDVersion::get_for_mod_versions(&version_ids, pool).await?;
+        let ret: Vec<ModVersion> = records
+            .into_iter()
+            .map(|x| {
+                let mut version = x.into_mod_version();
+                version.gd = gd_versions.get(&version.id).cloned().unwrap_or_default();
+                version.dependencies = Some(
+                    deps.get(&version.id)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|j| j.to_response())
+                        .collect(),
+                );
+                version.incompatibilities = Some(
+                    incompat
+                        .get(&version.id)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|j| j.to_response())
+                        .collect(),
+                );
+                version
+            })
+            .collect();
+
+        Ok(PaginatedData { data: ret, count })
     }
 
     pub async fn get_latest_for_mods(
@@ -161,8 +302,6 @@ impl ModVersion {
         }
         Ok(ret)
     }
-
-    // WIP
 
     pub async fn get_pending_for_mods(
         ids: &Vec<String>,
