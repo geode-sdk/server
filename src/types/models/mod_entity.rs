@@ -7,7 +7,7 @@ use crate::{
         api::{ApiError, PaginatedData},
         mod_json::ModJson,
         models::{
-            dependency::{Dependency, FetchedDependency},
+            dependency::{Dependency, FetchedDependency, ModVersionCompare},
             incompatibility::{FetchedIncompatibility, Incompatibility},
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
@@ -50,8 +50,13 @@ pub struct Mod {
 pub struct ModUpdate {
     pub id: String,
     pub version: String,
+    #[serde(skip_serializing)]
+    pub mod_version_id: i32,
     pub download_link: Option<String>,
-    pub superseded_by: Option<String>,
+    pub replaced_by: Option<String>,
+    pub replacement_version: Option<String>,
+    #[serde(skip_serializing)]
+    pub replacement_id: Option<i32>,
     pub dependencies: Vec<ResponseDependency>,
     pub incompatibilities: Vec<ResponseIncompatibility>,
 }
@@ -1098,26 +1103,32 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.id, q.inner_version as version, q.mod_version_id,
-            q.superseded as superseded_by
+            r#"SELECT 
+                q.id, 
+                q.inner_version as version, 
+                q.mod_version_id,
+                q.replaced_by,
+                q.replacement_version,
+                q.replacement_id
             FROM (
-                SELECT m.id, mv.version, mv.id as mod_version_id,
-                CASE 
-                    WHEN incomp.importance = 'superseded'
-                    THEN incomp.version
-                    ELSE mv.version
-                END AS inner_version,
-                CASE
-                    WHEN incomp.importance = 'superseded'
-                    THEN incomp.incompatibility_id
-                    ELSE null
-                END AS superseded,
-                row_number() over (partition by m.id order by mv.id desc) rn 
+                SELECT m.id, 
+                    mv.id as mod_version_id,
+                    mv.version as inner_version,
+                    replacement.mod_id as replaced_by,
+                    replacement.version as replacement_version,
+                    replacement.id as replacement_id,
+                    row_number() over (partition by m.id order by replacement.version desc, mv.version desc) rn 
                 FROM mods m
                 INNER JOIN mod_versions mv ON mv.mod_id = m.id 
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                LEFT JOIN incompatibilities incomp ON incomp.mod_id = mv.id
-                WHERE mvs.status = 'accepted' AND m.id = ANY("#,
+                LEFT JOIN incompatibilities replaced ON replaced.incompatibility_id = m.id
+                    AND replaced.importance = 'superseded'
+                LEFT JOIN mod_versions replacement ON replacement.id = replaced.mod_id
+                LEFT JOIN mod_version_statuses replacement_status 
+                    ON replacement.status_id = replacement_status.id
+                WHERE mvs.status = 'accepted' 
+                    AND (replacement_status.status IS NULL OR replacement_status.status = 'accepted')
+                    AND m.id = ANY("#,
         );
         query_builder.push_bind(&ids);
         query_builder.push(") ");
@@ -1140,7 +1151,9 @@ impl Mod {
             id: String,
             version: String,
             mod_version_id: i32,
-            superseded_by: Option<String>
+            replaced_by: Option<String>,
+            replacement_version: Option<String>,
+            replacement_id: Option<i32>
         }
 
         let result = match query_builder
@@ -1169,8 +1182,11 @@ impl Mod {
             let update = ModUpdate {
                 id: r.id,
                 version: r.version,
+                mod_version_id: r.mod_version_id,
                 download_link: None,
-                superseded_by: r.superseded_by,
+                replaced_by: r.replaced_by,
+                replacement_version: r.replacement_version,
+                replacement_id: r.replacement_id,
                 dependencies: deps
                     .get(&r.mod_version_id)
                     .cloned()
