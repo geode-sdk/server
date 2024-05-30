@@ -5,6 +5,8 @@ use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
+use super::dependency::ResponseDependency;
+
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
     pub mod_id: i32,
@@ -36,6 +38,8 @@ pub struct Replacement {
     #[serde(skip_serializing)]
     pub replacement_id: i32,
     pub download_link: String,
+    pub dependencies: Vec<ResponseDependency>,
+    pub incompatibilities: Vec<ResponseIncompatibility>,
 }
 
 #[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq)]
@@ -210,6 +214,8 @@ impl Incompatibility {
                 replacement_id: i.replacement_id,
                 // Should be completed later
                 download_link: "".to_string(),
+                dependencies: vec![],
+                incompatibilities: vec![],
             });
         }
         Ok(ret)
