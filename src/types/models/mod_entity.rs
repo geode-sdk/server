@@ -209,15 +209,9 @@ impl Mod {
         builder.push(sql);
         counter_builder.push(sql);
 
-        let pending_validation = query.pending_validation.unwrap_or(false);
-
-        if pending_validation {
-            builder.push_bind(ModVersionStatusEnum::Pending);
-            counter_builder.push_bind(ModVersionStatusEnum::Pending);
-        } else {
-            builder.push_bind(ModVersionStatusEnum::Accepted);
-            counter_builder.push_bind(ModVersionStatusEnum::Accepted);
-        }
+        let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
+        builder.push_bind(status);
+        counter_builder.push_bind(status);
 
         let sql = " AND mv.name ILIKE ";
         builder.push(sql);
@@ -313,7 +307,7 @@ impl Mod {
             });
         }
 
-        if pending_validation {
+        if status == ModVersionStatusEnum::Pending {
             return Mod::get_pending(records, count, pool).await;
         }
 

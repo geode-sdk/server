@@ -7,6 +7,7 @@ use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
+use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -34,7 +35,7 @@ pub struct IndexQueryParams {
     pub developer: Option<String>,
     pub tags: Option<String>,
     pub featured: Option<bool>,
-    pub pending_validation: Option<bool>,
+    pub status: Option<ModVersionStatusEnum>,
 }
 
 #[derive(Deserialize)]
@@ -50,10 +51,12 @@ pub async fn index(
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if query.pending_validation.is_some() {
-        let dev = auth.developer()?;
-        if !dev.admin {
-            return Err(ApiError::Forbidden);
+    if let Some(s) = query.status {
+        if s == ModVersionStatusEnum::Rejected {
+            let dev = auth.developer()?;
+            if !dev.admin {
+                return Err(ApiError::Forbidden);
+            }
         }
     }
 
