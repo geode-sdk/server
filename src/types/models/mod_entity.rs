@@ -8,7 +8,7 @@ use crate::{
         mod_json::ModJson,
         models::{
             dependency::{Dependency, FetchedDependency},
-            incompatibility::{FetchedIncompatibility, Incompatibility},
+            incompatibility::{FetchedIncompatibility, Incompatibility, IncompatibilityImportance},
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
     },
@@ -26,7 +26,7 @@ use std::{collections::HashMap, io::Cursor, str::FromStr};
 use super::{
     dependency::ResponseDependency,
     developer::{Developer, FetchedDeveloper},
-    incompatibility::ResponseIncompatibility,
+    incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     tag::Tag,
 };
@@ -50,7 +50,10 @@ pub struct Mod {
 pub struct ModUpdate {
     pub id: String,
     pub version: String,
+    #[serde(skip_serializing)]
+    pub mod_version_id: i32,
     pub download_link: String,
+    pub replacement: Option<Replacement>,
     pub dependencies: Vec<ResponseDependency>,
     pub incompatibilities: Vec<ResponseIncompatibility>,
 }
@@ -1092,18 +1095,27 @@ impl Mod {
     }
 
     pub async fn get_updates(
-        ids: Vec<String>,
+        ids: &Vec<String>,
         platforms: Vec<VerPlatform>,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT q.id, q.version, q.mod_version_id FROM (SELECT m.id, mv.version, mv.id as mod_version_id,
-            row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
-            INNER JOIN mod_versions mv ON mv.mod_id = m.id 
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE mvs.status = 'accepted' AND m.id = ANY(",
+            r#"SELECT 
+                q.id, 
+                q.inner_version as version, 
+                q.mod_version_id
+            FROM (
+                SELECT m.id, 
+                    mv.id as mod_version_id,
+                    mv.version as inner_version,
+                    row_number() over (partition by m.id order by mv.version desc) rn 
+                FROM mods m
+                INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                WHERE mvs.status = 'accepted' 
+                    AND m.id = ANY("#,
         );
-        query_builder.push_bind(&ids);
+        query_builder.push_bind(ids);
         query_builder.push(") ");
 
         if !platforms.is_empty() {
@@ -1150,8 +1162,9 @@ impl Mod {
 
         for r in result {
             let update = ModUpdate {
-                id: r.id,
+                id: r.id.clone(),
                 version: r.version,
+                mod_version_id: r.mod_version_id,
                 download_link: "".to_string(),
                 dependencies: deps
                     .get(&r.mod_version_id)
@@ -1167,6 +1180,7 @@ impl Mod {
                     .iter()
                     .map(|x| x.to_response())
                     .collect(),
+                replacement: None
             };
             ret.push(update);
         }
