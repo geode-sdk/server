@@ -128,7 +128,7 @@ impl Incompatibility {
             icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
             INNER JOIN mod_versions mv ON mv.id = icp.mod_id
             WHERE mv.id = ANY($1)"#,
-            &ids
+            &ids,
         )
         .fetch_all(&mut *pool)
         .await

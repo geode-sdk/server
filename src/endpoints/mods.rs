@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
@@ -7,6 +9,7 @@ use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
+use crate::types::models::mod_version::ModVersion;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -137,8 +140,34 @@ pub async fn get_mod_updates(
     let platforms: Vec<VerPlatform> = vec![];
 
     let mut result: Vec<ModUpdate> = Mod::get_updates(ids, platforms, &mut pool).await?;
+    let mut superseded: HashMap<String, HashSet<String>> = HashMap::new();
+    for i in result.iter() {
+        if let Some(s) = &i.superseded_by {
+            superseded
+                .entry(s.clone())
+                .or_default()
+                .insert(i.version.clone());
+        }
+    }
+
+    let found = ModVersion::check_if_many_exist(superseded, &mut pool).await?;
+
     for i in &mut result {
-        i.download_link = create_download_link(&data.app_url, &i.id, &i.version);
+        if let Some(superseded_id) = &i.superseded_by {
+            if found.get(superseded_id).is_some()
+                && found.get(superseded_id).unwrap().get(&i.version).is_some()
+            {
+                i.download_link = Some(create_download_link(
+                    &data.app_url,
+                    superseded_id,
+                    &i.version,
+                ));
+            } else {
+                i.download_link = None;
+            }
+        } else {
+            i.download_link = Some(create_download_link(&data.app_url, &i.id, &i.version));
+        }
     }
 
     Ok(web::Json(ApiResponse {
