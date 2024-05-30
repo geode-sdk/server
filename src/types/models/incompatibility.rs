@@ -180,7 +180,7 @@ impl Incompatibility {
                     replacement.version AS replacement_version,
                     replacement.id AS replacement_id,
                     ROW_NUMBER() OVER(
-                        partition by replaced.incompatibility_id, replacement.mod_id 
+                        partition by replacement.mod_id 
                         order by replacement.version desc
                     ) rn
                 FROM incompatibilities replaced
@@ -191,7 +191,6 @@ impl Incompatibility {
                 AND replacement_status.status = 'accepted'
                 AND replaced.incompatibility_id = ANY($1)
                 ORDER BY replacement.id DESC, replacement.version DESC
-                LIMIT 1
             ) q
             WHERE q.rn = 1
             "#,
