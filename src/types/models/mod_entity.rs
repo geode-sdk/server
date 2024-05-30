@@ -26,7 +26,7 @@ use std::{collections::HashMap, io::Cursor, str::FromStr};
 use super::{
     dependency::ResponseDependency,
     developer::{Developer, FetchedDeveloper},
-    incompatibility::ResponseIncompatibility,
+    incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     tag::Tag,
 };
@@ -52,11 +52,8 @@ pub struct ModUpdate {
     pub version: String,
     #[serde(skip_serializing)]
     pub mod_version_id: i32,
-    pub download_link: Option<String>,
-    pub replaced_by: Option<String>,
-    pub replacement_version: Option<String>,
-    #[serde(skip_serializing)]
-    pub replacement_id: Option<i32>,
+    pub download_link: String,
+    pub replacement: Option<Replacement>,
     pub dependencies: Vec<ResponseDependency>,
     pub incompatibilities: Vec<ResponseIncompatibility>,
 }
@@ -1098,7 +1095,7 @@ impl Mod {
     }
 
     pub async fn get_updates(
-        ids: Vec<String>,
+        ids: &Vec<String>,
         platforms: Vec<VerPlatform>,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
@@ -1106,31 +1103,19 @@ impl Mod {
             r#"SELECT 
                 q.id, 
                 q.inner_version as version, 
-                q.mod_version_id,
-                q.replaced_by,
-                q.replacement_version,
-                q.replacement_id
+                q.mod_version_id
             FROM (
                 SELECT m.id, 
                     mv.id as mod_version_id,
                     mv.version as inner_version,
-                    replacement.mod_id as replaced_by,
-                    replacement.version as replacement_version,
-                    replacement.id as replacement_id,
-                    row_number() over (partition by m.id order by replacement.version desc, mv.version desc) rn 
+                    row_number() over (partition by m.id order by mv.version desc) rn 
                 FROM mods m
                 INNER JOIN mod_versions mv ON mv.mod_id = m.id 
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                LEFT JOIN incompatibilities replaced ON replaced.incompatibility_id = m.id
-                    AND replaced.importance = 'superseded'
-                LEFT JOIN mod_versions replacement ON replacement.id = replaced.mod_id
-                LEFT JOIN mod_version_statuses replacement_status 
-                    ON replacement.status_id = replacement_status.id
                 WHERE mvs.status = 'accepted' 
-                    AND (replacement_status.status IS NULL OR replacement_status.status = 'accepted')
                     AND m.id = ANY("#,
         );
-        query_builder.push_bind(&ids);
+        query_builder.push_bind(ids);
         query_builder.push(") ");
 
         if !platforms.is_empty() {
@@ -1151,9 +1136,6 @@ impl Mod {
             id: String,
             version: String,
             mod_version_id: i32,
-            replaced_by: Option<String>,
-            replacement_version: Option<String>,
-            replacement_id: Option<i32>
         }
 
         let result = match query_builder
@@ -1168,14 +1150,7 @@ impl Mod {
             }
         };
 
-        let ids: Vec<i32> = result.iter().map(|x| {
-            if x.replacement_id.is_some() {
-                x.replacement_id.unwrap()
-            } else {
-                x.mod_version_id
-            }
-        }).collect();
-        log::info!("{:?}", ids);
+        let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
 
         let deps: HashMap<i32, Vec<FetchedDependency>> =
             Dependency::get_for_mod_versions(&ids, pool).await?;
@@ -1186,41 +1161,26 @@ impl Mod {
         let mut ret: Vec<ModUpdate> = vec![];
 
         for r in result {
-            let mod_version_id = {
-                if let Some(id) = r.replacement_id {
-                    id
-                } else {
-                    r.mod_version_id
-                }
-            };
             let update = ModUpdate {
                 id: r.id.clone(),
                 version: r.version,
                 mod_version_id: r.mod_version_id,
-                download_link: None,
-                replaced_by: r.replaced_by.clone(),
-                replacement_version: r.replacement_version,
-                replacement_id: r.replacement_id,
+                download_link: "".to_string(),
                 dependencies: deps
-                    .get(&mod_version_id)
+                    .get(&r.mod_version_id)
                     .cloned()
                     .unwrap_or_default()
                     .iter()
                     .map(|x| x.to_response())
                     .collect(),
                 incompatibilities: incompat
-                    .get(&mod_version_id)
+                    .get(&r.mod_version_id)
                     .cloned()
                     .unwrap_or_default()
                     .iter()
-                    .filter(|x| {
-                        if r.replaced_by.is_some() {
-                            return x.incompatibility_id != r.id && x.importance == IncompatibilityImportance::Superseded;
-                        }
-                        true
-                    })
                     .map(|x| x.to_response())
                     .collect(),
+                replacement: None
             };
             ret.push(update);
         }

@@ -5,6 +5,7 @@ use sqlx::Acquire;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
+use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
@@ -139,19 +140,16 @@ pub async fn get_mod_updates(
 
     let platforms: Vec<VerPlatform> = vec![];
 
-    let mut result: Vec<ModUpdate> = Mod::get_updates(ids, platforms, &mut pool).await?;
+    let mut result: Vec<ModUpdate> = Mod::get_updates(&ids, platforms, &mut pool).await?;
+    let replacements = Incompatibility::get_supersedes_for(&ids, &mut pool).await?;
 
     for i in &mut result {
-        if i.replacement_id.is_some() && i.replaced_by.is_some() && i.replacement_version.is_some()
-        {
-            i.download_link = Some(create_download_link(
-                &data.app_url,
-                &i.replaced_by.clone().unwrap(),
-                &i.replacement_version.clone().unwrap(),
-            ));
-        } else {
-            i.download_link = Some(create_download_link(&data.app_url, &i.id, &i.version));
+        if let Some(replacement) = replacements.get(&i.id) {
+            let mut clone = replacement.clone();
+            clone.download_link = create_download_link(&data.app_url, &clone.id, &clone.version);
+            i.replacement = Some(clone);
         }
+        i.download_link = create_download_link(&data.app_url, &i.id, &i.version);
     }
 
     Ok(web::Json(ApiResponse {
