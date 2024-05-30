@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\"\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 AND mvs.status = 'accepted'",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\"\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 \n            AND ($2 = false OR mvs.status = 'accepted')",
   "describe": {
     "columns": [
       {
@@ -118,7 +118,8 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Bool"
       ]
     },
     "nullable": [
@@ -144,5 +145,5 @@
       false
     ]
   },
-  "hash": "ddf942e532d6f91537090cb5df10407334d0191507235fbc7214ebf03617b3b0"
+  "hash": "2429350cbfa8820a0497e769ec7f59dc9b7ae91e6f8d4d65e4515786450d6fcf"
 }
