@@ -75,7 +75,7 @@ pub async fn get(
     id: web::Path<String>,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let found = Mod::get_one(&id, &mut pool).await?;
+    let found = Mod::get_one(&id, false, &mut pool).await?;
     match found {
         Some(mut m) => {
             for i in &mut m.versions {

@@ -486,7 +486,7 @@ impl Mod {
         Ok(mods)
     }
 
-    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
+    pub async fn get_one(id: &str, only_accepted: bool, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             r#"SELECT
@@ -496,8 +496,10 @@ impl Mod {
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1 AND mvs.status = 'accepted'"#,
-            id
+            WHERE m.id = $1 
+            AND ($2 = false OR mvs.status = 'accepted')"#,
+            id,
+            only_accepted
         )
         .fetch_all(&mut *pool)
         .await
