@@ -210,15 +210,9 @@ impl Mod {
         builder.push(sql);
         counter_builder.push(sql);
 
-        let pending_validation = query.pending_validation.unwrap_or(false);
-
-        if pending_validation {
-            builder.push_bind(ModVersionStatusEnum::Pending);
-            counter_builder.push_bind(ModVersionStatusEnum::Pending);
-        } else {
-            builder.push_bind(ModVersionStatusEnum::Accepted);
-            counter_builder.push_bind(ModVersionStatusEnum::Accepted);
-        }
+        let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
+        builder.push_bind(status);
+        counter_builder.push_bind(status);
 
         let sql = " AND mv.name ILIKE ";
         builder.push(sql);
@@ -314,7 +308,7 @@ impl Mod {
             });
         }
 
-        if pending_validation {
+        if status == ModVersionStatusEnum::Pending {
             return Mod::get_pending(records, count, pool).await;
         }
 
@@ -487,7 +481,7 @@ impl Mod {
         Ok(mods)
     }
 
-    pub async fn get_one(id: &str, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
+    pub async fn get_one(id: &str, only_accepted: bool, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             r#"SELECT
@@ -497,8 +491,10 @@ impl Mod {
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1 AND mvs.status = 'accepted'"#,
-            id
+            WHERE m.id = $1 
+            AND ($2 = false OR mvs.status = 'accepted')"#,
+            id,
+            only_accepted
         )
         .fetch_all(&mut *pool)
         .await
