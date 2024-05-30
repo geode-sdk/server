@@ -452,7 +452,13 @@ paths:
           content:
             application/json:
               schema:
-                type: string
+                type: object
+                properties:
+                  error:
+                    type: "null"
+                  payload:
+                    type: array
+                    items: "#/components/schemas/ModUpdate"
 
   /v1/mods/{id}/developers:
     post:
@@ -677,6 +683,80 @@ components:
             - type: "null"
             - $ref: "#/components/schemas/GDVersionString"
 
+    ModUpdate:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ModID"
+        version:
+          $ref: "#/components/schemas/ModVersionString"
+        download_link:
+          type: string
+          examples:
+            - "https://api.geode-sdk.com/v1/mods/geode.nodeids/versions/1.0.0/download"
+            - "https://api.geode-sdk.com/v1/mods/geode.devtools/versions/1.0.0/download"
+        replacement:
+          oneOf:
+            - "null"
+            - $ref: "#/components/schemas/ModReplacement"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModDependency"
+        incompatibilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModIncompatibility"
+
+    ModReplacement:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ModID"
+        version:
+          $ref: "#/components/schemas/ModVersionString"
+        download_link:
+          type: string
+          examples:
+            - "https://api.geode-sdk.com/v1/mods/geode.nodeids/versions/1.0.0/download"
+            - "https://api.geode-sdk.com/v1/mods/geode.devtools/versions/1.0.0/download"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModDependency"
+        incompatibilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModIncompatibility"
+
+    ModDependency:
+      type: object
+      properties:
+        mod_id:
+          $ref: "#/components/schemas/ModID"
+        version:
+          type: string
+          examples:
+            - ">1.0.0"
+            - "*"
+            - "<=2.0.0"
+        importance:
+          $ref: "#/components/schemas/DependencyImportance"
+
+    ModIncompatibility:
+      type: object
+      properties:
+        mod_id:
+          $ref: "#/components/schemas/ModID"
+        version:
+          type: string
+          examples:
+            - ">1.0.0"
+            - "*"
+            - "<=2.0.0"
+        importance:
+          $ref: "#/components/schemas/IncompatibilityImportance"
+
     Mod:
       type: object
       properties:
@@ -756,9 +836,16 @@ components:
           type: array
           items:
             type: string
-
         mod_id:
           $ref: "#/components/schemas/ModID"
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModDependency"
+        incompatibilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModIncompatibility"
 
     ModVersionStatus:
       type: string
@@ -767,6 +854,20 @@ components:
         - rejected
         - pending
         - unlisted
+
+    DependencyImportance:
+      type: string
+      enum:
+        - suggested
+        - recommended
+        - required
+
+    IncompatibilityImportance:
+      type: string
+      enum:
+        - breaking
+        - conflicting
+        - superseded
 
     ModDeveloper:
       type: object
