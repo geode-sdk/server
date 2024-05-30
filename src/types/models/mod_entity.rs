@@ -7,8 +7,8 @@ use crate::{
         api::{ApiError, PaginatedData},
         mod_json::ModJson,
         models::{
-            dependency::{Dependency, FetchedDependency, ModVersionCompare},
-            incompatibility::{FetchedIncompatibility, Incompatibility},
+            dependency::{Dependency, FetchedDependency},
+            incompatibility::{FetchedIncompatibility, Incompatibility, IncompatibilityImportance},
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
     },
@@ -1168,7 +1168,14 @@ impl Mod {
             }
         };
 
-        let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
+        let ids: Vec<i32> = result.iter().map(|x| {
+            if x.replacement_id.is_some() {
+                x.replacement_id.unwrap()
+            } else {
+                x.mod_version_id
+            }
+        }).collect();
+        log::info!("{:?}", ids);
 
         let deps: HashMap<i32, Vec<FetchedDependency>> =
             Dependency::get_for_mod_versions(&ids, pool).await?;
@@ -1179,26 +1186,39 @@ impl Mod {
         let mut ret: Vec<ModUpdate> = vec![];
 
         for r in result {
+            let mod_version_id = {
+                if let Some(id) = r.replacement_id {
+                    id
+                } else {
+                    r.mod_version_id
+                }
+            };
             let update = ModUpdate {
-                id: r.id,
+                id: r.id.clone(),
                 version: r.version,
                 mod_version_id: r.mod_version_id,
                 download_link: None,
-                replaced_by: r.replaced_by,
+                replaced_by: r.replaced_by.clone(),
                 replacement_version: r.replacement_version,
                 replacement_id: r.replacement_id,
                 dependencies: deps
-                    .get(&r.mod_version_id)
+                    .get(&mod_version_id)
                     .cloned()
                     .unwrap_or_default()
                     .iter()
                     .map(|x| x.to_response())
                     .collect(),
                 incompatibilities: incompat
-                    .get(&r.mod_version_id)
+                    .get(&mod_version_id)
                     .cloned()
                     .unwrap_or_default()
                     .iter()
+                    .filter(|x| {
+                        if r.replaced_by.is_some() {
+                            return x.incompatibility_id != r.id && x.importance == IncompatibilityImportance::Superseded;
+                        }
+                        true
+                    })
                     .map(|x| x.to_response())
                     .collect(),
             };

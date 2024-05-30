@@ -29,7 +29,7 @@ pub struct Incompatibility {
     pub importance: IncompatibilityImportance,
 }
 
-#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize)]
+#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq)]
 #[sqlx(type_name = "incompatibility_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum IncompatibilityImportance {
