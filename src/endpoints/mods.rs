@@ -141,15 +141,31 @@ pub async fn get_mod_updates(
     let platforms: Vec<VerPlatform> = vec![];
 
     let mut result: Vec<ModUpdate> = Mod::get_updates(&ids, platforms, &mut pool).await?;
-    let replacements = Incompatibility::get_supersedes_for(&ids, &mut pool).await?;
+    let mut replacements = Incompatibility::get_supersedes_for(&ids, &mut pool).await?;
 
     for i in &mut result {
         if let Some(replacement) = replacements.get(&i.id) {
             let mut clone = replacement.clone();
             clone.download_link = create_download_link(&data.app_url, &clone.id, &clone.version);
             i.replacement = Some(clone);
+            replacements.remove_entry(&i.id);
         }
         i.download_link = create_download_link(&data.app_url, &i.id, &i.version);
+    }
+
+    for i in replacements {
+        let mut replacement = i.1.clone();
+        replacement.download_link =
+            create_download_link(&data.app_url, &replacement.id, &replacement.version);
+        result.push(ModUpdate {
+            id: i.0.clone(),
+            version: "1.0.0".to_string(),
+            mod_version_id: 0,
+            download_link: replacement.download_link.clone(),
+            replacement: Some(replacement),
+            dependencies: vec![],
+            incompatibilities: vec![],
+        });
     }
 
     Ok(web::Json(ApiResponse {
