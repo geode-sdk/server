@@ -125,36 +125,103 @@ impl Dependency {
         Ok(())
     }
 
-    pub async fn get_for_mod_version(
-        id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<Vec<FetchedDependency>, ApiError> {
-        match sqlx::query_as!(
-            FetchedDependency,
-            r#"SELECT dp.dependent_id as mod_version_id, dp.dependency_id, 
-            dp.version, dp.compare AS "compare: _", dp.importance AS "importance: _" 
-            FROM dependencies dp
-            WHERE dp.dependent_id = $1"#,
-            id
-        )
-        .fetch_all(&mut *pool)
-        .await
-        {
-            Ok(d) => Ok(d),
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-        }
-    }
-
     pub async fn get_for_mod_versions(
         ids: &Vec<i32>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
-        let result = match sqlx::query_as!(FetchedDependency,
-            r#"SELECT dp.dependent_id as mod_version_id, dp.dependency_id, dp.version, dp.compare AS "compare: _", dp.importance AS "importance: _" FROM dependencies dp
-            WHERE dp.dependent_id = ANY($1)"#,
+        // Fellow developer, I am sorry for what you're about to see :)
+
+        let result = match sqlx::query!(
+            r#"
+            WITH RECURSIVE dep_tree AS (
+                SELECT * FROM (
+                    SELECT 
+                        m.id AS id,
+                        mv.id AS mod_version_id,
+                        mv.name AS name,
+                        mv.version AS version,
+                        dp.compare AS "needs_compare: ModVersionCompare",
+                        dp.importance as "importance: DependencyImportance",
+                        dp.version AS needs_version,
+                        dp.dependency_id AS dependency,
+                        dpcy_version.id AS dependency_vid,
+                        dpcy_version.name AS depedency_name,
+                        dpcy_version.version AS dependency_version,
+                        mv.id AS start_node,
+                        ROW_NUMBER() OVER(
+                            PARTITION BY dp.dependency_id, mv.id 
+                            ORDER BY dpcy_version.version DESC, mv.version DESC
+                        ) rn 
+                    FROM mod_versions mv
+                    INNER JOIN mods m ON mv.mod_id = m.id
+                    INNER JOIN dependencies dp ON dp.dependent_id = mv.id
+                    INNER JOIN mods dpcy ON dp.dependency_id = dpcy.id
+                    INNER JOIN mod_versions dpcy_version ON dpcy_version.mod_id = dpcy.id
+                    INNER JOIN mod_version_statuses dpcy_status ON dpcy_version.status_id = dpcy_status.id
+                    WHERE dpcy_status.status = 'accepted'
+                    AND mv.id = ANY($1)
+                    AND CASE
+                        WHEN dp.version = '*' THEN 1
+                            WHEN SPLIT_PART(dpcy_version.version, '.', 1) = SPLIT_PART(dp.version, '.', 1) THEN 1
+                        ELSE 0
+                    END = 1
+                    AND CASE
+                        WHEN dp.version = '*' THEN 1
+                        WHEN dp.compare = '<' AND dpcy_version.version < dp.version THEN 1
+                        WHEN dp.compare = '>' AND dpcy_version.version > dp.version THEN 1
+                        WHEN dp.compare = '<=' AND dpcy_version.version <= dp.version THEN 1
+                        WHEN dp.compare = '>=' AND dpcy_version.version >= dp.version THEN 1
+                        WHEN dp.compare = '=' AND dpcy_version.version = dp.version THEN 1
+                        ELSE 0
+                    END = 1
+                ) as q
+                WHERE q.rn = 1
+                UNION
+                SELECT * FROM (
+                    SELECT 
+                        m2.id AS id,
+                        mv2.id AS mod_version_id,
+                        mv2.name AS name,
+                        mv2.version AS version,
+                        dp2.compare AS "needs_compare: ModVersionCompare",
+                        dp2.importance as "importance: DependencyImportance",
+                        dp2.version AS needs_version,
+                        dp2.dependency_id AS dependency,
+                        dpcy_version2.id AS dependency_vid,
+                        dpcy_version2.name AS depedency_name,
+                        dpcy_version2.version AS dependency_version,
+                        dt.start_node AS start_node,
+                        ROW_NUMBER() OVER(
+                            PARTITION BY dp2.dependency_id, mv2.id 
+                            ORDER BY dpcy_version2.version DESC, mv2.version DESC
+                        ) rn 
+                    FROM mod_versions mv2
+                    INNER JOIN mods m2 ON mv2.mod_id = m2.id
+                    INNER JOIN dependencies dp2 ON dp2.dependent_id = mv2.id
+                    INNER JOIN mods dpcy2 ON dp2.dependency_id = dpcy2.id
+                    INNER JOIN mod_versions dpcy_version2 ON dpcy_version2.mod_id = dpcy2.id
+                    INNER JOIN mod_version_statuses dpcy_status2 ON dpcy_version2.status_id = dpcy_status2.id
+                    INNER JOIN dep_tree dt ON dt.dependency_vid = mv2.id
+                    WHERE dpcy_status2.status = 'accepted'
+                    AND CASE
+                        WHEN dp2.version = '*' THEN 1
+                            WHEN SPLIT_PART(dpcy_version2.version, '.', 1) = SPLIT_PART(dp2.version, '.', 1) THEN 1
+                        ELSE 0
+                    END = 1
+                    AND CASE
+                        WHEN dp2.version = '*' THEN 1
+                        WHEN dp2.compare = '<' AND dpcy_version2.version < dp2.version THEN 1
+                        WHEN dp2.compare = '>' AND dpcy_version2.version > dp2.version THEN 1
+                        WHEN dp2.compare = '<=' AND dpcy_version2.version <= dp2.version THEN 1
+                        WHEN dp2.compare = '>=' AND dpcy_version2.version >= dp2.version THEN 1
+                        WHEN dp2.compare = '=' AND dpcy_version2.version = dp2.version THEN 1
+                        ELSE 0
+                    END = 1
+                ) as q2
+                WHERE q2.rn = 1
+            )
+            SELECT * FROM dep_tree;
+            "#,
             &ids
         )
         .fetch_all(&mut *pool)
@@ -169,7 +236,15 @@ impl Dependency {
 
         let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
         for i in result {
-            ret.entry(i.mod_version_id).or_default().push(i);
+            ret.entry(i.start_node.unwrap())
+                .or_default()
+                .push(FetchedDependency {
+                    mod_version_id: i.dependency_vid.unwrap(),
+                    version: i.dependency_version.clone().unwrap(),
+                    dependency_id: i.dependency.clone().unwrap(),
+                    compare: ModVersionCompare::Exact,
+                    importance: i.importance.unwrap(),
+                });
         }
         Ok(ret)
     }

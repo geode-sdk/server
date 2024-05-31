@@ -10,7 +10,7 @@ use crate::types::{
 };
 
 use super::{
-    dependency::{Dependency, ResponseDependency},
+    dependency::Dependency,
     developer::Developer,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
@@ -280,7 +280,6 @@ impl ModVersion {
         }
         separated.push_unseparated(")");
         query_builder.push(") q WHERE q.rn = 1");
-        log::info!("{}", query_builder.sql());
         let records = query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_all(&mut *pool)
@@ -410,10 +409,14 @@ impl ModVersion {
             }
         };
 
+        let ids: Vec<i32> = vec![version.id];
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
         version.dependencies = Some(
-            Dependency::get_for_mod_version(version.id, pool)
+            Dependency::get_for_mod_versions(&ids, pool)
                 .await?
+                .get(&version.id)
+                .cloned()
+                .unwrap_or_default()
                 .into_iter()
                 .map(|x| x.to_response())
                 .collect(),
@@ -570,8 +573,17 @@ impl ModVersion {
         let mut version = result.into_mod_version();
         if fetch_extras {
             version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
-            let deps = Dependency::get_for_mod_version(version.id, pool).await?;
-            version.dependencies = Some(deps.into_iter().map(|x| x.to_response()).collect());
+            let ids = vec![version.id];
+            version.dependencies = Some(
+                Dependency::get_for_mod_versions(&ids, pool)
+                    .await?
+                    .get(&version.id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|x| x.to_response())
+                    .collect(),
+            );
             let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
             version.incompatibilities =
                 Some(incompat.into_iter().map(|x| x.to_response()).collect());
