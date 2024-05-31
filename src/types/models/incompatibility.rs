@@ -5,7 +5,7 @@ use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use super::dependency::ResponseDependency;
+use super::dependency::{Dependency, ResponseDependency};
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
@@ -206,6 +206,10 @@ impl Incompatibility {
             Ok(r) => r,
         };
 
+        let ids: Vec<i32> = r.iter().map(|x| x.replacement_id).collect();
+        let deps = Dependency::get_for_mod_versions(&ids, pool).await?;
+        let incompat = Incompatibility::get_for_mod_versions(&ids, pool).await?;
+
         for i in r.iter() {
             ret.entry(i.replaced.clone()).or_insert(Replacement {
                 id: i.replacement.clone(),
@@ -213,8 +217,24 @@ impl Incompatibility {
                 replacement_id: i.replacement_id,
                 // Should be completed later
                 download_link: "".to_string(),
-                dependencies: vec![],
-                incompatibilities: vec![],
+                dependencies: deps
+                    .get(&i.replacement_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|x| x.to_response())
+                    .collect(),
+                incompatibilities: incompat
+                    .get(&i.replacement_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|x| {
+                        x.importance != IncompatibilityImportance::Superseded
+                            && x.incompatibility_id != i.replacement
+                    })
+                    .map(|x| x.to_response())
+                    .collect(),
             });
         }
         Ok(ret)
