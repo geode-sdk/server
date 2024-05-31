@@ -1,0 +1,118 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH RECURSIVE dep_tree AS (\n                SELECT * FROM (\n                    SELECT \n                        m.id AS id,\n                        mv.id AS mod_version_id,\n                        mv.name AS name,\n                        mv.version AS version,\n                        dp.compare AS \"needs_compare: ModVersionCompare\",\n                        dp.importance as \"importance: DependencyImportance\",\n                        dp.version AS needs_version,\n                        dp.dependency_id AS dependency,\n                        dpcy_version.id AS dependency_vid,\n                        dpcy_version.name AS depedency_name,\n                        dpcy_version.version AS dependency_version,\n                        mv.id AS start_node,\n                        ROW_NUMBER() OVER(\n                            PARTITION BY dp.dependency_id, mv.id \n                            ORDER BY dpcy_version.version DESC, mv.version DESC\n                        ) rn \n                    FROM mod_versions mv\n                    INNER JOIN mods m ON mv.mod_id = m.id\n                    INNER JOIN dependencies dp ON dp.dependent_id = mv.id\n                    INNER JOIN mods dpcy ON dp.dependency_id = dpcy.id\n                    INNER JOIN mod_versions dpcy_version ON dpcy_version.mod_id = dpcy.id\n                    INNER JOIN mod_version_statuses dpcy_status ON dpcy_version.status_id = dpcy_status.id\n                    WHERE dpcy_status.status = 'accepted'\n                    AND mv.id = ANY($1)\n                    AND CASE\n                        WHEN dp.version = '*' THEN 1\n                            WHEN SPLIT_PART(dpcy_version.version, '.', 1) = SPLIT_PART(dp.version, '.', 1) THEN 1\n                        ELSE 0\n                    END = 1\n                    AND CASE\n                        WHEN dp.version = '*' THEN 1\n                        WHEN dp.compare = '<' AND dpcy_version.version < dp.version THEN 1\n                        WHEN dp.compare = '>' AND dpcy_version.version > dp.version THEN 1\n                        WHEN dp.compare = '<=' AND dpcy_version.version <= dp.version THEN 1\n                        WHEN dp.compare = '>=' AND dpcy_version.version >= dp.version THEN 1\n                        WHEN dp.compare = '=' AND dpcy_version.version = dp.version THEN 1\n                        ELSE 0\n                    END = 1\n                ) as q\n                WHERE q.rn = 1\n                UNION\n                SELECT * FROM (\n                    SELECT \n                        m2.id AS id,\n                        mv2.id AS mod_version_id,\n                        mv2.name AS name,\n                        mv2.version AS version,\n                        dp2.compare AS \"needs_compare: ModVersionCompare\",\n                        dp2.importance as \"importance: DependencyImportance\",\n                        dp2.version AS needs_version,\n                        dp2.dependency_id AS dependency,\n                        dpcy_version2.id AS dependency_vid,\n                        dpcy_version2.name AS depedency_name,\n                        dpcy_version2.version AS dependency_version,\n                        dt.start_node AS start_node,\n                        ROW_NUMBER() OVER(\n                            PARTITION BY dp2.dependency_id, mv2.id \n                            ORDER BY dpcy_version2.version DESC, mv2.version DESC\n                        ) rn \n                    FROM mod_versions mv2\n                    INNER JOIN mods m2 ON mv2.mod_id = m2.id\n                    INNER JOIN dependencies dp2 ON dp2.dependent_id = mv2.id\n                    INNER JOIN mods dpcy2 ON dp2.dependency_id = dpcy2.id\n                    INNER JOIN mod_versions dpcy_version2 ON dpcy_version2.mod_id = dpcy2.id\n                    INNER JOIN mod_version_statuses dpcy_status2 ON dpcy_version2.status_id = dpcy_status2.id\n                    INNER JOIN dep_tree dt ON dt.dependency_vid = mv2.id\n                    WHERE dpcy_status2.status = 'accepted'\n                    AND CASE\n                        WHEN dp2.version = '*' THEN 1\n                            WHEN SPLIT_PART(dpcy_version2.version, '.', 1) = SPLIT_PART(dp2.version, '.', 1) THEN 1\n                        ELSE 0\n                    END = 1\n                    AND CASE\n                        WHEN dp2.version = '*' THEN 1\n                        WHEN dp2.compare = '<' AND dpcy_version2.version < dp2.version THEN 1\n                        WHEN dp2.compare = '>' AND dpcy_version2.version > dp2.version THEN 1\n                        WHEN dp2.compare = '<=' AND dpcy_version2.version <= dp2.version THEN 1\n                        WHEN dp2.compare = '>=' AND dpcy_version2.version >= dp2.version THEN 1\n                        WHEN dp2.compare = '=' AND dpcy_version2.version = dp2.version THEN 1\n                        ELSE 0\n                    END = 1\n                ) as q2\n                WHERE q2.rn = 1\n            )\n            SELECT * FROM dep_tree;\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "needs_compare: ModVersionCompare",
+        "type_info": {
+          "Custom": {
+            "name": "version_compare",
+            "kind": {
+              "Enum": [
+                "=",
+                ">",
+                "<",
+                ">=",
+                "<="
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "importance: DependencyImportance",
+        "type_info": {
+          "Custom": {
+            "name": "dependency_importance",
+            "kind": {
+              "Enum": [
+                "required",
+                "recommended",
+                "suggested"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "needs_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "dependency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "dependency_vid",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "depedency_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "dependency_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "start_node",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 12,
+        "name": "rn",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4Array"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "82b4d9cf3e8744546c527849bf47f96747c897fc36988d90ac5f49d7930ef0e6"
+}

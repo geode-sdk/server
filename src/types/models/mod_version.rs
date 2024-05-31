@@ -10,7 +10,7 @@ use crate::types::{
 };
 
 use super::{
-    dependency::Dependency,
+    dependency::{Dependency, ResponseDependency},
     developer::Developer,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
