@@ -40,7 +40,7 @@ impl FromStr for GDVersionEnum {
             "2.200" => Ok(GDVersionEnum::GD2200),
             "2.204" => Ok(GDVersionEnum::GD2204),
             "2.205" => Ok(GDVersionEnum::GD2205),
-            "2.205" => Ok(GDVersionEnum::GD2206),
+            "2.206" => Ok(GDVersionEnum::GD2206),
             _ => Err(()),
         }
     }
