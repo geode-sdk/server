@@ -60,6 +60,40 @@ struct UpdateDeveloperPath {
     id: i32,
 }
 
+#[derive(Deserialize)]
+struct DeveloperIndexQuery {
+    query: Option<String>,
+    page: Option<i64>,
+    per_page: Option<i64>,
+}
+
+#[get("v1/developers")]
+pub async fn developer_index(
+    data: web::Data<AppData>,
+    query: web::Query<DeveloperIndexQuery>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    let mut page = query.page.unwrap_or(1);
+    if page < 1 {
+        page = 1
+    }
+    let mut per_page = query.per_page.unwrap_or(15);
+    if per_page < 1 {
+        per_page = 1
+    }
+    if per_page > 100 {
+        per_page = 100
+    }
+
+    let result = Developer::get_index(&query.query, page, per_page, &mut pool).await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: result,
+    }))
+}
+
 #[post("v1/mods/{id}/developers")]
 pub async fn add_developer_to_mod(
     data: web::Data<AppData>,

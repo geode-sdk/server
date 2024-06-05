@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use crate::types::api::ApiError;
+use crate::types::api::{ApiError, PaginatedData};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Developer {
@@ -22,7 +22,7 @@ pub struct DeveloperProfile {
     pub admin: bool,
 }
 
-#[derive(Clone)]
+#[derive(sqlx::FromRow, Clone)]
 pub struct FetchedDeveloper {
     pub id: i32,
     pub username: String,
@@ -32,6 +32,98 @@ pub struct FetchedDeveloper {
 }
 
 impl Developer {
+    pub async fn get_index(
+        query: &Option<String>,
+        page: i64,
+        per_page: i64,
+        pool: &mut PgConnection,
+    ) -> Result<PaginatedData<DeveloperProfile>, ApiError> {
+        let limit = per_page;
+        let offset = (page - 1) * per_page;
+
+        let name_query: Option<String> = query.as_ref().map(|q| format!("%{}%", q));
+
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"
+            SELECT
+                id,
+                username,
+                display_name,
+                verified,
+                admin     
+            FROM developers
+            "#,
+        );
+
+        let mut counter: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"
+            SELECT COUNT(id)
+            FROM developers
+        "#,
+        );
+
+        if name_query.is_some() {
+            let sql = "WHERE username LIKE ";
+            builder.push(sql);
+            counter.push(sql);
+            builder.push_bind(name_query.clone().unwrap());
+            counter.push(name_query.clone().unwrap());
+            let sql = " OR WHERE display_name LIKE ";
+            builder.push(sql);
+            counter.push(sql);
+            builder.push(name_query.clone().unwrap());
+            counter.push(name_query.clone().unwrap());
+        }
+
+        builder.push(" GROUP BY id");
+        let sql = " LIMIT ";
+        builder.push(sql);
+        builder.push_bind(limit);
+        let sql = " OFFSET ";
+        builder.push(sql);
+        builder.push_bind(offset);
+
+        let result = match builder
+            .build_query_as::<FetchedDeveloper>()
+            .fetch_all(&mut *pool)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        let result: Vec<DeveloperProfile> = result
+            .into_iter()
+            .map(|x| DeveloperProfile {
+                id: x.id,
+                username: x.username,
+                display_name: x.display_name,
+                verified: x.verified,
+                admin: x.admin,
+            })
+            .collect();
+
+        let count = match counter
+            .build_query_scalar()
+            .fetch_optional(&mut *pool)
+            .await
+        {
+            Ok(Some(c)) => c,
+            Ok(None) => 0,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        Ok(PaginatedData {
+            data: result,
+            count,
+        })
+    }
     pub async fn create(
         github_id: i64,
         username: String,

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use chrono::Utc;
 use serde::Serialize;
@@ -690,49 +690,5 @@ impl ModVersion {
         }
 
         Ok(())
-    }
-
-    /**
-     * @param to_check - map containing <MOD_ID -> HASHSET OF VERSIONS>
-     * @returns same map structure, with mods that were found and their versions
-     */
-    pub async fn check_if_many_exist(
-        to_check: HashMap<String, HashSet<String>>,
-        pool: &mut PgConnection,
-    ) -> Result<HashMap<String, HashSet<String>>, ApiError> {
-        let mut ret: HashMap<String, HashSet<String>> = HashMap::new();
-        let mut ids: Vec<String> = vec![];
-        let mut versions: Vec<String> = vec![];
-        for i in to_check {
-            ids.push(i.0);
-            for j in i.1 {
-                versions.push(j);
-            }
-        }
-
-        let r = match sqlx::query!(
-            r#"SELECT mod_id, version
-            FROM mod_versions
-            WHERE mod_id = ANY($1)
-            AND version = ANY($2)"#,
-            &ids,
-            &versions
-        )
-        .fetch_all(&mut *pool)
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("Failed to check if mods / versions exist");
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        for i in r {
-            ret.entry(i.mod_id).or_default().insert(i.version);
-        }
-
-        Ok(ret)
     }
 }

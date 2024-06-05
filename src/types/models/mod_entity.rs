@@ -8,7 +8,7 @@ use crate::{
         mod_json::ModJson,
         models::{
             dependency::{Dependency, FetchedDependency},
-            incompatibility::{FetchedIncompatibility, Incompatibility, IncompatibilityImportance},
+            incompatibility::{FetchedIncompatibility, Incompatibility},
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
     },
