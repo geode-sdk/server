@@ -289,6 +289,36 @@ pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
     }))
 }
 
+#[derive(Deserialize)]
+struct GetDeveloperPath {
+    id: i32,
+}
+
+#[get("v1/developers/{id}")]
+pub async fn get_developer(
+    data: web::Data<AppData>,
+    path: web::Path<GetDeveloperPath>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let result = Developer::get_one(path.id, &mut pool).await?;
+
+    if result.is_none() {
+        return Err(ApiError::NotFound("Developer not found".to_string()));
+    }
+
+    let result = result.unwrap();
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: DeveloperProfile {
+            id: result.id,
+            username: result.username,
+            display_name: result.display_name,
+            verified: result.verified,
+            admin: result.admin,
+        },
+    }))
+}
+
 #[put("v1/developers/{id}")]
 pub async fn update_developer(
     auth: Auth,

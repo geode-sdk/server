@@ -124,6 +124,37 @@ impl Developer {
             count,
         })
     }
+
+    pub async fn get_one(
+        id: i32,
+        pool: &mut PgConnection,
+    ) -> Result<Option<FetchedDeveloper>, ApiError> {
+        let result = match sqlx::query_as!(
+            FetchedDeveloper,
+            "SELECT
+                id,
+                username,
+                display_name,
+                verified,
+                admin
+            FROM developers
+            WHERE id = $1
+            ",
+            id
+        )
+        .fetch_optional(&mut *pool)
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+        };
+
+        Ok(result)
+    }
+
     pub async fn create(
         github_id: i64,
         username: String,
