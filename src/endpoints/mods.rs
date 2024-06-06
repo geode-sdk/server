@@ -33,6 +33,7 @@ pub struct IndexQueryParams {
     pub platforms: Option<String>,
     #[serde(default)]
     pub sort: IndexSortType,
+    pub geode: Option<String>,
     pub developer: Option<String>,
     pub tags: Option<String>,
     pub featured: Option<bool>,

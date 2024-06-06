@@ -16,6 +16,7 @@ use crate::{
 use actix_web::web::Bytes;
 use chrono::SecondsFormat;
 use reqwest::Client;
+use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
@@ -223,6 +224,42 @@ impl Mod {
         let query_string = format!("%{}%", query.query.unwrap_or("".to_string()).to_lowercase());
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
+
+        if let Some(geode) = query.geode {
+            let geode = geode.trim_start_matches('v').to_string();
+            if let Ok(parsed) = Version::parse(&geode) {
+                // If alpha, match exactly that version
+                if parsed.pre.contains("alpha") {
+                    let sql = " AND mv.geode = ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(parsed.to_string());
+                    counter_builder.push_bind(parsed.to_string());
+                } else {
+                    let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(parsed.major.to_string());
+                    counter_builder.push_bind(parsed.major.to_string());
+                    let sql = " AND mv.geode >= ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(parsed.to_string());
+                    counter_builder.push_bind(parsed.to_string());
+
+                    // If no prerelease is specified, only match stable versions
+                    if parsed.pre.is_empty() {
+                        let sql = " AND SPLIT_PART(mv.geode, '-', 2) = ''";
+                        builder.push(sql);
+                        counter_builder.push(sql);
+                    }
+
+                    builder.push(")");
+                    counter_builder.push(")");
+                }
+            }
+        }
+
         if let Some(g) = query.gd {
             let sql = " AND (mgv.gd = ";
             builder.push(sql);
