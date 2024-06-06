@@ -135,20 +135,33 @@ impl Incompatibility {
 
     pub async fn get_for_mod_versions(
         ids: &Vec<i32>,
+        platform: Option<VerPlatform>,
+        gd: Option<GDVersionEnum>,
+        geode: Option<&semver::Version>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, ApiError> {
-        let result = match sqlx::query_as!(
-            FetchedIncompatibility,
-            r#"SELECT icp.compare as "compare: _",
-            icp.importance as "importance: _",
+        let q = sqlx::query_as::<Postgres, FetchedIncompatibility>(
+            r#"SELECT icp.compare,
+            icp.importance,
             icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
             INNER JOIN mod_versions mv ON mv.id = icp.mod_id
-            WHERE mv.id = ANY($1)"#,
-            &ids,
+            INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
+            WHERE mv.id = ANY($1)
+            AND ($2 IS NULL OR mgv.gd = $2)
+            AND ($3 IS NULL OR mgv.platform = $3)
+            AND ($4 IS NULL OR CASE
+                WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = mv.geode
+                ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(mv.geode, '.', 1)
+                    AND semver_compare(mv.geode, $4) = 1
+            END)
+            "#,
         )
-        .fetch_all(&mut *pool)
-        .await
-        {
+        .bind(ids)
+        .bind(gd)
+        .bind(platform)
+        .bind(geode.map(|x| x.to_string()));
+
+        let result = match q.fetch_all(&mut *pool).await {
             Ok(d) => d,
             Err(e) => {
                 log::error!("{}", e);
@@ -197,12 +210,12 @@ impl Incompatibility {
                 WHERE replaced.importance = 'superseded'
                 AND replacement_status.status = 'accepted'
                 AND replaced.incompatibility_id = ANY($1)
-                AND replacement_mgv.gd = $2
+                AND (replacement_mgv.gd = $2 OR replacement_mgv.gd = '*')
                 AND replacement_mgv.platform = $3
                 AND CASE
                     WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = replacement.geode
                     ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(replacement.geode, '.', 1)
-                        AND semver_compare(replacement.geode, $4) = 1
+                        AND semver_compare(replacement.geode, $4) >= 0
                 END
                 ORDER BY replacement.id DESC, replacement.version DESC
             ) q
@@ -227,7 +240,14 @@ impl Incompatibility {
         let deps =
             Dependency::get_for_mod_versions(&ids, Some(platform), Some(gd), Some(geode), pool)
                 .await?;
-        let incompat = Incompatibility::get_for_mod_versions(&ids, pool).await?;
+        let incompat = Incompatibility::get_for_mod_versions(
+            &ids,
+            Some(platform),
+            Some(gd),
+            Some(geode),
+            pool,
+        )
+        .await?;
 
         for i in r.iter() {
             ret.entry(i.replaced.clone()).or_insert(Replacement {

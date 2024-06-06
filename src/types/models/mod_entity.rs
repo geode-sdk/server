@@ -1132,7 +1132,7 @@ impl Mod {
     }
 
     pub async fn get_updates(
-        ids: &Vec<String>,
+        ids: &[String],
         platforms: VerPlatform,
         geode: &semver::Version,
         gd: GDVersionEnum,
@@ -1158,12 +1158,10 @@ impl Mod {
         query_builder.push_bind(platforms);
         query_builder.push(" AND (mgv.gd = ");
         query_builder.push_bind(gd);
-        query_builder.push(" OR mgv.gd = ");
-        query_builder.push_bind(GDVersionEnum::All);
-        query_builder.push(")");
+        query_builder.push(" OR mgv.gd = '*')");
 
-        query_builder.push(" AND m.id IN (");
-        query_builder.push_bind(ids.join(", "));
+        query_builder.push(" AND m.id = ANY(");
+        query_builder.push_bind(ids);
         query_builder.push(") ");
 
         if geode.pre.contains("alpha") {
@@ -1174,7 +1172,7 @@ impl Mod {
             query_builder.push_bind(geode.major.to_string());
             query_builder.push(" AND semver_compare(mv.geode, ");
             query_builder.push_bind(geode.to_string());
-            query_builder.push(") = 1");
+            query_builder.push(") >= 0");
 
             // If no prerelease is specified, only match stable versions
             if geode.pre.is_empty() {
@@ -1187,16 +1185,14 @@ impl Mod {
         query_builder.push(") q where q.rn = 1");
 
         #[derive(sqlx::FromRow)]
-        struct Result {
+        struct QueryResult {
             id: String,
             version: String,
             mod_version_id: i32,
         }
 
-        log::info!("{}", query_builder.sql());
-
         let result = match query_builder
-            .build_query_as::<Result>()
+            .build_query_as::<QueryResult>()
             .fetch_all(&mut *pool)
             .await
         {
@@ -1207,13 +1203,17 @@ impl Mod {
             }
         };
 
+        if result.is_empty() {
+            return Ok(vec![]);
+        }
+
         let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
 
         let deps: HashMap<i32, Vec<FetchedDependency>> =
             Dependency::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
 
         let incompat: HashMap<i32, Vec<FetchedIncompatibility>> =
-            Incompatibility::get_for_mod_versions(&ids, pool).await?;
+            Incompatibility::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
 
         let mut ret: Vec<ModUpdate> = vec![];
 

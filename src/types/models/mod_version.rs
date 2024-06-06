@@ -201,7 +201,8 @@ impl ModVersion {
 
         let version_ids: Vec<i32> = records.iter().map(|x| x.id).collect();
         let deps = Dependency::get_for_mod_versions(&version_ids, None, None, None, pool).await?;
-        let incompat = Incompatibility::get_for_mod_versions(&version_ids, pool).await?;
+        let incompat =
+            Incompatibility::get_for_mod_versions(&version_ids, None, None, None, pool).await?;
 
         let gd_versions = ModGDVersion::get_for_mod_versions(&version_ids, pool).await?;
         let ret: Vec<ModVersion> = records
