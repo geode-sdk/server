@@ -1133,7 +1133,9 @@ impl Mod {
 
     pub async fn get_updates(
         ids: &Vec<String>,
-        platforms: Vec<VerPlatform>,
+        platforms: VerPlatform,
+        geode: &semver::Version,
+        gd: GDVersionEnum,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -1149,18 +1151,34 @@ impl Mod {
                 FROM mods m
                 INNER JOIN mod_versions mv ON mv.mod_id = m.id 
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
                 WHERE mvs.status = 'accepted' 
-                    AND m.id = ANY("#,
+                    AND mgv.platform = "#
         );
-        query_builder.push_bind(ids);
+        query_builder.push_bind(platforms);
+        query_builder.push(" AND (mgv.gd = ");
+        query_builder.push_bind(gd);
+        query_builder.push(" OR mgv.gd = ");
+        query_builder.push_bind(GDVersionEnum::All);
+        query_builder.push(")");
+
+        query_builder.push(" AND m.id IN (");
+        query_builder.push_bind(ids.join(", "));
         query_builder.push(") ");
 
-        if !platforms.is_empty() {
-            query_builder.push("AND mv.platform IN (");
+        if geode.pre.contains("alpha") {
+            query_builder.push(" AND mv.geode = ");
+            query_builder.push_bind(geode.to_string());
+        } else {
+            query_builder.push(" AND (SPLIT_PART(mv.geode, '.', 1) = ");
+            query_builder.push_bind(geode.major.to_string());
+            query_builder.push(" AND semver_compare(mv.geode, ");
+            query_builder.push_bind(geode.to_string());
+            query_builder.push(") = 1");
 
-            let mut separated = query_builder.separated(", ");
-            for p in &platforms {
-                separated.push_bind(p);
+            // If no prerelease is specified, only match stable versions
+            if geode.pre.is_empty() {
+                query_builder.push(" AND SPLIT_PART(mv.geode, '-', 2) = ''");
             }
 
             query_builder.push(")");
@@ -1174,6 +1192,8 @@ impl Mod {
             version: String,
             mod_version_id: i32,
         }
+
+        log::info!("{}", query_builder.sql());
 
         let result = match query_builder
             .build_query_as::<Result>()
@@ -1190,7 +1210,7 @@ impl Mod {
         let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
 
         let deps: HashMap<i32, Vec<FetchedDependency>> =
-            Dependency::get_for_mod_versions(&ids, pool).await?;
+            Dependency::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
 
         let incompat: HashMap<i32, Vec<FetchedIncompatibility>> =
             Incompatibility::get_for_mod_versions(&ids, pool).await?;

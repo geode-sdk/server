@@ -5,7 +5,10 @@ use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use super::dependency::{Dependency, ResponseDependency};
+use super::{
+    dependency::{Dependency, ResponseDependency},
+    mod_gd_version::{GDVersionEnum, VerPlatform},
+};
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
@@ -163,6 +166,9 @@ impl Incompatibility {
 
     pub async fn get_supersedes_for(
         ids: &Vec<String>,
+        platform: VerPlatform,
+        gd: GDVersionEnum,
+        geode: &semver::Version,
         pool: &mut PgConnection,
     ) -> Result<HashMap<String, Replacement>, ApiError> {
         let mut ret: HashMap<String, Replacement> = HashMap::new();
@@ -185,16 +191,27 @@ impl Incompatibility {
                     ) rn
                 FROM incompatibilities replaced
                 INNER JOIN mod_versions replacement ON replacement.id = replaced.mod_id
+                INNER JOIN mod_gd_versions replacement_mgv ON replacement.id = replacement_mgv.mod_id
                 INNER JOIN mod_version_statuses replacement_status 
                     ON replacement.status_id = replacement_status.id
                 WHERE replaced.importance = 'superseded'
                 AND replacement_status.status = 'accepted'
                 AND replaced.incompatibility_id = ANY($1)
+                AND replacement_mgv.gd = $2
+                AND replacement_mgv.platform = $3
+                AND CASE
+                    WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = replacement.geode
+                    ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(replacement.geode, '.', 1)
+                        AND semver_compare(replacement.geode, $4) = 1
+                END
                 ORDER BY replacement.id DESC, replacement.version DESC
             ) q
             WHERE q.rn = 1
             "#,
-            ids
+            ids,
+            gd as GDVersionEnum,
+            platform as VerPlatform,
+            geode.to_string()
         )
         .fetch_all(&mut *pool)
         .await
@@ -207,7 +224,9 @@ impl Incompatibility {
         };
 
         let ids: Vec<i32> = r.iter().map(|x| x.replacement_id).collect();
-        let deps = Dependency::get_for_mod_versions(&ids, pool).await?;
+        let deps =
+            Dependency::get_for_mod_versions(&ids, Some(platform), Some(gd), Some(geode), pool)
+                .await?;
         let incompat = Incompatibility::get_for_mod_versions(&ids, pool).await?;
 
         for i in r.iter() {

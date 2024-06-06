@@ -125,6 +125,9 @@ pub async fn create(
 #[derive(Deserialize)]
 struct UpdateQueryParams {
     ids: String,
+    gd: GDVersionEnum,
+    platform: VerPlatform,
+    geode: String,
 }
 #[get("/v1/mods/updates")]
 pub async fn get_mod_updates(
@@ -139,10 +142,21 @@ pub async fn get_mod_updates(
         .map(String::from)
         .collect::<Vec<String>>();
 
-    let platforms: Vec<VerPlatform> = vec![];
+    let geode = match semver::Version::parse(&query.geode) {
+        Ok(g) => g,
+        Err(e) => {
+            log::error!("{}", e);
+            return Err(ApiError::BadRequest(
+                "Invalid geode version format".to_string(),
+            ));
+        }
+    };
 
-    let mut result: Vec<ModUpdate> = Mod::get_updates(&ids, platforms, &mut pool).await?;
-    let mut replacements = Incompatibility::get_supersedes_for(&ids, &mut pool).await?;
+    let mut result: Vec<ModUpdate> =
+        Mod::get_updates(&ids, query.platform, &geode, query.gd, &mut pool).await?;
+    let mut replacements =
+        Incompatibility::get_supersedes_for(&ids, query.platform, query.gd, &geode, &mut pool)
+            .await?;
 
     for i in &mut result {
         if let Some(replacement) = replacements.get(&i.id) {
