@@ -50,7 +50,8 @@
                 "android32",
                 "android64",
                 "ios",
-                "mac",
+                "mac-arm",
+                "mac-intel",
                 "win"
               ]
             }
