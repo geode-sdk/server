@@ -58,7 +58,11 @@ pub enum VerPlatform {
     Android64,
     Ios,
     Mac,
+    #[serde(rename = "mac-arm")]
+    #[sqlx(rename = "mac-arm")]
     MacArm,
+    #[serde(rename = "mac-intel")]
+    #[sqlx(rename = "mac-intel")]
     MacIntel,
     Win,
 }
