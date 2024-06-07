@@ -63,16 +63,16 @@ impl Developer {
         );
 
         if name_query.is_some() {
-            let sql = "WHERE username LIKE ";
+            let sql = "WHERE username = ";
+            builder.push(sql);
+            counter.push(sql);
+            builder.push_bind(query.clone().unwrap());
+            counter.push_bind(query.clone().unwrap());
+            let sql = " OR display_name ILIKE ";
             builder.push(sql);
             counter.push(sql);
             builder.push_bind(name_query.clone().unwrap());
-            counter.push(name_query.clone().unwrap());
-            let sql = " OR WHERE display_name LIKE ";
-            builder.push(sql);
-            counter.push(sql);
-            builder.push(name_query.clone().unwrap());
-            counter.push(name_query.clone().unwrap());
+            counter.push_bind(name_query.unwrap());
         }
 
         builder.push(" GROUP BY id");
