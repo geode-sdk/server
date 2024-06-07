@@ -26,7 +26,8 @@ pub struct ModJson {
     pub version: String,
     pub id: String,
     pub name: String,
-    pub developer: String,
+    pub developer: Option<String>,
+    pub developers: Option<Vec<String>>,
     pub description: Option<String>,
     pub repository: Option<String>,
     pub issues: Option<serde_json::Value>,
@@ -352,6 +353,12 @@ impl ModJson {
                 "Invalid mod id {} (lowercase and numbers only, needs to look like 'dev.mod')",
                 self.id
             )));
+        }
+
+        if self.developer.is_none() && self.developers.is_none() {
+            return Err(ApiError::BadRequest(
+                "No developer specified on mod.json".to_string(),
+            ));
         }
 
         if self.id.len() > 64 {
