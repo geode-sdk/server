@@ -105,7 +105,13 @@ pub enum CheckExistingResult {
 
 impl Mod {
     pub async fn get_total_count(pool: &mut PgConnection) -> Result<i64, ApiError> {
-        match sqlx::query_scalar!("SELECT COUNT(*) FROM mods",)
+        match sqlx::query_scalar!("
+            SELECT COUNT(DISTINCT m.id)
+            FROM mods m
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mvs.status = 'accepted'
+        ")
         .fetch_optional(&mut *pool)
         .await
         {
