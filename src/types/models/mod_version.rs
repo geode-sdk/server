@@ -399,7 +399,7 @@ impl ModVersion {
         );
         if let Some(m) = major {
             let major_ver = format!("{}.%", m);
-            query_builder.push(" AND mgv.version LIKE ");
+            query_builder.push(" AND mv.version LIKE ");
             query_builder.push_bind(major_ver);
         }
         if let Some(g) = gd {
