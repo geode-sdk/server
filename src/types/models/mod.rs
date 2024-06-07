@@ -8,3 +8,4 @@ pub mod mod_gd_version;
 pub mod mod_version;
 pub mod mod_version_status;
 pub mod tag;
+pub mod stats;

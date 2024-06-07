@@ -117,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::get_me)
             .service(endpoints::developers::update_developer)
             .service(endpoints::tags::index)
+            .service(endpoints::stats::get_stats)
             .service(health)
     })
     .bind((addr, port))?;

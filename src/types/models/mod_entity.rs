@@ -104,6 +104,19 @@ pub enum CheckExistingResult {
 }
 
 impl Mod {
+    pub async fn get_total_count(pool: &mut PgConnection) -> Result<i64, ApiError> {
+        match sqlx::query_scalar!("SELECT COUNT(*) FROM mods",)
+        .fetch_optional(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(r) => Ok(r.flatten().unwrap_or(0)),
+        }
+    }
+
     pub async fn get_index(
         pool: &mut PgConnection,
         query: IndexQueryParams,
