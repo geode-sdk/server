@@ -326,6 +326,14 @@ fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
     };
 
     let dimensions = img.dimensions();
+
+    if dimensions.0 != dimensions.1 {
+        return Err(ApiError::BadRequest(format!(
+            "Mod logo must have 1:1 aspect ratio. Current size is {}x{}",
+            dimensions.0, dimensions.1
+        )));
+    }
+
     if (dimensions.0 > 336) || (dimensions.1 > 336) {
         img.resize(336, 336, image::imageops::FilterType::Lanczos3);
     }
