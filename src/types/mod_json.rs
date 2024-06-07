@@ -400,7 +400,7 @@ pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u
         img.resize(336, 336, image::imageops::FilterType::Lanczos3);
     }
 
-    if return_bytes {
+    if !return_bytes {
         return Ok(vec![]);
     }
 
