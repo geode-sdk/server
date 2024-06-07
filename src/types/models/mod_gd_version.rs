@@ -52,11 +52,10 @@ impl FromStr for GDVersionEnum {
 pub enum VerPlatform {
     #[sqlx(skip)]
     Android,
-    #[serde(skip_deserializing)]
     Android32,
-    #[serde(skip_deserializing)]
     Android64,
     Ios,
+    #[sqlx(skip)]
     Mac,
     #[serde(rename = "mac-arm")]
     #[sqlx(rename = "mac-arm")]
