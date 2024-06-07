@@ -363,7 +363,7 @@ impl ModJson {
     }
 }
 
-fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u8>, ApiError> {
+pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u8>, ApiError> {
     let mut logo: Vec<u8> = vec![];
     if let Err(e) = file.read_to_end(&mut logo) {
         log::error!("{}", e);

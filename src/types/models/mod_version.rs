@@ -7,6 +7,7 @@ use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
+    models::mod_entity::Mod,
 };
 
 use super::{
@@ -667,6 +668,14 @@ impl ModVersion {
             return Ok(());
         }
 
+        if current_status.status == ModVersionStatusEnum::Accepted
+            && new_status == ModVersionStatusEnum::Pending
+        {
+            return Err(ApiError::BadRequest(
+                "Cannot turn an accepted mod back into pending".to_string(),
+            ));
+        }
+
         let mut query_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("UPDATE mod_version_statuses SET ");
 
@@ -685,6 +694,26 @@ impl ModVersion {
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
             return Err(ApiError::DbError);
+        }
+
+        if current_status.status == ModVersionStatusEnum::Pending
+            && new_status == ModVersionStatusEnum::Accepted
+        {
+            // Time to download that image
+            let info = match sqlx::query!(
+                "SELECT download_link, hash, mod_id FROM mod_versions WHERE id = $1",
+                id
+            )
+            .fetch_one(&mut *pool)
+            .await
+            {
+                Err(e) => {
+                    log::error!("{}", e);
+                    return Err(ApiError::DbError);
+                }
+                Ok(r) => r,
+            };
+            Mod::update_mod_image(&info.mod_id, &info.hash, &info.download_link, pool).await?;
         }
 
         if new_status == ModVersionStatusEnum::Accepted {

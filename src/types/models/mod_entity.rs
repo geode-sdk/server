@@ -5,7 +5,7 @@ use crate::{
     },
     types::{
         api::{ApiError, PaginatedData},
-        mod_json::ModJson,
+        mod_json::{self, ModJson},
         models::{
             dependency::{Dependency, FetchedDependency},
             incompatibility::{FetchedIncompatibility, Incompatibility},
@@ -22,7 +22,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
 };
-use std::{collections::HashMap, io::Cursor, str::FromStr};
+use std::{collections::HashMap, io::{Cursor, Read}, str::FromStr};
 
 use super::{
     dependency::ResponseDependency,
@@ -1245,6 +1245,64 @@ impl Mod {
         }
 
         Ok(ret)
+    }
+
+    pub async fn update_mod_image(id: &str, hash: &str, download_link: &str, pool: &mut PgConnection) -> Result<(), ApiError> {
+        let mut cursor = download_geode_file(download_link).await?;
+        let mut bytes: Vec<u8> = vec![];
+        match cursor.read_to_end(&mut bytes) {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::FilesystemError);
+            }
+            Ok(b) => b,
+        };
+
+        let new_hash = sha256::digest(bytes);
+        if new_hash != hash {
+            return Err(ApiError::BadRequest(format!("Different hash detected: old: {}, new: {}", hash, new_hash)));
+        }
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::BadRequest(
+                    "Couldn't unzip .geode file".to_string(),
+                ));
+            }
+            Ok(a) => a,
+        };
+
+        let mut image_file = match archive.by_name("logo.png") {
+            Err(e) => {
+                // In this case maybe the mod doesn't have a logo
+                log::error!("{}", e);
+                return Ok(());
+            },
+            Ok(i) => i
+        };
+
+        let image = mod_json::validate_mod_logo(&mut image_file, true)?;
+
+        match sqlx::query!(
+            "UPDATE mods SET image = $1
+            WHERE id = $2",
+            image,
+            id
+        ).execute(&mut *pool)
+        .await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            },
+            Ok(m) => {
+                if m.rows_affected() == 0 {
+                    log::error!("No rows affected by image update");
+                    return Err(ApiError::DbError);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
