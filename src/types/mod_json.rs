@@ -340,9 +340,10 @@ fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
 
     let (width, height) = img.dimensions();
 
-    encoder
-        .write_image(img.as_bytes(), width, height, image::ColorType::Rgba8)
-        .or(Err(ApiError::FilesystemError))?;
+    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color()) {
+        log::error!("{}", e);
+        return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
+    }
     cursor.seek(std::io::SeekFrom::Start(0)).unwrap();
 
     let mut bytes: Vec<u8> = vec![];
