@@ -357,10 +357,15 @@ impl Developer {
         display_name: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let str = String::from(display_name);
+        let str = String::from(display_name.trim());
         if !str.chars().all(char::is_alphanumeric) {
             return Err(ApiError::BadRequest(
                 "Display name must contain only alphanumeric characters".to_string(),
+            ));
+        }
+        if str.len() < 2 {
+            return Err(ApiError::BadRequest(
+                "Display name must have > 1 character".to_string(),
             ));
         }
 
