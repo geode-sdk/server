@@ -10,7 +10,7 @@ use crate::types::{
 };
 
 use super::{
-    dependency::{Dependency, ResponseDependency},
+    dependency::{Dependency, ModVersionCompare, ResponseDependency},
     developer::Developer,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
@@ -61,6 +61,7 @@ pub struct IndexQuery {
     pub page: i64,
     pub per_page: i64,
     pub gd: Option<GDVersionEnum>,
+    pub compare: Option<(semver::Version, ModVersionCompare)>,
     pub platforms: Vec<VerPlatform>,
     pub status: ModVersionStatusEnum,
 }
@@ -165,7 +166,31 @@ impl ModVersion {
             q.push(") ");
             counter_q.push(") ");
         }
-        let sql = "GROUP BY mv.id, mvs.status LIMIT ";
+
+        if let Some(c) = query.compare {
+            let sql = "AND SPLIT_PART(mv.version, '.', 1) = ";
+            q.push(sql);
+            counter_q.push(sql);
+            let major = c.0.major.to_string();
+            q.push_bind(major.clone());
+            counter_q.push_bind(major.clone());
+            let sql = " AND semver_compare(mv.version, ";
+            q.push(sql);
+            counter_q.push(sql);
+            q.push_bind(c.0.to_string());
+            counter_q.push_bind(c.0.to_string());
+            let sql = match c.1 {
+                ModVersionCompare::Exact => ") = 0",
+                ModVersionCompare::Less => ") = -1",
+                ModVersionCompare::LessEq => ") <= 0",
+                ModVersionCompare::More => ") = 1",
+                ModVersionCompare::MoreEq => ") >= 0",
+            };
+            q.push(sql);
+            counter_q.push(sql);
+        }
+
+        let sql = "GROUP BY mv.id, mvs.status ORDER BY mv.id DESC LIMIT ";
         q.push(sql);
         q.push_bind(limit);
         let sql = " OFFSET ";

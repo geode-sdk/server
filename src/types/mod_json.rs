@@ -385,7 +385,7 @@ fn validate_dependency_version_str(ver: &str) -> bool {
     result.is_ok()
 }
 
-fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), ()> {
+pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), ()> {
     let mut copy = ver.to_string();
     let mut compare = ModVersionCompare::MoreEq;
     if ver.starts_with("<=") {

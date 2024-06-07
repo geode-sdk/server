@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
+use semver::Version;
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
@@ -8,8 +9,9 @@ use crate::{
     extractors::auth::Auth,
     types::{
         api::{ApiError, ApiResponse},
-        mod_json::ModJson,
+        mod_json::{split_version_and_compare, ModJson},
         models::{
+            dependency::ModVersionCompare,
             developer::Developer,
             download,
             mod_entity::{download_geode_file, Mod},
@@ -69,6 +71,7 @@ struct IndexQuery {
     gd: Option<GDVersionEnum>,
     platforms: Option<String>,
     status: Option<ModVersionStatusEnum>,
+    compare: Option<String>,
 }
 
 #[get("v1/mods/{id}/versions")]
@@ -78,12 +81,25 @@ pub async fn get_version_index(
     query: web::Query<IndexQuery>,
 ) -> Result<impl Responder, ApiError> {
     let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default());
+    let compare = query.compare.as_ref().map(|c| split_version_and_compare(c));
+
+    if compare.is_some() && compare.as_ref().unwrap().is_err() {
+        return Err(ApiError::BadRequest(format!(
+            "Bad compare string {}",
+            query.compare.as_ref().unwrap()
+        )));
+    }
+
+    let compare = compare.map(|x| x.unwrap());
+
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
     let mut result = ModVersion::get_index(
         mod_version::IndexQuery {
             mod_id: path.id.clone(),
             page: query.page.unwrap_or(1),
             per_page: query.per_page.unwrap_or(10),
+            compare,
             gd: query.gd,
             platforms,
             status: query.status.unwrap_or(ModVersionStatusEnum::Accepted),
