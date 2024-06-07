@@ -558,9 +558,11 @@ impl Mod {
                 mod_id: x.mod_id.clone(),
                 gd: DetailedGDVersion {
                     win: None,
-                    android: None,
                     mac: None,
+                    mac_arm: None,
+                    mac_intel: None,
                     ios: None,
+                    android: None,
                     android32: None,
                     android64: None,
                 },

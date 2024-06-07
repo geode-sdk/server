@@ -16,7 +16,7 @@ use super::{
     models::{
         dependency::{DependencyCreate, DependencyImportance, ModVersionCompare},
         incompatibility::{IncompatibilityCreate, IncompatibilityImportance},
-        mod_gd_version::{DetailedGDVersion, GDVersionEnum},
+        mod_gd_version::DetailedGDVersion,
     },
 };
 
@@ -32,25 +32,27 @@ pub struct ModJson {
     pub issues: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
     pub settings: Option<serde_json::Value>,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     pub windows: bool,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     pub ios: bool,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     pub android32: bool,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     pub android64: bool,
-    #[serde(default)]
-    pub mac: bool,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
+    pub mac_intel: bool,
+    #[serde(default, skip_deserializing)]
+    pub mac_arm: bool,
+    #[serde(default, skip_deserializing)]
     pub download_url: String,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     pub hash: String,
     #[serde(default, rename = "early-load")]
     pub early_load: bool,
     pub api: Option<serde_json::Value>,
-    pub gd: ModJsonGDVersionType,
-    #[serde(skip_deserializing)]
+    pub gd: DetailedGDVersion,
+    #[serde(skip_deserializing, skip_serializing)]
     pub logo: Vec<u8>,
     pub about: Option<String>,
     pub changelog: Option<String>,
@@ -74,15 +76,12 @@ pub struct ModJsonIncompatibility {
     pub importance: IncompatibilityImportance,
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum ModJsonGDVersionType {
-    VersionStr(GDVersionEnum),
-    VersionObj(DetailedGDVersion),
-}
-
 impl ModJson {
-    pub fn from_zip(file: &mut Cursor<Bytes>, download_url: &str) -> Result<ModJson, ApiError> {
+    pub fn from_zip(
+        file: &mut Cursor<Bytes>,
+        download_url: &str,
+        store_image: bool,
+    ) -> Result<ModJson, ApiError> {
         let mut bytes: Vec<u8> = vec![];
         match file.read_to_end(&mut bytes) {
             Err(e) => {
@@ -158,7 +157,9 @@ impl ModJson {
                     continue;
                 }
                 if file.name().ends_with(".dylib") {
-                    json.mac = true;
+                    let (arm, intel) = ModJson::check_mac_binary(&mut file)?;
+                    json.mac_arm = arm;
+                    json.mac_intel = intel;
                     continue;
                 }
                 if file.name().ends_with(".android32.so") {
@@ -189,13 +190,74 @@ impl ModJson {
                 }
 
                 if file.name() == "logo.png" {
-                    let bytes = validate_mod_logo(&mut file)?;
+                    let bytes = validate_mod_logo(&mut file, store_image)?;
                     json.logo = bytes;
                     continue;
                 }
             }
         }
         Ok(json)
+    }
+
+    fn check_mac_binary(file: &mut ZipFile) -> Result<(bool, bool), ApiError> {
+        // 12 bytes is all we need
+        let mut bytes: Vec<u8> = vec![0; 12];
+        if let Err(e) = file.read_exact(&mut bytes) {
+            log::error!("{}", e);
+            return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+        }
+
+        // Information taken from: https://www.jviotti.com/2021/07/23/a-deep-dive-on-macos-universal-binaries.html and some simple xxd fuckery
+
+        // Universal
+        // 4 Bytes for magic
+        // 4 Bytes for num of architectures
+        // Can be either ARM & x86 or only one
+        // 0xCA 0xFE 0xBA 0xBE
+        // Non-Universal
+        // 0xCF 0xFA 0xED 0xFE
+
+        let is_fat_arch =
+            bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
+
+        let is_fat_arch_64 =
+            bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
+
+        let is_single_platform =
+            bytes[0] == 0xCF && bytes[1] == 0xFA && bytes[2] == 0xED && bytes[3] == 0xFE;
+
+        if is_fat_arch || is_fat_arch_64 {
+            let num_arches = bytes[7];
+            if num_arches == 0x1 {
+                let first = bytes[8];
+                let second = bytes[11];
+                // intel - 0x01 0x00 0x00 0x07
+                if first == 0x1 && second == 0x7 {
+                    return Ok((false, true));
+                // arm - 0x01 0x00 0x00 0x0C
+                } else if first == 0x1 && second == 0xC {
+                    return Ok((true, false));
+                // wtf
+                } else {
+                    return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+                }
+            } else if num_arches == 0x2 {
+                return Ok((true, true));
+            } else {
+                return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+            }
+        } else if is_single_platform {
+            let first = bytes[4];
+            let second = bytes[7];
+            if first == 0x7 && second == 0x1 {
+                // intel - 0x07 0x00 0x00 0x01
+                return Ok((false, true));
+            } else if first == 0xC && second == 0x1 {
+                // arm - 0x0C 0x00 0x00 0x01
+                return Ok((true, false));
+            }
+        }
+        Err(ApiError::BadRequest("Invalid MacOS binary".to_string()))
     }
 
     pub fn prepare_dependencies_for_create(&self) -> Result<Vec<DependencyCreate>, ApiError> {
@@ -301,7 +363,7 @@ impl ModJson {
     }
 }
 
-fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
+fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u8>, ApiError> {
     let mut logo: Vec<u8> = vec![];
     if let Err(e) = file.read_to_end(&mut logo) {
         log::error!("{}", e);
@@ -336,6 +398,10 @@ fn validate_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
 
     if (dimensions.0 > 336) || (dimensions.1 > 336) {
         img.resize(336, 336, image::imageops::FilterType::Lanczos3);
+    }
+
+    if return_bytes {
+        return Ok(vec![]);
     }
 
     let mut cursor: Cursor<Vec<u8>> = Cursor::new(vec![]);

@@ -6,7 +6,7 @@ use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
-    mod_json::{ModJson, ModJsonGDVersionType},
+    mod_json::ModJson,
 };
 
 use super::{
@@ -84,6 +84,8 @@ impl ModVersionGetOne {
             gd: DetailedGDVersion {
                 win: None,
                 android: None,
+                mac_arm: None,
+                mac_intel: None,
                 mac: None,
                 ios: None,
                 android32: None,
@@ -507,14 +509,7 @@ impl ModVersion {
         let json_tags = json.tags.clone().unwrap_or_default();
         let tags = Tag::get_tag_ids(json_tags, pool).await?;
         Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
-        match &json.gd {
-            ModJsonGDVersionType::VersionStr(ver) => {
-                ModGDVersion::create_for_all_platforms(json, *ver, id, pool).await?
-            }
-            ModJsonGDVersionType::VersionObj(vec) => {
-                ModGDVersion::create_from_json(vec.to_create_payload(json), id, pool).await?;
-            }
-        }
+        ModGDVersion::create_from_json(json.gd.to_create_payload(json), id, pool).await?;
         if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
             let dependencies = json.prepare_dependencies_for_create()?;
             if !dependencies.is_empty() {

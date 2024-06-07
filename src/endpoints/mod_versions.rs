@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
-use semver::Version;
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
@@ -11,7 +10,6 @@ use crate::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
-            dependency::ModVersionCompare,
             developer::Developer,
             download,
             mod_entity::{download_geode_file, Mod},
@@ -231,7 +229,7 @@ pub async fn create_version(
     }
 
     let mut file_path = download_geode_file(&payload.download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &payload.download_link)
+    let json = ModJson::from_zip(&mut file_path, &payload.download_link, dev.verified)
         .or(Err(ApiError::FilesystemError))?;
     if json.id != path.id {
         return Err(ApiError::BadRequest(format!(

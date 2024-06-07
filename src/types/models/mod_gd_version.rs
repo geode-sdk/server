@@ -58,6 +58,8 @@ pub enum VerPlatform {
     Android64,
     Ios,
     Mac,
+    MacArm,
+    MacIntel,
     Win,
 }
 
@@ -126,7 +128,12 @@ pub struct DetailedGDVersion {
     pub android32: Option<GDVersionEnum>,
     #[serde(skip_deserializing)]
     pub android64: Option<GDVersionEnum>,
+    #[serde(skip_serializing)]
     pub mac: Option<GDVersionEnum>,
+    #[serde(rename = "mac-intel")]
+    pub mac_intel: Option<GDVersionEnum>,
+    #[serde(rename = "mac-arm")]
+    pub mac_arm: Option<GDVersionEnum>,
     pub ios: Option<GDVersionEnum>,
 }
 
@@ -153,11 +160,19 @@ impl DetailedGDVersion {
                 platform: VerPlatform::Win,
             });
         }
-        if self.mac.is_some() && json.mac {
-            ret.push(ModGDVersionCreate {
-                gd: self.mac.unwrap(),
-                platform: VerPlatform::Mac,
-            });
+        if self.mac.is_some() {
+            if json.mac_arm {
+                ret.push(ModGDVersionCreate {
+                    gd: self.mac.unwrap(),
+                    platform: VerPlatform::MacArm,
+                })
+            }
+            if json.mac_intel {
+                ret.push(ModGDVersionCreate {
+                    gd: self.mac.unwrap(),
+                    platform: VerPlatform::MacIntel,
+                })
+            }
         }
         if self.ios.is_some() && json.ios {
             ret.push(ModGDVersionCreate {
@@ -210,47 +225,6 @@ impl ModGDVersion {
         Ok(())
     }
 
-    pub async fn create_for_all_platforms(
-        json: &ModJson,
-        version: GDVersionEnum,
-        version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let mut platforms_arg: Vec<ModGDVersionCreate> = vec![];
-        if json.android32 {
-            platforms_arg.push(ModGDVersionCreate {
-                gd: version,
-                platform: VerPlatform::Android32,
-            })
-        }
-        if json.android64 {
-            platforms_arg.push(ModGDVersionCreate {
-                gd: version,
-                platform: VerPlatform::Android64,
-            })
-        }
-        if json.windows {
-            platforms_arg.push(ModGDVersionCreate {
-                gd: version,
-                platform: VerPlatform::Win,
-            })
-        }
-        if json.mac {
-            platforms_arg.push(ModGDVersionCreate {
-                gd: version,
-                platform: VerPlatform::Mac,
-            })
-        }
-        if json.ios {
-            platforms_arg.push(ModGDVersionCreate {
-                gd: version,
-                platform: VerPlatform::Ios,
-            })
-        }
-        ModGDVersion::create_from_json(platforms_arg, version_id, pool).await?;
-        Ok(())
-    }
-
     // to be used for GET mods/{id}/version/{version}
     pub async fn get_for_mod_version(
         id: i32,
@@ -269,6 +243,8 @@ impl ModGDVersion {
         let mut ret = DetailedGDVersion {
             win: None,
             mac: None,
+            mac_intel: None,
+            mac_arm: None,
             android: None,
             ios: None,
             android32: None,
@@ -282,8 +258,13 @@ impl ModGDVersion {
                     ret.android32 = Some(i.gd);
                     ret.android64 = Some(i.gd);
                 }
+                VerPlatform::MacArm => ret.mac_arm = Some(i.gd),
+                VerPlatform::MacIntel => ret.mac_intel = Some(i.gd),
                 VerPlatform::Win => ret.win = Some(i.gd),
-                VerPlatform::Mac => ret.mac = Some(i.gd),
+                VerPlatform::Mac => {
+                    ret.mac_arm = Some(i.gd);
+                    ret.mac_intel = Some(i.gd);
+                }
                 VerPlatform::Ios => ret.ios = Some(i.gd),
             }
         }
@@ -331,7 +312,12 @@ impl ModGDVersion {
                         }
                         VerPlatform::Android32 => ver.android32 = Some(i.gd),
                         VerPlatform::Android64 => ver.android64 = Some(i.gd),
-                        VerPlatform::Mac => ver.mac = Some(i.gd),
+                        VerPlatform::MacArm => ver.mac_arm = Some(i.gd),
+                        VerPlatform::MacIntel => ver.mac_intel = Some(i.gd),
+                        VerPlatform::Mac => {
+                            ver.mac_arm = Some(i.gd);
+                            ver.mac_intel = Some(i.gd);
+                        }
                         VerPlatform::Ios => ver.ios = Some(i.gd),
                         VerPlatform::Win => ver.win = Some(i.gd),
                     }
@@ -344,7 +330,12 @@ impl ModGDVersion {
                     }
                     VerPlatform::Android32 => e.get_mut().android32 = Some(i.gd),
                     VerPlatform::Android64 => e.get_mut().android64 = Some(i.gd),
-                    VerPlatform::Mac => e.get_mut().mac = Some(i.gd),
+                    VerPlatform::Mac => {
+                        e.get_mut().mac_arm = Some(i.gd);
+                        e.get_mut().mac_intel = Some(i.gd);
+                    }
+                    VerPlatform::MacArm => e.get_mut().mac_arm = Some(i.gd),
+                    VerPlatform::MacIntel => e.get_mut().mac_intel = Some(i.gd),
                     VerPlatform::Ios => e.get_mut().ios = Some(i.gd),
                     VerPlatform::Win => e.get_mut().win = Some(i.gd),
                 },
