@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(DISTINCT m.id)\n            FROM mods m\n            INNER JOIN mod_versions mv ON mv.mod_id = m.id \n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mvs.status = 'accepted'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b79d69323170f1b7396fa5cb294d038bfde1d49cff29a903d1856e2121e522a7"
+}

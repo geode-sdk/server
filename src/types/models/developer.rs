@@ -32,6 +32,19 @@ pub struct FetchedDeveloper {
 }
 
 impl Developer {
+    pub async fn get_total_count(pool: &mut PgConnection) -> Result<i64, ApiError> {
+        match sqlx::query_scalar!("SELECT COUNT(*) FROM developers",)
+        .fetch_optional(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                Err(ApiError::DbError)
+            }
+            Ok(r) => Ok(r.flatten().unwrap_or(0)),
+        }
+    }
+
     pub async fn get_index(
         query: &Option<String>,
         page: i64,
