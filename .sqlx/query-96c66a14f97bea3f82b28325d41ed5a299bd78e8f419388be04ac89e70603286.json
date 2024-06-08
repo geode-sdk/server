@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(DISTINCT m.id), SUM(mv.download_count)\n            FROM mods m\n            INNER JOIN mod_versions mv ON mv.mod_id = m.id \n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mvs.status = 'accepted'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "sum",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "96c66a14f97bea3f82b28325d41ed5a299bd78e8f419388be04ac89e70603286"
+}

@@ -103,10 +103,15 @@ pub enum CheckExistingResult {
     ExistsWithRejected
 }
 
+pub struct ModStats {
+    pub total_count: i64,
+    pub total_downloads: i64,
+}
+
 impl Mod {
-    pub async fn get_total_count(pool: &mut PgConnection) -> Result<i64, ApiError> {
-        match sqlx::query_scalar!("
-            SELECT COUNT(DISTINCT m.id)
+    pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, ApiError> {
+        match sqlx::query!("
+            SELECT COUNT(DISTINCT m.id), SUM(mv.download_count)
             FROM mods m
             INNER JOIN mod_versions mv ON mv.mod_id = m.id 
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -119,7 +124,12 @@ impl Mod {
                 log::error!("{}", e);
                 Err(ApiError::DbError)
             }
-            Ok(r) => Ok(r.flatten().unwrap_or(0)),
+            Ok(r) => if let Some((Some(total_count), Some(total_downloads))) = r.map(|o| (o.count, o.sum)) {
+                Ok(ModStats { total_count, total_downloads })
+            }
+            else {
+                Ok(ModStats { total_count: 0, total_downloads: 0 })
+            }
         }
     }
 
