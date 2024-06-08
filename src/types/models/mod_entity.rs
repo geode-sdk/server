@@ -111,12 +111,15 @@ pub struct ModStats {
 impl Mod {
     pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, ApiError> {
         match sqlx::query!("
-            SELECT COUNT(m.id), SUM(m.download_count)
-            FROM mods m
-            INNER JOIN mod_versions mv ON mv.mod_id = m.id 
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE mvs.status = 'accepted'
-            GROUP BY m.id
+            SELECT COUNT(id), SUM(download_count)
+            FROM (
+                select m.id, m.download_count, row_number() over(partition by m.id) rn
+                FROM mods m
+                INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                WHERE mvs.status = 'accepted'
+            ) q
+            WHERE q.rn = 1
         ")
         .fetch_optional(&mut *pool)
         .await
