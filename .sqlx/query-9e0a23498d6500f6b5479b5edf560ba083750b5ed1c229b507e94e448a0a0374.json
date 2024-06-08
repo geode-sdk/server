@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO github_loader_release_stats (total_download_count, latest_loader_version)\n            VALUES ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9e0a23498d6500f6b5479b5edf560ba083750b5ed1c229b507e94e448a0a0374"
+}
