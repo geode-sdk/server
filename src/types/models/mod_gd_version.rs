@@ -147,13 +147,13 @@ impl DetailedGDVersion {
             if json.android32 {
                 ret.push(ModGDVersionCreate {
                     gd: self.android.unwrap(),
-                    platform: VerPlatform::Android64,
+                    platform: VerPlatform::Android32,
                 });
             }
             if json.android64 {
                 ret.push(ModGDVersionCreate {
                     gd: self.android.unwrap(),
-                    platform: VerPlatform::Android32,
+                    platform: VerPlatform::Android64,
                 })
             }
         }
