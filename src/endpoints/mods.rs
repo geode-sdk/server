@@ -200,9 +200,17 @@ pub async fn get_logo(
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let image = Mod::get_logo_for_mod(&path, &mut pool).await?;
-
     match image {
-        Some(i) => Ok(HttpResponse::Ok().content_type("image/png").body(i)),
+        Some(i) => {
+            if i.is_empty() {
+                Ok(HttpResponse::NotFound().json(web::Json(ApiResponse {
+                    error: "Not found".to_string(),
+                    payload: "".to_string(),
+                })))
+            } else {
+                Ok(HttpResponse::Ok().content_type("image/png").body(i))
+            }
+        }
         None => Err(ApiError::NotFound("".into())),
     }
 }
