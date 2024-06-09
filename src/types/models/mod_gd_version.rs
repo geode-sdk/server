@@ -57,11 +57,11 @@ pub enum VerPlatform {
     Ios,
     #[sqlx(skip)]
     Mac,
-    #[serde(rename = "mac-arm")]
     #[sqlx(rename = "mac-arm")]
+    #[serde(rename = "mac-arm")]
     MacArm,
-    #[serde(rename = "mac-intel")]
     #[sqlx(rename = "mac-intel")]
+    #[serde(rename = "mac-intel")]
     MacIntel,
     Win,
 }
@@ -75,6 +75,8 @@ impl FromStr for VerPlatform {
             "android64" => Ok(VerPlatform::Android64),
             "ios" => Ok(VerPlatform::Ios),
             "mac" => Ok(VerPlatform::Mac),
+            "mac-arm" => Ok(VerPlatform::MacArm),
+            "mac-intel" => Ok(VerPlatform::MacIntel),
             "win" => Ok(VerPlatform::Win),
             "windows" => Ok(VerPlatform::Win),
             "macos" => Ok(VerPlatform::Mac),

@@ -157,11 +157,16 @@ impl Mod {
                 let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(
                     format!("Invalid platform {}", trimmed),
                 )))?;
-                if platform == VerPlatform::Android {
-                    platforms.push(VerPlatform::Android32);
-                    platforms.push(VerPlatform::Android64);
-                } else {
-                    platforms.push(platform)
+                match platform {
+                    VerPlatform::Android => {
+                        platforms.push(VerPlatform::Android32);
+                        platforms.push(VerPlatform::Android64);
+                    },
+                    VerPlatform::Mac => {
+                        platforms.push(VerPlatform::MacArm);
+                        platforms.push(VerPlatform::MacIntel);
+                    },
+                    _ => platforms.push(platform),
                 }
             }
         }
