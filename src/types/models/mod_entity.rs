@@ -390,7 +390,7 @@ impl Mod {
         }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
-        let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, platforms).await?;
+        let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, query.geode, platforms).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {

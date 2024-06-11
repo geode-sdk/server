@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
+use semver::Version;
 use serde::Serialize;
 use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
 
@@ -267,12 +268,13 @@ impl ModVersion {
         ids: Vec<String>,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
+        geode: Option<String>,
     ) -> Result<HashMap<String, ModVersion>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
 
-        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
                 q.early_load, q.api, q.mod_id, q.status FROM (
                     SELECT
@@ -285,31 +287,59 @@ impl ModVersion {
             "#,
         );
         if let Some(g) = gd {
-            query_builder.push(" AND (mgv.gd = ");
-            query_builder.push_bind(g);
-            query_builder.push(" OR mgv.gd = ");
-            query_builder.push_bind(GDVersionEnum::All);
-            query_builder.push(")");
+            builder.push(" AND (mgv.gd = ");
+            builder.push_bind(g);
+            builder.push(" OR mgv.gd = ");
+            builder.push_bind(GDVersionEnum::All);
+            builder.push(")");
         }
+
+        if let Some(geode) = geode {
+            let geode = geode.trim_start_matches('v').to_string();
+            if let Ok(parsed) = Version::parse(&geode) {
+                // If alpha, match exactly that version
+                if parsed.pre.contains("alpha") {
+                    let sql = " AND mv.geode = ";
+                    builder.push(sql);
+                    builder.push_bind(parsed.to_string());
+                } else {
+                    let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
+                    builder.push(sql);
+                    builder.push_bind(parsed.major.to_string());
+                    let sql = " AND mv.geode >= ";
+                    builder.push(sql);
+                    builder.push_bind(parsed.to_string());
+
+                    // If no prerelease is specified, only match stable versions
+                    if parsed.pre.is_empty() {
+                        let sql = " AND SPLIT_PART(mv.geode, '-', 2) = ''";
+                        builder.push(sql);
+                    }
+
+                    builder.push(")");
+                }
+            }
+        }
+
         for (i, platform) in platforms.iter().enumerate() {
             if i == 0 {
-                query_builder.push(" AND mgv.platform IN (");
+                builder.push(" AND mgv.platform IN (");
             }
-            query_builder.push_bind(*platform);
+            builder.push_bind(*platform);
             if i == platforms.len() - 1 {
-                query_builder.push(")");
+                builder.push(")");
             } else {
-                query_builder.push(", ");
+                builder.push(", ");
             }
         }
-        query_builder.push(" AND mv.mod_id IN (");
-        let mut separated = query_builder.separated(",");
+        builder.push(" AND mv.mod_id IN (");
+        let mut separated = builder.separated(",");
         for id in ids.iter() {
             separated.push_bind(id);
         }
         separated.push_unseparated(")");
-        query_builder.push(") q WHERE q.rn = 1");
-        let records = query_builder
+        builder.push(") q WHERE q.rn = 1");
+        let records = builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_all(&mut *pool)
             .await;
