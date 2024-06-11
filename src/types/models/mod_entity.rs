@@ -263,7 +263,7 @@ impl Mod {
         counter_builder.push_bind(&query_string);
         builder.push_bind(&query_string);
 
-        if let Some(geode) = query.geode {
+        if let Some(ref geode) = query.geode {
             let geode = geode.trim_start_matches('v').to_string();
             if let Ok(parsed) = Version::parse(&geode) {
                 // If alpha, match exactly that version
@@ -390,7 +390,7 @@ impl Mod {
         }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
-        let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, query.geode, platforms).await?;
+        let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, platforms, query.geode.as_ref()).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {

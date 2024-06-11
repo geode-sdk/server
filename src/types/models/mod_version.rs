@@ -268,7 +268,7 @@ impl ModVersion {
         ids: Vec<String>,
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
-        geode: Option<String>,
+        geode: Option<&String>,
     ) -> Result<HashMap<String, ModVersion>, ApiError> {
         if ids.is_empty() {
             return Ok(Default::default());
