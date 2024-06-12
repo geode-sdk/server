@@ -1247,13 +1247,13 @@ impl Mod {
             return Ok(vec![]);
         }
 
-        let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
-
-        let deps: HashMap<i32, Vec<FetchedDependency>> =
-            Dependency::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
-
-        let incompat: HashMap<i32, Vec<FetchedIncompatibility>> =
-            Incompatibility::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
+        // Client doesn't actually use those, we might as well not return them yet
+        // TODO: enable back when client supports then
+        // let ids: Vec<i32> = result.iter().map(|x| x.mod_version_id).collect();
+        // let deps: HashMap<i32, Vec<FetchedDependency>> =
+        //     Dependency::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
+        // let incompat: HashMap<i32, Vec<FetchedIncompatibility>> =
+        //     Incompatibility::get_for_mod_versions(&ids, Some(platforms), Some(gd), Some(geode), pool).await?;
 
         let mut ret: Vec<ModUpdate> = vec![];
 
@@ -1263,20 +1263,22 @@ impl Mod {
                 version: r.version,
                 mod_version_id: r.mod_version_id,
                 download_link: "".to_string(),
-                dependencies: deps
-                    .get(&r.mod_version_id)
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|x| x.to_response())
-                    .collect(),
-                incompatibilities: incompat
-                    .get(&r.mod_version_id)
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|x| x.to_response())
-                    .collect(),
+                dependencies: vec![],
+                incompatibilities: vec![],
+                // dependencies: deps
+                //     .get(&r.mod_version_id)
+                //     .cloned()
+                //     .unwrap_or_default()
+                //     .iter()
+                //     .map(|x| x.to_response())
+                //     .collect(),
+                // incompatibilities: incompat
+                //     .get(&r.mod_version_id)
+                //     .cloned()
+                //     .unwrap_or_default()
+                //     .iter()
+                //     .map(|x| x.to_response())
+                //     .collect(),
                 replacement: None
             };
             ret.push(update);
