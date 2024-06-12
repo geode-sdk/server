@@ -279,17 +279,23 @@ impl Mod {
                     counter_builder.push(sql);
                     builder.push_bind(parsed.major.to_string());
                     counter_builder.push_bind(parsed.major.to_string());
-                    let sql = " AND mv.geode >= ";
+
+                    let sql = " AND SPLIT_PART(mv.geode, '.', 2) <= ";
                     builder.push(sql);
                     counter_builder.push(sql);
-                    builder.push_bind(parsed.to_string());
-                    counter_builder.push_bind(parsed.to_string());
+                    builder.push_bind(parsed.minor.to_string());
+                    counter_builder.push_bind(parsed.minor.to_string());
 
-                    // If no prerelease is specified, only match stable versions
-                    if parsed.pre.is_empty() {
-                        let sql = " AND SPLIT_PART(mv.geode, '-', 2) = ''";
+                    // Match only higher betas (or no beta)
+                    if parsed.pre.contains("beta") {
+                        let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
+                            OR SPLIT_PART(mv.geode, '-', 2) >=";
                         builder.push(sql);
                         counter_builder.push(sql);
+                        builder.push_bind(parsed.pre.to_string());
+                        counter_builder.push_bind(parsed.pre.to_string());
+                        builder.push(")");
+                        counter_builder.push(")");
                     }
 
                     builder.push(")");
@@ -1208,15 +1214,21 @@ impl Mod {
             query_builder.push(" AND mv.geode = ");
             query_builder.push_bind(geode.to_string());
         } else {
-            query_builder.push(" AND (SPLIT_PART(mv.geode, '.', 1) = ");
+            let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
+            query_builder.push(sql);
             query_builder.push_bind(geode.major.to_string());
-            query_builder.push(" AND semver_compare(mv.geode, ");
-            query_builder.push_bind(geode.to_string());
-            query_builder.push(") >= 0");
 
-            // If no prerelease is specified, only match stable versions
-            if geode.pre.is_empty() {
-                query_builder.push(" AND SPLIT_PART(mv.geode, '-', 2) = ''");
+            let sql = " AND SPLIT_PART(mv.geode, '.', 2) <= ";
+            query_builder.push(sql);
+            query_builder.push_bind(geode.minor.to_string());
+
+            // Match only higher betas (or no beta)
+            if geode.pre.contains("beta") {
+                let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
+                    OR SPLIT_PART(mv.geode, '-', 2) >=";
+                query_builder.push(sql);
+                query_builder.push_bind(geode.pre.to_string());
+                query_builder.push(")");
             }
 
             query_builder.push(")");

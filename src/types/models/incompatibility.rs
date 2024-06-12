@@ -152,7 +152,11 @@ impl Incompatibility {
             AND ($4 IS NULL OR CASE
                 WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = mv.geode
                 ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(mv.geode, '.', 1)
-                    AND semver_compare(mv.geode, $4) = 1
+                    AND SPLIT_PART(mv.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
+                    AND (
+                        SPLIT_PART(mv.geode, '-', 2) = '' 
+                        OR SPLIT_PART(mv.geode, '-', 2) >= SPLIT_PART($4, '-', 2)
+                    )
             END)
             "#,
         )

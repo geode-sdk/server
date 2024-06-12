@@ -306,16 +306,6 @@ impl ModVersion {
                     let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
                     builder.push(sql);
                     builder.push_bind(parsed.major.to_string());
-                    let sql = " AND mv.geode >= ";
-                    builder.push(sql);
-                    builder.push_bind(parsed.to_string());
-
-                    // If no prerelease is specified, only match stable versions
-                    if parsed.pre.is_empty() {
-                        let sql = " AND SPLIT_PART(mv.geode, '-', 2) = ''";
-                        builder.push(sql);
-                    }
-
                     builder.push(")");
                 }
             }
