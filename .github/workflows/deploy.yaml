@@ -20,9 +20,7 @@ jobs:
 
       - name: Install rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup target add aarch64-unknown-linux-gnu
-          rustup target add aarch64-linux-gnu-gcc
+          rustup toolchain install stable-aarch64-unknown-linux-gnu --profile minimal
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v2
