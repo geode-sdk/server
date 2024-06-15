@@ -164,7 +164,7 @@ impl Dependency {
                         mv.id AS start_node,
                         ROW_NUMBER() OVER(
                             PARTITION BY dp.dependency_id, mv.id 
-                            ORDER BY dpcy_version.version DESC, mv.version DESC
+                            ORDER BY dpcy_version.id DESC, mv.id DESC
                         ) rn 
                     FROM mod_versions mv
                     INNER JOIN mods m ON mv.mod_id = m.id
@@ -217,7 +217,7 @@ impl Dependency {
                         dt.start_node AS start_node,
                         ROW_NUMBER() OVER(
                             PARTITION BY dp2.dependency_id, mv2.id 
-                            ORDER BY dpcy_version2.version DESC, mv2.version DESC
+                            ORDER BY dpcy_version2.id DESC, mv2.id DESC
                         ) rn 
                     FROM mod_versions mv2
                     INNER JOIN mods m2 ON mv2.mod_id = m2.id
