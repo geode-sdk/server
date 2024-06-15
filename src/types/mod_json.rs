@@ -386,7 +386,7 @@ pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u
             return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
         }
     };
-    let img = match DynamicImage::from_decoder(decoder) {
+    let mut img = match DynamicImage::from_decoder(decoder) {
         Ok(i) => i,
         Err(e) => {
             log::error!("{}", e);
@@ -404,7 +404,7 @@ pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u
     }
 
     if (dimensions.0 > 336) || (dimensions.1 > 336) {
-        img.resize(336, 336, image::imageops::FilterType::Lanczos3);
+        img = img.resize(336, 336, image::imageops::FilterType::Lanczos3);
     }
 
     if !return_bytes {

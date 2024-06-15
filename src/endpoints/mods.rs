@@ -203,10 +203,7 @@ pub async fn get_logo(
     match image {
         Some(i) => {
             if i.is_empty() {
-                Ok(HttpResponse::NotFound().json(web::Json(ApiResponse {
-                    error: "Not found".to_string(),
-                    payload: "".to_string(),
-                })))
+                Ok(HttpResponse::NotFound().body(""))
             } else {
                 Ok(HttpResponse::Ok().content_type("image/png").body(i))
             }
