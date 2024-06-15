@@ -955,8 +955,10 @@ impl Mod {
             query_builder.push_bind(&json.about);
             query_builder.push(", ");
         }
-        query_builder.push("image = ");
-        query_builder.push_bind(&json.logo);
+        if !json.logo.is_empty() {
+            query_builder.push("image = ");
+            query_builder.push_bind(&json.logo);
+        }
         query_builder.push(" WHERE id = ");
         query_builder.push_bind(&json.id);
 
