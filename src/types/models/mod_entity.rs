@@ -693,7 +693,7 @@ impl Mod {
             )));
         }
 
-        let latest = sqlx::query!(
+        let latest = match sqlx::query!(
             "SELECT mv.version, mv.id FROM mod_versions mv
             INNER JOIN mods m ON mv.mod_id = m.id
             WHERE m.id = $1
@@ -702,7 +702,13 @@ impl Mod {
         )
         .fetch_one(&mut *pool)
         .await
-        .unwrap();
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::info!("Failed to fetch latest version for mod. Error: {}", e);
+                return Err(ApiError::DbError);
+            }
+        };
 
         let version = semver::Version::parse(latest.version.trim_start_matches('v')).unwrap();
         let new_version = match semver::Version::parse(json.version.trim_start_matches('v')) {
@@ -953,9 +959,9 @@ impl Mod {
         if json.about.is_some() {
             query_builder.push("about = ");
             query_builder.push_bind(&json.about);
-            query_builder.push(", ");
         }
         if !json.logo.is_empty() {
+            query_builder.push(", ");
             query_builder.push("image = ");
             query_builder.push_bind(&json.logo);
         }
