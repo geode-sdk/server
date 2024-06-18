@@ -1002,11 +1002,11 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         if let Err(e) = sqlx::query!(
-            "UPDATE mods m SET download_count = m.download_count + (
+            "UPDATE mods m SET download_count = (
                 SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
                 INNER JOIN mod_versions mv ON md.mod_version_id = mv.id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                WHERE mv.mod_id = m.id AND md.time_downloaded > m.last_download_cache_refresh AND mvs.status = 'accepted'
+                WHERE mv.mod_id = m.id AND mvs.status = 'accepted'
             ), last_download_cache_refresh = now()
             WHERE m.id = $1", mod_id
         ).execute(&mut *pool).await {
