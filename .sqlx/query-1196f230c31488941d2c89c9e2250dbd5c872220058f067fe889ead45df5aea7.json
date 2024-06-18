@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mods m SET download_count = (\n            SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md\n            INNER JOIN mod_versions mv ON md.mod_version_id = mv.id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mv.mod_id = m.id AND mvs.status = 'accepted'\n        ), last_download_cache_refresh = now()\n        WHERE m.id IN (\n            SELECT DISTINCT mv.mod_id FROM mod_versions mv \n            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id\n            WHERE mvs.status = 'accepted'\n        )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "1196f230c31488941d2c89c9e2250dbd5c872220058f067fe889ead45df5aea7"
+}
