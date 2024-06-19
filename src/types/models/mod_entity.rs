@@ -359,7 +359,6 @@ impl Mod {
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
-        log::info!("{}", builder.sql());
 
         let result = builder
             .build_query_as::<ModRecord>()
