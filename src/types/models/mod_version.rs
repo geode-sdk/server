@@ -306,6 +306,20 @@ impl ModVersion {
                     let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
                     builder.push(sql);
                     builder.push_bind(parsed.major.to_string());
+
+                    let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
+                    builder.push(sql);
+                    builder.push_bind(parsed.minor.to_string());
+
+                    // Match only higher betas (or no beta)
+                    if parsed.pre.contains("beta") {
+                        let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
+                            OR SPLIT_PART(mv.geode, '-', 2) <=";
+                        builder.push(sql);
+                        builder.push_bind(parsed.pre.to_string());
+                        builder.push(")");
+                    }
+
                     builder.push(")");
                 }
             }

@@ -280,7 +280,7 @@ impl Mod {
                     builder.push_bind(parsed.major.to_string());
                     counter_builder.push_bind(parsed.major.to_string());
 
-                    let sql = " AND SPLIT_PART(mv.geode, '.', 2) <= ";
+                    let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
                     builder.push(sql);
                     counter_builder.push(sql);
                     builder.push_bind(parsed.minor.to_string());
@@ -289,7 +289,7 @@ impl Mod {
                     // Match only higher betas (or no beta)
                     if parsed.pre.contains("beta") {
                         let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
-                            OR SPLIT_PART(mv.geode, '-', 2) >=";
+                            OR SPLIT_PART(mv.geode, '-', 2) <=";
                         builder.push(sql);
                         counter_builder.push(sql);
                         builder.push_bind(parsed.pre.to_string());
@@ -359,6 +359,7 @@ impl Mod {
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
+        log::info!("{}", builder.sql());
 
         let result = builder
             .build_query_as::<ModRecord>()

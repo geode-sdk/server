@@ -180,11 +180,12 @@ impl Dependency {
                     AND ($4 IS NULL OR (
                         CASE
                             WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version.geode
-                            ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(dpcy_version.geode, '.', 1) 
+                            ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(dpcy_version.geode, '.', 1)
+                                AND SPLIT_PART(dpcy_version.geode, '-', 2) NOT LIKE 'alpha%'
                                 AND SPLIT_PART(dpcy_version.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
                                 AND (
                                     SPLIT_PART(dpcy_version.geode, '-', 2) = '' 
-                                    OR SPLIT_PART(dpcy_version.geode, '-', 2) >= SPLIT_PART($4, '-', 2)
+                                    OR SPLIT_PART(dpcy_version.geode, '-', 2) <= SPLIT_PART($4, '-', 2)
                                 )
                         END
                     ))
@@ -234,10 +235,11 @@ impl Dependency {
                         CASE
                             WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version2.geode
                             ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(dpcy_version2.geode, '.', 1) 
+                                AND SPLIT_PART(dpcy_version2.geode, '-', 2) NOT LIKE 'alpha%'
                                 AND SPLIT_PART(dpcy_version2.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
                                 AND (
                                     SPLIT_PART(dpcy_version2.geode, '-', 2) = '' 
-                                    OR SPLIT_PART(dpcy_version2.geode, '-', 2) >= SPLIT_PART($4, '-', 2)
+                                    OR SPLIT_PART(dpcy_version2.geode, '-', 2) <= SPLIT_PART($4, '-', 2)
                                 )
                         END
                     ))
