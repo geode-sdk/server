@@ -73,12 +73,7 @@ pub async fn developer_index(
 		page = 1
 	}
 	let mut per_page = query.per_page.unwrap_or(15);
-	if per_page < 1 {
-		per_page = 1
-	}
-	if per_page > 100 {
-		per_page = 100
-	}
+	per_page = per_page.clamp(1, 100);
 
 	let result = Developer::get_index(&query.query, page, per_page, &mut pool).await?;
 

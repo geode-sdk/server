@@ -5,7 +5,7 @@ use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use super::dependency::{Dependency, ResponseDependency};
+use super::dependency::{ResponseDependency};
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
 #[derive(sqlx::FromRow, Clone, Debug)]

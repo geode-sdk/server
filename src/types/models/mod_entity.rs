@@ -2,8 +2,6 @@ use crate::endpoints::developers::{SimpleDevMod, SimpleDevModVersion};
 use crate::endpoints::mods::{IndexQueryParams, IndexSortType};
 use crate::types::api::{ApiError, PaginatedData};
 use crate::types::mod_json::{self, ModJson};
-use crate::types::models::dependency::{Dependency, FetchedDependency};
-use crate::types::models::incompatibility::{FetchedIncompatibility, Incompatibility};
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use actix_web::web::Bytes;
