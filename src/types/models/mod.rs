@@ -7,5 +7,5 @@ pub mod mod_entity;
 pub mod mod_gd_version;
 pub mod mod_version;
 pub mod mod_version_status;
-pub mod tag;
 pub mod stats;
+pub mod tag;

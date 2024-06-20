@@ -1,4 +1,5 @@
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
+use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
@@ -9,143 +10,143 @@ use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
 #[derive(sqlx::FromRow, Clone)]
 pub struct Dependency {
-    pub dependent_id: i32,
-    pub dependency_id: String,
-    pub compare: ModVersionCompare,
-    pub importance: DependencyImportance,
+	pub dependent_id: i32,
+	pub dependency_id: String,
+	pub compare: ModVersionCompare,
+	pub importance: DependencyImportance,
 }
 
 pub struct DependencyCreate {
-    pub dependency_id: String,
-    pub version: String,
-    pub compare: ModVersionCompare,
-    pub importance: DependencyImportance,
+	pub dependency_id: String,
+	pub version: String,
+	pub compare: ModVersionCompare,
+	pub importance: DependencyImportance,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ResponseDependency {
-    pub mod_id: String,
-    pub version: String,
-    pub importance: DependencyImportance,
+	pub mod_id: String,
+	pub version: String,
+	pub importance: DependencyImportance,
 }
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedDependency {
-    pub mod_version_id: i32,
-    pub version: String,
-    pub dependency_id: String,
-    pub compare: ModVersionCompare,
-    pub importance: DependencyImportance,
+	pub mod_version_id: i32,
+	pub version: String,
+	pub dependency_id: String,
+	pub compare: ModVersionCompare,
+	pub importance: DependencyImportance,
 }
 
 impl FetchedDependency {
-    pub fn to_response(&self) -> ResponseDependency {
-        ResponseDependency {
-            mod_id: self.dependency_id.clone(),
-            version: {
-                if self.version == "*" {
-                    "*".to_string()
-                } else {
-                    format!("{}{}", self.compare, self.version)
-                }
-            },
-            importance: self.importance,
-        }
-    }
+	pub fn to_response(&self) -> ResponseDependency {
+		ResponseDependency {
+			mod_id: self.dependency_id.clone(),
+			version: {
+				if self.version == "*" {
+					"*".to_string()
+				} else {
+					format!("{}{}", self.compare, self.version)
+				}
+			},
+			importance: self.importance,
+		}
+	}
 }
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "version_compare")]
 pub enum ModVersionCompare {
-    #[serde(rename = "=")]
-    #[sqlx(rename = "=")]
-    Exact,
-    #[serde(rename = ">")]
-    #[sqlx(rename = ">")]
-    More,
-    #[serde(rename = ">=")]
-    #[sqlx(rename = ">=")]
-    MoreEq,
-    #[serde(rename = "<")]
-    #[sqlx(rename = "<")]
-    Less,
-    #[serde(rename = "<=")]
-    #[sqlx(rename = "<=")]
-    LessEq,
+	#[serde(rename = "=")]
+	#[sqlx(rename = "=")]
+	Exact,
+	#[serde(rename = ">")]
+	#[sqlx(rename = ">")]
+	More,
+	#[serde(rename = ">=")]
+	#[sqlx(rename = ">=")]
+	MoreEq,
+	#[serde(rename = "<")]
+	#[sqlx(rename = "<")]
+	Less,
+	#[serde(rename = "<=")]
+	#[sqlx(rename = "<=")]
+	LessEq,
 }
 
 impl Display for ModVersionCompare {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Exact => write!(f, "="),
-            Self::Less => write!(f, "<"),
-            Self::More => write!(f, ">"),
-            Self::LessEq => write!(f, "<="),
-            Self::MoreEq => write!(f, ">="),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Exact => write!(f, "="),
+			Self::Less => write!(f, "<"),
+			Self::More => write!(f, ">"),
+			Self::LessEq => write!(f, "<="),
+			Self::MoreEq => write!(f, ">="),
+		}
+	}
 }
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
 #[sqlx(type_name = "dependency_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyImportance {
-    Suggested,
-    Recommended,
-    Required,
+	Suggested,
+	Recommended,
+	Required,
 }
 
 impl Dependency {
-    pub async fn create_for_mod_version(
-        id: i32,
-        deps: Vec<DependencyCreate>,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+	pub async fn create_for_mod_version(
+		id: i32,
+		deps: Vec<DependencyCreate>,
+		pool: &mut PgConnection,
+	) -> Result<(), ApiError> {
+		let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "INSERT INTO dependencies (dependent_id, dependency_id, version, compare, importance) VALUES ",
         );
-        for (index, i) in deps.iter().enumerate() {
-            let mut separated = builder.separated(", ");
-            separated.push_unseparated("(");
-            separated.push_bind(id);
-            separated.push_bind(&i.dependency_id);
-            separated.push_bind(&i.version);
-            separated.push_bind(i.compare);
-            separated.push_bind(i.importance);
-            separated.push_unseparated(")");
-            if index != deps.len() - 1 {
-                separated.push_unseparated(", ");
-            }
-        }
+		for (index, i) in deps.iter().enumerate() {
+			let mut separated = builder.separated(", ");
+			separated.push_unseparated("(");
+			separated.push_bind(id);
+			separated.push_bind(&i.dependency_id);
+			separated.push_bind(&i.version);
+			separated.push_bind(i.compare);
+			separated.push_bind(i.importance);
+			separated.push_unseparated(")");
+			if index != deps.len() - 1 {
+				separated.push_unseparated(", ");
+			}
+		}
 
-        let result = builder.build().execute(&mut *pool).await;
-        if result.is_err() {
-            log::error!("{:?}", result.err().unwrap());
-            return Err(ApiError::DbError);
-        }
+		let result = builder.build().execute(&mut *pool).await;
+		if result.is_err() {
+			log::error!("{:?}", result.err().unwrap());
+			return Err(ApiError::DbError);
+		}
 
-        Ok(())
-    }
+		Ok(())
+	}
 
-    pub async fn get_for_mod_versions(
-        ids: &Vec<i32>,
-        platform: Option<VerPlatform>,
-        gd: Option<GDVersionEnum>,
-        geode: Option<&semver::Version>,
-        pool: &mut PgConnection,
-    ) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
-        // Fellow developer, I am sorry for what you're about to see :)
+	pub async fn get_for_mod_versions(
+		ids: &Vec<i32>,
+		platform: Option<VerPlatform>,
+		gd: Option<GDVersionEnum>,
+		geode: Option<&semver::Version>,
+		pool: &mut PgConnection,
+	) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
+		// Fellow developer, I am sorry for what you're about to see :)
 
-        #[derive(sqlx::FromRow)]
-        struct QueryResult {
-            start_node: i32,
-            dependency_vid: i32,
-            dependency_version: String,
-            dependency: String,
-            importance: DependencyImportance,
-        }
+		#[derive(sqlx::FromRow)]
+		struct QueryResult {
+			start_node: i32,
+			dependency_vid: i32,
+			dependency_version: String,
+			dependency: String,
+			importance: DependencyImportance,
+		}
 
-        let q = sqlx::query_as::<Postgres, QueryResult>(
+		let q = sqlx::query_as::<Postgres, QueryResult>(
             r#"
             WITH RECURSIVE dep_tree AS (
                 SELECT * FROM (
@@ -261,26 +262,26 @@ impl Dependency {
         .bind(platform)
         .bind(geode.map(|x| x.to_string()));
 
-        let result = match q.fetch_all(&mut *pool).await {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+		let result = match q.fetch_all(&mut *pool).await {
+			Ok(d) => d,
+			Err(e) => {
+				log::error!("{}", e);
+				return Err(ApiError::DbError);
+			}
+		};
 
-        let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
-        for i in result {
-            ret.entry(i.start_node)
-                .or_default()
-                .push(FetchedDependency {
-                    mod_version_id: i.dependency_vid,
-                    version: i.dependency_version.clone(),
-                    dependency_id: i.dependency,
-                    compare: ModVersionCompare::Exact,
-                    importance: i.importance,
-                });
-        }
-        Ok(ret)
-    }
+		let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
+		for i in result {
+			ret.entry(i.start_node)
+				.or_default()
+				.push(FetchedDependency {
+					mod_version_id: i.dependency_vid,
+					version: i.dependency_version.clone(),
+					dependency_id: i.dependency,
+					compare: ModVersionCompare::Exact,
+					importance: i.importance,
+				});
+		}
+		Ok(ret)
+	}
 }
