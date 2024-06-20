@@ -1192,7 +1192,7 @@ impl Mod {
         gd: GDVersionEnum,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
-        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT 
                 q.id, 
                 q.inner_version as version, 
@@ -1209,40 +1209,40 @@ impl Mod {
                 WHERE mvs.status = 'accepted' 
                     AND mgv.platform = "#
         );
-        query_builder.push_bind(platforms);
-        query_builder.push(" AND (mgv.gd = ");
-        query_builder.push_bind(gd);
-        query_builder.push(" OR mgv.gd = '*')");
+        builder.push_bind(platforms);
+        builder.push(" AND (mgv.gd = ");
+        builder.push_bind(gd);
+        builder.push(" OR mgv.gd = '*')");
 
-        query_builder.push(" AND m.id = ANY(");
-        query_builder.push_bind(ids);
-        query_builder.push(") ");
+        builder.push(" AND m.id = ANY(");
+        builder.push_bind(ids);
+        builder.push(") ");
 
         if geode.pre.contains("alpha") {
-            query_builder.push(" AND mv.geode = ");
-            query_builder.push_bind(geode.to_string());
+            builder.push(" AND mv.geode = ");
+            builder.push_bind(geode.to_string());
         } else {
             let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
-            query_builder.push(sql);
-            query_builder.push_bind(geode.major.to_string());
+            builder.push(sql);
+            builder.push_bind(geode.major.to_string());
 
-            let sql = " AND SPLIT_PART(mv.geode, '.', 2) <= ";
-            query_builder.push(sql);
-            query_builder.push_bind(geode.minor.to_string());
+            let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
+            builder.push(sql);
+            builder.push_bind(geode.minor.to_string());
 
             // Match only higher betas (or no beta)
             if geode.pre.contains("beta") {
                 let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
-                    OR SPLIT_PART(mv.geode, '-', 2) >=";
-                query_builder.push(sql);
-                query_builder.push_bind(geode.pre.to_string());
-                query_builder.push(")");
+                    OR SPLIT_PART(mv.geode, '-', 2) <=";
+                builder.push(sql);
+                builder.push_bind(geode.pre.to_string());
+                builder.push(")");
             }
 
-            query_builder.push(")");
+            builder.push(")");
         }
 
-        query_builder.push(") q where q.rn = 1");
+        builder.push(") q where q.rn = 1");
 
         #[derive(sqlx::FromRow)]
         struct QueryResult {
@@ -1251,7 +1251,7 @@ impl Mod {
             mod_version_id: i32,
         }
 
-        let result = match query_builder
+        let result = match builder
             .build_query_as::<QueryResult>()
             .fetch_all(&mut *pool)
             .await
