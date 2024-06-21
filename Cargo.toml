@@ -1,33 +1,33 @@
 [package]
 name = "geode-index"
-version = "0.28.12"
+version = "0.28.13"
 edition = "2021"
 
 [dependencies]
-image = { version = "0.24.8", features = ["png"] }
-actix-web = "4.4.1"
-anyhow = "1.0.78"
+image = { version = "0.25", features = ["png"] }
+actix-web = "4.8"
+anyhow = "1.0"
 dotenvy = "0.15.7"
-env_logger = "0.10.1"
-log = "0.4.20"
+env_logger = "0.11"
+log = "0.4"
 futures = "0.3.30"
-serde = { version = "1.0.193", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.7.3", features = [
+sqlx = { version = "0.7.4", features = [
     "postgres",
     "runtime-tokio",
     "chrono",
     "uuid",
     "ipnetwork",
 ] }
-tokio = { version = "1.35.1", features = ["rt", "macros", "rt-multi-thread"] }
-reqwest = { version = "0.11.23", features = ["json"] }
-uuid = { version = "1.6.1", features = ["v4", "fast-rng", "macro-diagnostics"] }
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "stream", "rustls-tls-native-roots"] }
+uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
 zip = "0.6"
 sha256 = "1.5.0"
-semver = "1.0.21"
-clap = { version = "4.5.1", features = ["derive"] }
-regex = "1.10.3"
-chrono = "0.4.34"
+semver = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+regex = "1.10"
+chrono = "0.4"
 actix-cors = "0.7.0"
-openssl = { version = "0.10.64", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }

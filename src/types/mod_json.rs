@@ -421,7 +421,7 @@ pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u
 
     let (width, height) = img.dimensions();
 
-    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color()) {
+    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color().into()) {
         log::error!("{}", e);
         return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
     }
