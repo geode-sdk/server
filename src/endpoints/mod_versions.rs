@@ -248,9 +248,12 @@ pub async fn create_version(
                     json.name, fetched_mod.unwrap().versions.last().unwrap().version, json.version
                 ),
                 "description": format!(
-                    "https://geode-sdk.org/mods/{}\n\nUploaded by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{})",
-                    json.id, dev.display_name, dev.username, dev.display_name, dev.username
-                )
+                    "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})",
+                    json.id, dev.display_name, dev.username
+                ),
+                "thumbnail": {
+                    "url": format!("https://api.geode-sdk.org/v1/mods/{}/logo", json.id)
+                }
             }
         ]
     });

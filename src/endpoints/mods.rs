@@ -1,6 +1,7 @@
 use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
+use serde_json::json;
 
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
@@ -107,7 +108,7 @@ pub async fn create(
     let json = ModJson::from_zip(&mut file_path, &payload.download_link, dev.verified)?;
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let result = Mod::from_json(&json, dev, &mut transaction).await;
+    let result = Mod::from_json(&json, dev.clone(), &mut transaction).await;
     if result.is_err() {
         transaction
             .rollback()
@@ -119,6 +120,32 @@ pub async fn create(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    if dev.verified {
+        let webhook = json!({
+            "embeds": [
+                {
+                    "title": format!(
+                        "New mod! {} {}",
+                        json.name, json.version
+                    ),
+                    "description": format!(
+                        "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})",
+                        json.id, dev.display_name, dev.username
+                    ),
+                    "thumbnail": {
+                        "url": format!("https://api.geode-sdk.org/v1/mods/{}/logo", json.id)
+                    }
+                }
+            ]
+        });
+     
+        let _ = reqwest::Client::new()
+            .post("https://ptb.discord.com/api/webhooks/1251962420264698006/8JPCXoKM16zOPERvmtItFZTf2VNGsOpl8xvuY-X_s4TyyTPHxxASftWBR4XjmrtBPgRr")
+            .json(&webhook)
+            .send()
+            .await;
+    }
 
     Ok(HttpResponse::NoContent())
 }
