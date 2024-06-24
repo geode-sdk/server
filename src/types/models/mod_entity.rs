@@ -1201,7 +1201,7 @@ impl Mod {
                 SELECT m.id, 
                     mv.id as mod_version_id,
                     mv.version as inner_version,
-                    row_number() over (partition by m.id order by mv.version desc) rn 
+                    row_number() over (partition by m.id order by mv.id desc) rn 
                 FROM mods m
                 INNER JOIN mod_versions mv ON mv.mod_id = m.id 
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
