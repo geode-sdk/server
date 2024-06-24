@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
@@ -220,7 +221,9 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if Mod::get_one(&path.id, true, &mut pool).await?.is_none() {
+    let fetched_mod = Mod::get_one(&path.id, true, &mut pool).await?;
+
+    if fetched_mod.is_none() {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
@@ -237,6 +240,27 @@ pub async fn create_version(
             path.id, json.id
         )));
     }
+    let webhook = json!({
+        "embeds": [
+            {
+                "title": format!(
+                    "Mod updated! {} {} -> {}",
+                    json.name, fetched_mod.unwrap().versions.last().unwrap().version, json.version
+                ),
+                "description": format!(
+                    "https://geode-sdk.org/mods/{}\n\nUploaded by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{})",
+                    json.id, dev.display_name, dev.username, dev.display_name, dev.username
+                )
+            }
+        ]
+    });
+ 
+    let _ = reqwest::Client::new()
+        .post("https://ptb.discord.com/api/webhooks/1251962420264698006/8JPCXoKM16zOPERvmtItFZTf2VNGsOpl8xvuY-X_s4TyyTPHxxASftWBR4XjmrtBPgRr")
+        .json(&webhook)
+        .send()
+        .await;
+
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
@@ -265,6 +289,7 @@ pub async fn update_version(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut pool).await?.unwrap(); // this is up here because the borrow checker gets fussy when it's below `transaction`
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
         "select id from mod_versions where mod_id = $1 and version = $2",
@@ -283,6 +308,31 @@ pub async fn update_version(
             return Err(ApiError::DbError);
         }
     };
+    let version = fetched_mod.versions.last().unwrap();
+    let is_first_version = fetched_mod.versions.len() == 1;
+    let owner = &fetched_mod.developers[0];
+    let webhook = json!({
+        "embeds": [
+            {
+                "title": if is_first_version { format!("New mod! {} {}", version.name, path.version) } else { format!("Mod updated! {} {} -> {}", version.name, fetched_mod.versions[
+                    fetched_mod.versions.len() - 2
+                ].version, version.version) },
+                "description": format!(
+                    "https://geode-sdk.org/mods/{}\n\nAccepted by: [{}](https://github.com/{})\nOwned by: [{}](https://github.com/{})",
+                    fetched_mod.id, dev.display_name, dev.username, owner.display_name, owner.username
+                ),
+                "thumbnail": {
+                    "url": format!("https://api.geode-sdk.org/v1/mods/{}/logo", fetched_mod.id)
+                }
+            }
+        ]
+    });
+    
+    let _ = reqwest::Client::new()
+        .post("https://ptb.discord.com/api/webhooks/1251962420264698006/8JPCXoKM16zOPERvmtItFZTf2VNGsOpl8xvuY-X_s4TyyTPHxxASftWBR4XjmrtBPgRr")
+        .json(&webhook)
+        .send()
+        .await;
     if let Err(e) = ModVersion::update_version(
         id,
         payload.status,
@@ -302,6 +352,7 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
 
     Ok(HttpResponse::NoContent())
 }
