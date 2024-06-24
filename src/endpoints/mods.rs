@@ -141,7 +141,7 @@ pub async fn create(
         });
      
         let _ = reqwest::Client::new()
-            .post("https://ptb.discord.com/api/webhooks/1251962420264698006/8JPCXoKM16zOPERvmtItFZTf2VNGsOpl8xvuY-X_s4TyyTPHxxASftWBR4XjmrtBPgRr")
+            .post(data.webhook_url.clone())
             .json(&webhook)
             .send()
             .await;
