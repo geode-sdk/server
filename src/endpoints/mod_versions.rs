@@ -242,7 +242,6 @@ pub async fn create_version(
         send_webhook(
             json.id.clone(),
             json.name.clone(),
-            fetched_mod.unwrap().versions.last().unwrap().version.clone(),
             json.version.clone(),
             true,
             Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
@@ -281,6 +280,14 @@ pub async fn update_version(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let version = ModVersion::get_one(
+        path.id.as_str(),
+        path.version.as_str(),
+        false,
+        false,
+        &mut pool
+    ).await?;
+    let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
         "select id from mod_versions where mod_id = $1 and version = $2",
@@ -299,28 +306,6 @@ pub async fn update_version(
             return Err(ApiError::DbError);
         }
     };
-    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut transaction).await?;
-    if let Some(valid_mod) = fetched_mod {
-        let version = valid_mod.versions.last().unwrap();
-        let is_update = valid_mod.versions.len() > 1;
-        let owner = &valid_mod.developers[0];
-
-        println!("{}", is_update);
-
-        send_webhook(
-            valid_mod.id,
-            version.name.clone(),
-            if is_update { valid_mod.versions[
-                valid_mod.versions.len() - 2
-            ].version.clone() } else { version.version.clone() },
-            version.version.clone(),
-            is_update,
-            owner.clone(),
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
-    }
 
     if let Err(e) = ModVersion::update_version(
         id,
@@ -341,7 +326,26 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+    
+    if payload.status == ModVersionStatusEnum::Accepted {
+        let is_update = approved_count > 0;
 
+        let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
+            .await?
+            .into_iter()
+            .find(|dev| dev.is_owner);
+
+        send_webhook(
+            version.mod_id,
+            version.name.clone(),
+            version.version.clone(),
+            is_update,
+            owner.as_ref().unwrap().clone(),
+            dev.clone(),
+            data.webhook_url.clone(),
+            data.app_url.clone()
+        ).await;
+    }
 
     Ok(HttpResponse::NoContent())
 }

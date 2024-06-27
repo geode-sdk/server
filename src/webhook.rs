@@ -5,8 +5,7 @@ use crate::types::models::developer::{Developer, FetchedDeveloper};
 pub async fn send_webhook(
     id: String,
     name: String,
-    old_version: String,
-    new_version: String,
+    version: String,
     update: bool,
     owner: Developer,
     verified_by: FetchedDeveloper,
@@ -21,7 +20,7 @@ pub async fn send_webhook(
     let webhook = json!({
         "embeds": [
             {
-                "title": if !update { format!("New mod! {} {}", name, new_version) } else { format!("Mod updated! {} {} -> {}", name, old_version, new_version) },
+                "title": if !update { format!("New mod! {} {}", name, version) } else { format!("Mod updated! {} {}", name, version) },
                 "description": format!(
                     "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{})",
                     id, owner.display_name, owner.username, verified_by.display_name, verified_by.username

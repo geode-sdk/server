@@ -123,17 +123,18 @@ pub async fn create(
         .or(Err(ApiError::TransactionError))?;
 
     if dev.verified {
-        send_webhook(
-            json.id,
-            json.name,
-            json.version.clone(),
-            json.version.clone(),
-            false,
-            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
-            dev,
-            data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
+        tokio::spawn(async move {
+            send_webhook(
+                json.id,
+                json.name,
+                json.version.clone(),
+                false,
+                Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
+                dev,
+                data.webhook_url.clone(),
+                data.app_url.clone()
+            ).await;
+        });
     }
 
     Ok(HttpResponse::NoContent())
