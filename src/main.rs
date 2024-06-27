@@ -17,6 +17,7 @@ mod endpoints;
 mod extractors;
 mod jobs;
 mod types;
+mod webhook;
 
 #[derive(Clone)]
 pub struct AppData {
@@ -24,6 +25,7 @@ pub struct AppData {
     app_url: String,
     github_client_id: String,
     github_client_secret: String,
+    webhook_url: String,
 }
 
 #[derive(Debug, Parser)]
@@ -62,12 +64,14 @@ async fn main() -> anyhow::Result<()> {
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
+    let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
 
     let app_data = AppData {
         db: pool.clone(),
         app_url: app_url.clone(),
         github_client_id: github_client.clone(),
         github_client_secret: github_secret.clone(),
+        webhook_url: webhook_url.clone()
     };
 
     let args = Args::parse();

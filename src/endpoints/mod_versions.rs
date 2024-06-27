@@ -5,8 +5,7 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    extractors::auth::Auth,
-    types::{
+    extractors::auth::Auth, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -17,8 +16,7 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    },
-    AppData,
+    }, webhook::send_webhook, AppData
 };
 
 #[derive(Deserialize)]
@@ -220,7 +218,9 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if Mod::get_one(&path.id, true, &mut pool).await?.is_none() {
+    let fetched_mod = Mod::get_one(&path.id, true, &mut pool).await?;
+
+    if fetched_mod.is_none() {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
@@ -237,6 +237,21 @@ pub async fn create_version(
             path.id, json.id
         )));
     }
+
+    if dev.verified {
+        send_webhook(
+            json.id.clone(),
+            json.name.clone(),
+            json.version.clone(),
+            true,
+            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
+            dev.clone(),
+            data.webhook_url.clone(),
+            data.app_url.clone()
+        )
+        .await;
+    }
+
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
@@ -265,6 +280,14 @@ pub async fn update_version(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let version = ModVersion::get_one(
+        path.id.as_str(),
+        path.version.as_str(),
+        false,
+        false,
+        &mut pool
+    ).await?;
+    let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
         "select id from mod_versions where mod_id = $1 and version = $2",
@@ -283,6 +306,7 @@ pub async fn update_version(
             return Err(ApiError::DbError);
         }
     };
+
     if let Err(e) = ModVersion::update_version(
         id,
         payload.status,
@@ -302,6 +326,26 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+    
+    if payload.status == ModVersionStatusEnum::Accepted {
+        let is_update = approved_count > 0;
+
+        let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
+            .await?
+            .into_iter()
+            .find(|dev| dev.is_owner);
+
+        send_webhook(
+            version.mod_id,
+            version.name.clone(),
+            version.version.clone(),
+            is_update,
+            owner.as_ref().unwrap().clone(),
+            dev.clone(),
+            data.webhook_url.clone(),
+            data.app_url.clone()
+        ).await;
+    }
 
     Ok(HttpResponse::NoContent())
 }
