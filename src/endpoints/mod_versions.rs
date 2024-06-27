@@ -299,7 +299,7 @@ pub async fn update_version(
             return Err(ApiError::DbError);
         }
     };
-    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut transaction).await?; // this is up here because the borrow checker gets fussy when it's below `transaction`
+    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut transaction).await?;
     if let Some(valid_mod) = fetched_mod {
         let version = valid_mod.versions.last().unwrap();
         let is_update = valid_mod.versions.len() > 1;
