@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use super::{
-    dependency::{Dependency, ResponseDependency},
+    dependency::ResponseDependency,
     mod_gd_version::{GDVersionEnum, VerPlatform},
 };
 

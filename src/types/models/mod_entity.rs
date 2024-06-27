@@ -7,8 +7,6 @@ use crate::{
         api::{ApiError, PaginatedData},
         mod_json::{self, ModJson},
         models::{
-            dependency::{Dependency, FetchedDependency},
-            incompatibility::{FetchedIncompatibility, Incompatibility},
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
     },

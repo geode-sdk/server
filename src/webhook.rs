@@ -10,10 +10,10 @@ pub async fn send_webhook(
     owner: Developer,
     verified_by: FetchedDeveloper,
     webhook_url: String,
-    base_url: String
+    base_url: String,
 ) {
     // webhook not configured, exit function
-    if webhook_url == "" {
+    if webhook_url.is_empty() {
         log::error!("Discord Webhook is not configured. Not sending webhook.");
         return;
     }
@@ -32,7 +32,7 @@ pub async fn send_webhook(
                 }
             ]
         });
-        
+
         let _ = reqwest::Client::new()
             .post(webhook_url)
             .json(&webhook)
