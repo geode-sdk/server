@@ -17,6 +17,7 @@ mod endpoints;
 mod extractors;
 mod jobs;
 mod types;
+mod webhook;
 
 #[derive(Clone)]
 pub struct AppData {

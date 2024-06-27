@@ -5,7 +5,7 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    endpoints::webhook::send_webhook, extractors::auth::Auth, types::{
+    extractors::auth::Auth, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -16,7 +16,7 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    }, AppData
+    }, webhook::send_webhook, AppData
 };
 
 #[derive(Deserialize)]
