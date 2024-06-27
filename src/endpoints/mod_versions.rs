@@ -2,12 +2,10 @@ use std::str::FromStr;
 
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
-use serde_json::json;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    extractors::auth::Auth,
-    types::{
+    endpoints::webhook::send_webhook, extractors::auth::Auth, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -18,8 +16,7 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    },
-    AppData,
+    }, AppData
 };
 
 #[derive(Deserialize)]
@@ -240,29 +237,21 @@ pub async fn create_version(
             path.id, json.id
         )));
     }
-    let webhook = json!({
-        "embeds": [
-            {
-                "title": format!(
-                    "Mod updated! {} {} -> {}",
-                    json.name, fetched_mod.unwrap().versions.last().unwrap().version, json.version
-                ),
-                "description": format!(
-                    "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})",
-                    json.id, dev.display_name, dev.username
-                ),
-                "thumbnail": {
-                    "url": format!("https://api.geode-sdk.org/v1/mods/{}/logo", json.id)
-                }
-            }
-        ]
-    });
- 
-    let _ = reqwest::Client::new()
-        .post(data.webhook_url.clone())
-        .json(&webhook)
-        .send()
+
+    if dev.verified {
+        send_webhook(
+            json.id.clone(),
+            json.name.clone(),
+            fetched_mod.unwrap().versions.last().unwrap().version.clone(),
+            json.version.clone(),
+            true,
+            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
+            dev.clone(),
+            data.webhook_url.clone(),
+            data.app_url.clone()
+        )
         .await;
+    }
 
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
@@ -292,7 +281,6 @@ pub async fn update_version(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut pool).await?.unwrap(); // this is up here because the borrow checker gets fussy when it's below `transaction`
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
         "select id from mod_versions where mod_id = $1 and version = $2",
@@ -311,31 +299,29 @@ pub async fn update_version(
             return Err(ApiError::DbError);
         }
     };
-    let version = fetched_mod.versions.last().unwrap();
-    let is_first_version = fetched_mod.versions.len() == 1;
-    let owner = &fetched_mod.developers[0];
-    let webhook = json!({
-        "embeds": [
-            {
-                "title": if is_first_version { format!("New mod! {} {}", version.name, path.version) } else { format!("Mod updated! {} {} -> {}", version.name, fetched_mod.versions[
-                    fetched_mod.versions.len() - 2
-                ].version, version.version) },
-                "description": format!(
-                    "https://geode-sdk.org/mods/{}\n\nAccepted by: [{}](https://github.com/{})\nOwned by: [{}](https://github.com/{})",
-                    fetched_mod.id, dev.display_name, dev.username, owner.display_name, owner.username
-                ),
-                "thumbnail": {
-                    "url": format!("https://api.geode-sdk.org/v1/mods/{}/logo", fetched_mod.id)
-                }
-            }
-        ]
-    });
-    
-    let _ = reqwest::Client::new()
-        .post(data.webhook_url.clone())
-        .json(&webhook)
-        .send()
-        .await;
+    let fetched_mod = Mod::get_one(path.id.as_str(), false, &mut transaction).await?; // this is up here because the borrow checker gets fussy when it's below `transaction`
+    if let Some(valid_mod) = fetched_mod {
+        let version = valid_mod.versions.last().unwrap();
+        let is_update = valid_mod.versions.len() > 1;
+        let owner = &valid_mod.developers[0];
+
+        println!("{}", is_update);
+
+        send_webhook(
+            valid_mod.id,
+            version.name.clone(),
+            if is_update { valid_mod.versions[
+                valid_mod.versions.len() - 2
+            ].version.clone() } else { version.version.clone() },
+            version.version.clone(),
+            is_update,
+            owner.clone(),
+            dev.clone(),
+            data.webhook_url.clone(),
+            data.app_url.clone()
+        ).await;
+    }
+
     if let Err(e) = ModVersion::update_version(
         id,
         payload.status,
