@@ -21,7 +21,7 @@ pub async fn send_webhook(
         let webhook = json!({
             "embeds": [
                 {
-                    "title": if !update { format!("New mod! {} {}", name, version) } else { format!("Mod updated! {} {}", name, version) },
+                    "title": if !update { format!("Added {} {}", name, version) } else { format!("Updated {} {}", name, version) },
                     "description": format!(
                         "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{})",
                         id, owner.display_name, owner.username, verified_by.display_name, verified_by.username
