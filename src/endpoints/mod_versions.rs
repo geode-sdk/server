@@ -228,8 +228,12 @@ pub async fn create_version(
         return Err(ApiError::Forbidden);
     }
 
-    let mut file_path = download_geode_file(&payload.download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &payload.download_link, dev.verified)
+    // remove invalid characters from link - they break the location header on download
+    let download_link: String = payload.download_link.chars()
+        .filter(|c| c.is_ascii() && *c != '\0').collect();
+
+    let mut file_path = download_geode_file(&download_link).await?;
+    let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified)
         .or(Err(ApiError::FilesystemError))?;
     if json.id != path.id {
         return Err(ApiError::BadRequest(format!(
