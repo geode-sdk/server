@@ -31,6 +31,8 @@ pub struct SimpleDevModVersion {
     pub version: String,
     pub download_count: i32,
     pub validated: bool,
+    pub info: Option<String>,
+    pub status: ModVersionStatusEnum,
 }
 
 #[derive(Deserialize)]

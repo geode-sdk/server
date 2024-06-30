@@ -492,12 +492,15 @@ impl Mod {
             version: String,
             mod_version_download_count: i32,
             validated: bool,
+            status: ModVersionStatusEnum,
+            info: Option<String>
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT
             m.id, m.featured, m.download_count as mod_download_count,
             mv.name, mv.version, mv.download_count as mod_version_download_count,
+            mvs.info, mvs.status,
             exists(
                 select 1 from mod_version_statuses mvs_inner
                 where mvs_inner.mod_version_id = mv.id and mvs_inner.status = 'accepted'
@@ -535,6 +538,8 @@ impl Mod {
                 version: record.version.clone(),
                 download_count: record.mod_version_download_count,
                 validated: record.validated,
+                info: record.info.clone(),
+                status: record.status
             };
 
             versions.entry(record.id.clone()).or_default().push(version);

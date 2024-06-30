@@ -931,7 +931,7 @@ components:
           $ref: "#/components/schemas/ModID"
         featured:
           type: boolean
-          description: Whether the mod should is featured or not
+          description: Whether the mod is featured or not
           example: true
         download_count:
           type: integer
@@ -955,7 +955,15 @@ components:
           example: 500
         validated:
           type: boolean
+          deprecated: true
           example: true
+          description: True if the mod is accepted. Deprecated in favor of the status field
+        status:
+          $ref: "#/components/schemas/ModVersionStatus"
+        info:
+          type: string
+          nullable: true
+          description: Information given with the version's status (typically a reason)
 
     Platform:
       type: string
