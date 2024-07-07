@@ -40,6 +40,13 @@ pub struct ModVersion {
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
     pub developers: Option<Vec<Developer>>,
     pub tags: Option<Vec<String>>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Admin/developer only - Reason given to status
+    pub info: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Admin/developer only - Direct download to mod
+    pub direct_download_link: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -56,6 +63,7 @@ struct ModVersionGetOne {
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
+    info: Option<String>,
 }
 
 pub struct IndexQuery {
@@ -97,13 +105,26 @@ impl ModVersionGetOne {
             tags: None,
             dependencies: None,
             incompatibilities: None,
+            info: Some(self.info),
+            direct_download_link: None
         }
     }
 }
 
 impl ModVersion {
-    pub fn modify_download_link(&mut self, app_url: &str) {
+    fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = create_download_link(app_url, &self.mod_id, &self.version)
+    }
+
+    pub fn modify_metadata(&mut self, app_url: &str, keep_information: bool) {
+        if keep_information {
+            self.direct_download_link = Some(self.download_link.clone());
+        } else {
+            self.direct_download_link = None;
+            self.info = None;
+        }
+
+        self.modify_download_link(app_url)
     }
 
     pub async fn get_index(
@@ -605,7 +626,7 @@ impl ModVersion {
             r#"SELECT mv.id, mv.name, mv.description, mv.version, 
                 mv.download_link, mv.download_count,
                 mv.hash, mv.geode, mv.early_load, mv.api, 
-                mv.mod_id, mvs.status as "status: _" 
+                mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id 

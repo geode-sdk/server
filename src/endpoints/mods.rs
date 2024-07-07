@@ -67,7 +67,7 @@ pub async fn index(
     let mut result = Mod::get_index(&mut pool, query.0).await?;
     for i in &mut result.data {
         for j in &mut i.versions {
-            j.modify_download_link(&data.app_url);
+            j.modify_metadata(&data.app_url, false);
         }
     }
     Ok(web::Json(ApiResponse {
@@ -80,13 +80,21 @@ pub async fn index(
 pub async fn get(
     data: web::Data<AppData>,
     id: web::Path<String>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    let has_extended_permissions = match auth.developer() {
+        Ok(dev) => dev.admin ||
+            Developer::has_access_to_mod(dev.id, &id, &mut pool).await?,
+        _ => false
+    };
+
     let found = Mod::get_one(&id, false, &mut pool).await?;
     match found {
         Some(mut m) => {
             for i in &mut m.versions {
-                i.modify_download_link(&data.app_url);
+                i.modify_metadata(&data.app_url, has_extended_permissions);
             }
             Ok(web::Json(ApiResponse {
                 error: "".into(),

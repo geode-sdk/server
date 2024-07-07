@@ -75,6 +75,7 @@ pub async fn get_version_index(
     path: web::Path<IndexPath>,
     data: web::Data<AppData>,
     query: web::Query<IndexQuery>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default());
     let compare = query.compare.as_ref().map(|c| split_version_and_compare(c));
@@ -90,6 +91,12 @@ pub async fn get_version_index(
 
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
+    let has_extended_permissions = match auth.developer() {
+        Ok(dev) => dev.admin ||
+            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false
+    };
+
     let mut result = ModVersion::get_index(
         mod_version::IndexQuery {
             mod_id: path.id.clone(),
@@ -104,7 +111,7 @@ pub async fn get_version_index(
     )
     .await?;
     for i in &mut result.data {
-        i.modify_download_link(&data.app_url);
+        i.modify_metadata(&data.app_url, has_extended_permissions);
     }
 
     Ok(web::Json(ApiResponse {
@@ -118,8 +125,15 @@ pub async fn get_one(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
     query: web::Query<GetOneQuery>,
+    auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+    let has_extended_permissions = match auth.developer() {
+        Ok(dev) => dev.admin ||
+            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false
+    };
 
     let mut version = {
         if path.version == "latest" {
@@ -140,7 +154,7 @@ pub async fn get_one(
         }
     };
 
-    version.modify_download_link(&data.app_url);
+    version.modify_metadata(&data.app_url, has_extended_permissions);
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: version,
