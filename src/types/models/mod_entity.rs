@@ -624,11 +624,11 @@ impl Mod {
                 incompatibilities: None,
             })
             .collect();
-        let ids = versions.iter().map(|x| x.id).collect();
-        let gd = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
-        let tags = Tag::get_tags_for_mod(id, pool).await?;
-        let devs = Developer::fetch_for_mod(id, pool).await?;
-        let links = ModLinks::fetch(id, pool).await?;
+        let ids: Vec<i32> = versions.iter().map(|x| x.id).collect();
+        let gd: HashMap<i32, DetailedGDVersion> = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
+        let tags: Vec<String> = Tag::get_tags_for_mod(id, pool).await?;
+        let devs: Vec<Developer> = Developer::fetch_for_mod(id, pool).await?;
+        let links: Option<ModLinks> = ModLinks::fetch(id, pool).await?;
 
         for i in &mut versions {
             let gd_versions = gd.get(&i.id).cloned().unwrap_or_default();
