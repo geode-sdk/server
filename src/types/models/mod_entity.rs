@@ -23,11 +23,7 @@ use sqlx::{
 use std::{collections::HashMap, io::{Cursor, Read}, str::FromStr};
 
 use super::{
-    dependency::ResponseDependency,
-    developer::{Developer, FetchedDeveloper},
-    incompatibility::{Replacement, ResponseIncompatibility},
-    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    tag::Tag,
+    dependency::ResponseDependency, developer::{Developer, FetchedDeveloper}, incompatibility::{Replacement, ResponseIncompatibility}, mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform}, mod_link::ModLinks, tag::Tag
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
@@ -670,6 +666,19 @@ impl Mod {
         let dev_verified = developer.verified;
 
         Mod::create(json, developer, pool).await?;
+        if let Some(l) = &json.links {
+            if l.community.is_some()
+                || l.homepage.is_some()
+                || l.source.is_some() {
+                ModLinks::upsert_for_mod(
+                    &json.id, 
+                    l.community.clone(),
+                    l.homepage.clone(),
+                    l.source.clone(),
+                    pool
+                ).await?;
+            }
+        }
         ModVersion::create_from_json(json, dev_verified, pool).await?;
         Ok(())
     }

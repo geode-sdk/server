@@ -6,6 +6,7 @@ use image::{
     DynamicImage, GenericImageView, ImageEncoder,
 };
 use regex::Regex;
+use reqwest::Url;
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
@@ -59,6 +60,14 @@ pub struct ModJson {
     pub changelog: Option<String>,
     pub dependencies: Option<Vec<ModJsonDependency>>,
     pub incompatibilities: Option<Vec<ModJsonIncompatibility>>,
+    pub links: Option<ModJsonLinks>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonLinks {
+    pub community: Option<String>,
+    pub homepage: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -365,6 +374,33 @@ impl ModJson {
             return Err(ApiError::BadRequest(
                 "Mod id too long (max 64 characters)".to_string(),
             ));
+        }
+
+        if let Some(l) = &self.links {
+            if let Some(community) = &l.community {
+                if let Err(e) = Url::parse(community) {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid community URL: {}. Reason: {}",
+                        community, e
+                    )));
+                }
+            }
+            if let Some(homepage) = &l.homepage {
+                if let Err(e) = Url::parse(homepage) {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid homepage URL: {}. Reason: {}",
+                        homepage, e
+                    )));
+                }
+            }
+            if let Some(source) = &l.source {
+                if let Err(e) = Url::parse(source) {
+                    return Err(ApiError::BadRequest(format!(
+                        "Invalid source URL: {}. Reason: {}",
+                        source, e
+                    )));
+                }
+            }
         }
         Ok(())
     }
