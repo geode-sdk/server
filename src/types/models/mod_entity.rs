@@ -39,6 +39,7 @@ pub struct Mod {
     pub changelog: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub links: Option<ModLinks>
 }
 
 #[derive(Serialize, Debug)]
@@ -392,6 +393,7 @@ impl Mod {
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, platforms, query.geode.as_ref()).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
             mod_version_ids.push(mod_version.id);
@@ -409,6 +411,8 @@ impl Mod {
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                let links = links.iter().find(|link| link.mod_id == x.id).cloned();
+
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
@@ -421,6 +425,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: None,
                     changelog: None,
+                    links
                 }
             })
             .collect();
@@ -435,6 +440,7 @@ impl Mod {
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_pending_for_mods(&ids, pool).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
             mod_version_ids.append(&mut mod_version.iter().map(|x| x.id).collect());
@@ -452,6 +458,8 @@ impl Mod {
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                let links = links.iter().find(|link| link.mod_id == x.id).cloned();
+
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
@@ -464,6 +472,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: x.about,
                     changelog: x.changelog,
+                    links
                 }
             })
             .collect::<Vec<Mod>>();
@@ -619,6 +628,7 @@ impl Mod {
         let gd = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
         let tags = Tag::get_tags_for_mod(id, pool).await?;
         let devs = Developer::fetch_for_mod(id, pool).await?;
+        let links = ModLinks::fetch(id, pool).await?;
 
         for i in &mut versions {
             let gd_versions = gd.get(&i.id).cloned().unwrap_or_default();
@@ -641,6 +651,7 @@ impl Mod {
                 .to_rfc3339_opts(SecondsFormat::Secs, true),
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
+            links
         };
         Ok(Some(mod_entity))
     }
