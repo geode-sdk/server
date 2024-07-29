@@ -38,6 +38,8 @@ The second step is setting our `DATABASE_URL`. It has a specific structure: `pos
 
 Third, we need to setup a local GitHub OAuth app. Since the index doesn't store passwords, and uses GitHub for logins, we need this step to login into the index. Check out this guide for [creating a GitHub OAuth app](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), then fill in the client ID and secret of your app inside the .env file.
 
+Finally, run your migrations from the project directory using `sqlx migrate run`
+
 After all of this is done, you should be able to run `cargo run` inside the index directory. The migrations will be ran automatically, and the index will start. You can check `http://localhost:8000` (if you haven't changed the app port) to see if it all works.
 
 ## 3. Admin users
