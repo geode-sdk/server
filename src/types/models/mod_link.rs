@@ -68,7 +68,7 @@ impl ModLinks {
         homepage: Option<String>,
         source: Option<String>,
         pool: &mut PgConnection,
-    ) -> Result<ModLinks, ApiError> {
+    ) -> Result<Option<ModLinks>, ApiError> {
         if ModLinks::exists(mod_id, pool).await? {
             return ModLinks::update_for_mod(mod_id, community, homepage, source, pool).await;
         }
@@ -86,12 +86,12 @@ impl ModLinks {
         .execute(pool)
         .await
         {
-            Ok(_) => Ok(ModLinks {
+            Ok(_) => Ok(Some(ModLinks {
                 mod_id: mod_id.to_string(),
                 community,
                 homepage,
                 source,
-            }),
+            })),
             Err(e) => {
                 log::error!("Failed to create mod link for {}. Error: {}", mod_id, e);
                 Err(ApiError::DbError)
@@ -127,7 +127,12 @@ impl ModLinks {
         homepage: Option<String>,
         source: Option<String>,
         pool: &mut PgConnection,
-    ) -> Result<ModLinks, ApiError> {
+    ) -> Result<Option<ModLinks>, ApiError> {
+        if community.is_none() && homepage.is_none() && source.is_none() {
+            ModLinks::delete_for_mod(mod_id, pool).await?;
+            return Ok(None);
+        }
+
         match sqlx::query!(
             "UPDATE mod_links
             SET community = $1,
@@ -154,13 +159,30 @@ impl ModLinks {
                     );
                     Err(ApiError::DbError)
                 } else {
-                    Ok(ModLinks {
+                    Ok(Some(ModLinks {
                         mod_id: mod_id.to_string(),
                         community,
                         homepage,
                         source,
-                    })
+                    }))
                 }
+            }
+        }
+    }
+
+    async fn delete_for_mod(mod_id: &str, pool: &mut PgConnection) -> Result<(), ApiError> {
+        match sqlx::query!(
+            "DELETE FROM mod_links
+            WHERE mod_id = $1",
+            mod_id
+        )
+        .execute(pool)
+        .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                log::error!("Failed to delete mod_links for {}. Error: {}", mod_id, e);
+                Err(ApiError::DbError)
             }
         }
     }

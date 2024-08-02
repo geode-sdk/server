@@ -63,7 +63,7 @@ pub struct ModJson {
     pub links: Option<ModJsonLinks>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ModJsonLinks {
     pub community: Option<String>,
     pub homepage: Option<String>,

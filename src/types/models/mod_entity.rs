@@ -5,7 +5,7 @@ use crate::{
     },
     types::{
         api::{ApiError, PaginatedData},
-        mod_json::{self, ModJson},
+        mod_json::{self, ModJson, ModJsonLinks},
         models::{
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
@@ -1016,6 +1016,24 @@ impl Mod {
                 }
             }
         }
+
+        let links = ModLinks::fetch(&json.id, pool).await?;
+
+        if links.is_some() || json.links.is_some() {
+            let links = json.links.clone().unwrap_or(ModJsonLinks {
+                community: None,
+                source: None,
+                homepage: None
+            });
+            ModLinks::upsert_for_mod(
+                &json.id,
+                links.community,
+                links.homepage,
+                links.source,
+                pool
+            ).await?;
+        }
+
 
         Ok(())
     }
