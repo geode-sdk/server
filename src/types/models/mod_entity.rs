@@ -5,7 +5,7 @@ use crate::{
     },
     types::{
         api::{ApiError, PaginatedData},
-        mod_json::{self, ModJson},
+        mod_json::{self, ModJson, ModJsonLinks},
         models::{
             mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
         },
@@ -23,11 +23,7 @@ use sqlx::{
 use std::{collections::HashMap, io::{Cursor, Read}, str::FromStr};
 
 use super::{
-    dependency::ResponseDependency,
-    developer::{Developer, FetchedDeveloper},
-    incompatibility::{Replacement, ResponseIncompatibility},
-    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    tag::Tag,
+    dependency::ResponseDependency, developer::{Developer, FetchedDeveloper}, incompatibility::{Replacement, ResponseIncompatibility}, mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform}, mod_link::ModLinks, tag::Tag
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
@@ -43,6 +39,7 @@ pub struct Mod {
     pub changelog: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub links: Option<ModLinks>
 }
 
 #[derive(Serialize, Debug)]
@@ -397,6 +394,7 @@ impl Mod {
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, platforms, query.geode.as_ref()).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
             mod_version_ids.push(mod_version.id);
@@ -414,6 +412,8 @@ impl Mod {
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                let links = links.iter().find(|link| link.mod_id == x.id).cloned();
+
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
@@ -426,6 +426,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: None,
                     changelog: None,
+                    links
                 }
             })
             .collect();
@@ -440,6 +441,7 @@ impl Mod {
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_pending_for_mods(&ids, pool).await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
             mod_version_ids.append(&mut mod_version.iter().map(|x| x.id).collect());
@@ -457,6 +459,8 @@ impl Mod {
 
                 let devs = developers.get(&x.id).cloned().unwrap_or_default();
                 let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                let links = links.iter().find(|link| link.mod_id == x.id).cloned();
+
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
@@ -469,6 +473,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: x.about,
                     changelog: x.changelog,
+                    links
                 }
             })
             .collect::<Vec<Mod>>();
@@ -622,10 +627,11 @@ impl Mod {
                 info: Some(x.info.clone()),
             })
             .collect();
-        let ids = versions.iter().map(|x| x.id).collect();
-        let gd = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
-        let tags = Tag::get_tags_for_mod(id, pool).await?;
-        let devs = Developer::fetch_for_mod(id, pool).await?;
+        let ids: Vec<i32> = versions.iter().map(|x| x.id).collect();
+        let gd: HashMap<i32, DetailedGDVersion> = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
+        let tags: Vec<String> = Tag::get_tags_for_mod(id, pool).await?;
+        let devs: Vec<Developer> = Developer::fetch_for_mod(id, pool).await?;
+        let links: Option<ModLinks> = ModLinks::fetch(id, pool).await?;
 
         for i in &mut versions {
             let gd_versions = gd.get(&i.id).cloned().unwrap_or_default();
@@ -648,6 +654,7 @@ impl Mod {
                 .to_rfc3339_opts(SecondsFormat::Secs, true),
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
+            links
         };
         Ok(Some(mod_entity))
     }
@@ -673,6 +680,19 @@ impl Mod {
         let dev_verified = developer.verified;
 
         Mod::create(json, developer, pool).await?;
+        if let Some(l) = &json.links {
+            if l.community.is_some()
+                || l.homepage.is_some()
+                || l.source.is_some() {
+                ModLinks::upsert_for_mod(
+                    &json.id, 
+                    l.community.clone(),
+                    l.homepage.clone(),
+                    l.source.clone(),
+                    pool
+                ).await?;
+            }
+        }
         ModVersion::create_from_json(json, dev_verified, pool).await?;
         Ok(())
     }
@@ -999,6 +1019,24 @@ impl Mod {
                 }
             }
         }
+
+        let links = ModLinks::fetch(&json.id, pool).await?;
+
+        if links.is_some() || json.links.is_some() {
+            let links = json.links.clone().unwrap_or(ModJsonLinks {
+                community: None,
+                source: None,
+                homepage: None
+            });
+            ModLinks::upsert_for_mod(
+                &json.id,
+                links.community,
+                links.homepage,
+                links.source,
+                pool
+            ).await?;
+        }
+
 
         Ok(())
     }
