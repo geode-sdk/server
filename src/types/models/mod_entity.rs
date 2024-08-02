@@ -92,6 +92,7 @@ struct ModRecordGetOne {
     changelog: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    info: Option<String>,
 }
 
 pub enum CheckExistingResult {
@@ -573,7 +574,7 @@ impl Mod {
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
-                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _"
+                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -617,6 +618,8 @@ impl Mod {
                 tags: None,
                 dependencies: None,
                 incompatibilities: None,
+                direct_download_link: Some(x.download_link.clone()),
+                info: Some(x.info.clone()),
             })
             .collect();
         let ids = versions.iter().map(|x| x.id).collect();
