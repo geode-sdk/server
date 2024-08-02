@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_links\n            SET community = $1,\n                homepage = $2,\n                source = $3\n            WHERE mod_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f9c3ac510fa92a58cf7e43d648008b9cc423e365afd4cdb07289817cf5816b51"
+}

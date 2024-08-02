@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                mod_id, community, homepage, source\n            FROM mod_links\n            WHERE mod_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "community",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "homepage",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "source",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4250be7721057fee9a8fdbb9ab083bb2398a64b23eed89a0746badb07eb73b1a"
+}

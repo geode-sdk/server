@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mv.id, mv.name, mv.description, mv.version, \n                mv.download_link, mv.download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, \n                mv.mod_id, mvs.status as \"status: _\" \n            FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id \n            WHERE mv.mod_id = $1 AND mv.version = $2 \n                AND (mvs.status = 'accepted' OR $3 = false)",
+  "query": "SELECT mv.id, mv.name, mv.description, mv.version, \n                mv.download_link, mv.download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, \n                mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id \n            WHERE mv.mod_id = $1 AND mv.version = $2 \n                AND (mvs.status = 'accepted' OR $3 = false)",
   "describe": {
     "columns": [
       {
@@ -74,6 +74,11 @@
             }
           }
         }
+      },
+      {
+        "ordinal": 12,
+        "name": "info",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -95,8 +100,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "8766c857a28fd2da53b8cc0182c2d810f6aaf5ecf31fe6099e08400ecc9a3045"
+  "hash": "7e35b849e423f58ccf91d971def74affe6feaea5ac6a4a56fc2c38b01ed99aa1"
 }

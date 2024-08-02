@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mod_links\n            WHERE mod_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bb252adbf493be825ee242b7c2fb76c8f366e2b1f2156bbfe7e67ad2dbeaf39d"
+}
