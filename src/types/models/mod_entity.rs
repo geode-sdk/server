@@ -624,7 +624,7 @@ impl Mod {
                 dependencies: None,
                 incompatibilities: None,
                 direct_download_link: Some(x.download_link.clone()),
-                info: Some(x.info.clone()),
+                info: x.info.clone(),
             })
             .collect();
         let ids: Vec<i32> = versions.iter().map(|x| x.id).collect();

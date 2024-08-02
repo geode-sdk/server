@@ -43,7 +43,7 @@ pub struct ModVersion {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Reason given to status
-    pub info: Option<Option<String>>,
+    pub info: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Direct download to mod
     pub direct_download_link: Option<String>,
@@ -63,6 +63,7 @@ struct ModVersionGetOne {
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
+    #[sqlx(default)]
     info: Option<String>,
 }
 
@@ -105,8 +106,8 @@ impl ModVersionGetOne {
             tags: None,
             dependencies: None,
             incompatibilities: None,
-            info: Some(self.info),
-            direct_download_link: None
+            info: self.info,
+            direct_download_link: None,
         }
     }
 }
@@ -799,7 +800,7 @@ impl ModVersion {
 
     pub async fn get_accepted_count(
         mod_id: &str,
-        pool: &mut PgConnection
+        pool: &mut PgConnection,
     ) -> Result<i64, ApiError> {
         let count = match sqlx::query_scalar!(
             "SELECT COUNT(*) FROM mod_versions mv INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id WHERE mvs.status = 'accepted' AND mv.mod_id = $1",
