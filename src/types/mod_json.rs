@@ -74,6 +74,7 @@ pub struct ModJsonLinks {
 pub struct ModJsonDependency {
     pub id: String,
     pub version: String,
+    #[serde(default)]
     pub importance: DependencyImportance,
     // This should throw a deprecated error
     pub required: Option<bool>,
@@ -83,6 +84,7 @@ pub struct ModJsonDependency {
 pub struct ModJsonIncompatibility {
     pub id: String,
     pub version: String,
+    #[serde(default)]
     pub importance: IncompatibilityImportance,
 }
 

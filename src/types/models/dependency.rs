@@ -86,12 +86,13 @@ impl Display for ModVersionCompare {
     }
 }
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Default)]
 #[sqlx(type_name = "dependency_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyImportance {
     Suggested,
     Recommended,
+    #[default]
     Required,
 }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use crate::types::api::ApiError;
 use crate::types::models::dependency::ModVersionCompare;
@@ -45,10 +45,11 @@ pub struct Replacement {
     pub incompatibilities: Vec<ResponseIncompatibility>,
 }
 
-#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq)]
+#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq, Default)]
 #[sqlx(type_name = "incompatibility_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum IncompatibilityImportance {
+    #[default]
     Breaking,
     Conflicting,
     Superseded,
