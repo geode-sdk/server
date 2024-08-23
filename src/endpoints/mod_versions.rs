@@ -18,6 +18,7 @@ use crate::{
         },
     }, webhook::send_webhook, AppData
 };
+use crate::types::models::mod_feedback::ModFeedback;
 
 #[derive(Deserialize)]
 struct IndexPath {
@@ -286,6 +287,8 @@ pub async fn create_version(
     Ok(HttpResponse::NoContent())
 }
 
+// POST /v1/mods/{id}/versions/{version}/feedback should supersede this endpoint
+// adding compatibility for now
 #[put("v1/mods/{id}/versions/{version}")]
 pub async fn update_version(
     path: web::Path<UpdateVersionPath>,
@@ -307,26 +310,9 @@ pub async fn update_version(
     ).await?;
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let id = match sqlx::query!(
-        "select id from mod_versions where mod_id = $1 and version = $2",
-        &path.id,
-        path.version.trim_start_matches('v')
-    )
-    .fetch_optional(&mut *transaction)
-    .await
-    {
-        Ok(Some(id)) => id.id,
-        Ok(None) => {
-            return Err(ApiError::NotFound(String::from("Not Found")));
-        }
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-    };
 
     if let Err(e) = ModVersion::update_version(
-        id,
+        version.id,
         payload.status,
         payload.info.clone(),
         dev.id,
@@ -340,10 +326,28 @@ pub async fn update_version(
             .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
+
+    if let Err(e) = ModFeedback::set(
+        &version,
+        dev.id,
+        payload.status == ModVersionStatusEnum::Accepted,
+        payload.info.as_deref().unwrap_or_default(),
+        true,
+        &mut transaction
+    ).await {
+        transaction
+            .rollback()
+            .await
+            .or(Err(ApiError::TransactionError))?;
+        return Err(e);
+    }
+
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+
     
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;

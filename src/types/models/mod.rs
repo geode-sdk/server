@@ -10,3 +10,4 @@ pub mod mod_version;
 pub mod mod_version_status;
 pub mod stats;
 pub mod tag;
+pub mod mod_feedback;

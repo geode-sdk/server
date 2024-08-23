@@ -664,14 +664,14 @@ impl Mod {
         developer: FetchedDeveloper,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if semver::Version::parse(json.version.trim_start_matches('v')).is_err() {
+        if Version::parse(json.version.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid mod version semver {}",
                 json.version
             )));
         };
 
-        if semver::Version::parse(json.geode.trim_start_matches('v')).is_err() {
+        if Version::parse(json.geode.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid geode version semver {}",
                 json.geode
@@ -736,8 +736,8 @@ impl Mod {
             }
         };
 
-        let version = semver::Version::parse(latest.version.trim_start_matches('v')).unwrap();
-        let new_version = match semver::Version::parse(json.version.trim_start_matches('v')) {
+        let version = Version::parse(latest.version.trim_start_matches('v')).unwrap();
+        let new_version = match Version::parse(json.version.trim_start_matches('v')) {
             Ok(v) => v,
             Err(_) => {
                 return Err(ApiError::BadRequest(format!(
@@ -1232,7 +1232,7 @@ impl Mod {
     pub async fn get_updates(
         ids: &[String],
         platforms: VerPlatform,
-        geode: &semver::Version,
+        geode: &Version,
         gd: GDVersionEnum,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {

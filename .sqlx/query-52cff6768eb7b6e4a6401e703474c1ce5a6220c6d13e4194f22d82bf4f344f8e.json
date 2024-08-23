@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mf.id, mf.reviewer_id, dev.display_name AS reviewer_name, dev.admin AS reviewer_admin, mf.positive, mf.feedback, mf.decision\n            FROM mod_feedback mf\n\t\t\tINNER JOIN developers dev ON dev.id = mf.reviewer_id\n            WHERE mf.mod_version_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "reviewer_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "reviewer_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "reviewer_admin",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "positive",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "feedback",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "decision",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "52cff6768eb7b6e4a6401e703474c1ce5a6220c6d13e4194f22d82bf4f344f8e"
+}

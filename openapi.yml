@@ -465,7 +465,7 @@ paths:
       tags:
         - mods
       summary: Add a developer to a mod
-      description: This endpoint is only used for adding a developer to a mod. Must be the owner the mod to access this endpoint.
+      description: This endpoint is only used for adding a developer to a mod. Must be the owner of the mod to access this endpoint.
       security:
         - bearerAuth: []
 
