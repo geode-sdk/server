@@ -44,11 +44,13 @@ pub async fn get_mod_feedback(
     }
 
     let mod_version = {
-        if path.version == "latest" {
-            ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut pool).await?
-        } else {
-            ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
-        }
+        // latest bugs for some reason
+
+        //if path.version == "latest" {
+        //    ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut pool).await?
+        //} else {
+        ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut pool).await?
+        //}
     };
 
     let feedback = ModFeedback::get_for_mod_version_id(&mod_version, &mut pool).await?;
@@ -74,6 +76,20 @@ pub async fn post_mod_feedback(
         return Err(ApiError::Forbidden);
     }
 
+    let mod_version = {
+        // latest bugs for some reason
+
+        //if path.version == "latest" {
+        //    ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut transaction).await?
+        //} else {
+        ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut transaction).await?
+        //}
+    };
+
+    if mod_version.status != ModVersionStatusEnum::Pending {
+        return Err(ApiError::BadRequest("Mod version is not pending".to_string()));
+    }
+
     let decision = payload.decision.unwrap_or(false);
     let mut status = None;
     if decision {
@@ -85,14 +101,6 @@ pub async fn post_mod_feedback(
             false => ModVersionStatusEnum::Rejected,
         });
     }
-
-    let mod_version = {
-        if path.version == "latest" {
-            ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut transaction).await?
-        } else {
-            ModVersion::get_one(&path.id, &path.version, false, false, &mut transaction).await?
-        }
-    };
 
     let result = ModFeedback::set(&mod_version, dev.id, payload.positive, &payload.feedback, decision, &mut transaction).await;
 

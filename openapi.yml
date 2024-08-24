@@ -628,6 +628,70 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /v1/mods/{id}/versions/{version}/feedback:
+    get:
+      tags:
+        - mods
+      summary: Get feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                  $ref: "#/components/schemas/ModFeedback"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags:
+        - mods
+      summary: Add feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                positive:
+                  type: boolean
+                  description: Type of feedback - positive or negative
+                  example: true
+                feedback:
+                  type: string
+                  description: The feedback given by the reviewer
+                  example: "This mod is great!"
+                decision:
+                  type: boolean
+                  description: Whether or not this feedback was used to make a decision (admin only)
+                  example: false
+                  default: false
+      responses:
+        "204":
+          description: No Content (Feedback added)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -973,6 +1037,48 @@ components:
         - android32
         - android64
         - ios
+
+    Reviewer:
+      type: object
+      properties:
+        id:
+          type: integer
+        display_name:
+          type: string
+        admin:
+          type: boolean
+
+    ModFeedbackOne:
+      type: object
+      properties:
+        reviewer:
+          $ref: "#/components/schemas/Reviewer"
+          description: The reviewer that gave the feedback
+        positive:
+          type: boolean
+          description: Type of feedback - positive or negative
+        feedback:
+          type: string
+          description: The feedback given by the reviewer
+        decision:
+          type: boolean
+          description: Whether or not this feedback was used to make a decision
+
+    ModFeedback:
+      type: object
+      properties:
+        score:
+          type: integer
+          description: The score of the mod, calculated as a sum of all feedback where positive is 1 and negative is -1
+        mod_id:
+          $ref: "#/components/schemas/ModID"
+        mod_version:
+          $ref: "#/components/schemas/ModVersionString"
+        feedback:
+          type: array
+          items:
+              $ref: "#/components/schemas/ModFeedbackOne"
+
   parameters:
     ModID:
       name: id
