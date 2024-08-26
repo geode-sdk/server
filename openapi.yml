@@ -667,19 +667,19 @@ paths:
             schema:
               type: object
               properties:
-                positive:
-                  type: boolean
-                  description: Type of feedback - positive or negative
-                  example: true
+                feedback_type:
+                  type: string
+                  enum:
+                    - Positive
+                    - Negative
+                    - Suggestion
+                    - Note
+                  description: Type of feedback - positive/negative modifies score, note is mod dev only
+                  example: Positive
                 feedback:
                   type: string
                   description: The feedback given by the reviewer
                   example: "This mod is great!"
-                decision:
-                  type: boolean
-                  description: Whether or not this feedback was used to make a decision (admin only)
-                  example: false
-                  default: false
       responses:
         "204":
           description: No Content (Feedback added)
@@ -1043,10 +1043,13 @@ components:
       properties:
         id:
           type: integer
+          description: The developer ID of the reviewer
         display_name:
           type: string
+          description: The display name of the reviewer
         admin:
           type: boolean
+          description: Whether the reviewer is an admin
 
     ModFeedbackOne:
       type: object
@@ -1054,9 +1057,14 @@ components:
         reviewer:
           $ref: "#/components/schemas/Reviewer"
           description: The reviewer that gave the feedback
-        positive:
-          type: boolean
-          description: Type of feedback - positive or negative
+        feedback_type:
+          type: string
+          enum:
+            - Positive
+            - Negative
+            - Suggestion
+            - Note
+          description: Type of feedback - positive/negative modifies score, note is mod dev only
         feedback:
           type: string
           description: The feedback given by the reviewer
