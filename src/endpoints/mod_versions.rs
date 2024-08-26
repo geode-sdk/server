@@ -287,8 +287,6 @@ pub async fn create_version(
     Ok(HttpResponse::NoContent())
 }
 
-// POST /v1/mods/{id}/versions/{version}/feedback should supersede this endpoint
-// adding compatibility for now
 #[put("v1/mods/{id}/versions/{version}")]
 pub async fn update_version(
     path: web::Path<UpdateVersionPath>,
