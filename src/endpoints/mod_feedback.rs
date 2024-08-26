@@ -10,12 +10,10 @@ use crate::{
             developer::{Developer},
         },
     },
-    AppData,
-    webhook::send_webhook
+    AppData
 };
 use crate::types::models::mod_version::ModVersion;
-use crate::types::models::mod_feedback::ModFeedback;
-use crate::types::models::mod_version_status::ModVersionStatusEnum;
+use crate::types::models::mod_feedback::{ModFeedback,FeedbackTypeEnum};
 
 #[derive(Deserialize)]
 pub struct GetModFeedbackPath {
@@ -25,9 +23,8 @@ pub struct GetModFeedbackPath {
 
 #[derive(Deserialize)]
 pub struct PostModFeedbackPayload {
-    positive: bool,
+    feedback_type: FeedbackTypeEnum,
     feedback: String,
-    decision: Option<bool>, // Admin Only: Setting this will turn the request into a decision, like PUT v1/mods/{id}/versions/{version}
 }
 
 #[get("/v1/mods/{id}/versions/{version}/feedback")]
@@ -39,8 +36,13 @@ pub async fn get_mod_feedback(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if !Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await? && !dev.admin {
+    if !Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await? && !dev.admin && !dev.verified {
         return Err(ApiError::Forbidden);
+    }
+
+    let mut note_only = false;
+    if !Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await? && !dev.admin {
+        note_only = true;
     }
 
     let mod_version = {
@@ -53,7 +55,7 @@ pub async fn get_mod_feedback(
         //}
     };
 
-    let feedback = ModFeedback::get_for_mod_version_id(&mod_version, &mut pool).await?;
+    let feedback = ModFeedback::get_for_mod_version_id(&mod_version, note_only, &mut pool).await?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
@@ -72,8 +74,16 @@ pub async fn post_mod_feedback(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    if (!dev.verified && !dev.admin) || Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await? {
+    if (!dev.verified && !dev.admin) {
         return Err(ApiError::Forbidden);
+    }
+
+    if Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await? && payload.feedback_type != FeedbackTypeEnum::Note {
+        return Err(ApiError::Forbidden);
+    }
+
+    if !Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await? && payload.feedback_type == FeedbackTypeEnum::Note {
+        return Err(ApiError::BadRequest("Only mod owners can leave notes".to_string()));
     }
 
     let mod_version = {
@@ -86,23 +96,7 @@ pub async fn post_mod_feedback(
         //}
     };
 
-    if mod_version.status != ModVersionStatusEnum::Pending {
-        return Err(ApiError::BadRequest("Mod version is not pending".to_string()));
-    }
-
-    let decision = payload.decision.unwrap_or(false);
-    let mut status = None;
-    if decision {
-        if !dev.admin {
-            return Err(ApiError::Forbidden);
-        }
-        status = Some(match payload.positive {
-            true => ModVersionStatusEnum::Accepted,
-            false => ModVersionStatusEnum::Rejected,
-        });
-    }
-
-    let result = ModFeedback::set(&mod_version, dev.id, payload.positive, &payload.feedback, decision, &mut transaction).await;
+    let result = ModFeedback::set(&mod_version, dev.id, payload.feedback_type.clone(), &payload.feedback, false, &mut transaction).await;
 
     if result.is_err() {
         transaction
@@ -110,46 +104,6 @@ pub async fn post_mod_feedback(
             .await
             .or(Err(ApiError::TransactionError))?;
         return Err(result.err().unwrap());
-    }
-
-    if let Some(status) = status {
-        if let Err(e) = ModVersion::update_version(
-            mod_version.id,
-            status,
-            payload.feedback.clone().into(),
-            dev.id,
-            &mut transaction,
-        )
-            .await
-        {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            return Err(e);
-        }
-
-        if status == ModVersionStatusEnum::Accepted {
-            let approved_count = ModVersion::get_accepted_count(mod_version.mod_id.as_str(), &mut transaction).await?;
-
-            let is_update = approved_count > 0;
-
-            let owner = Developer::fetch_for_mod(path.id.as_str(), &mut transaction)
-                .await?
-                .into_iter()
-                .find(|dev| dev.is_owner);
-
-            send_webhook(
-                mod_version.mod_id,
-                mod_version.name.clone(),
-                mod_version.version.clone(),
-                is_update,
-                owner.as_ref().unwrap().clone(),
-                dev.clone(),
-                data.webhook_url.clone(),
-                data.app_url.clone()
-            ).await;
-        }
     }
 
     transaction

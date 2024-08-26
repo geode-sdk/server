@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mf.id, mf.reviewer_id, dev.display_name AS reviewer_name, dev.admin AS reviewer_admin, mf.positive, mf.feedback, mf.decision\n            FROM mod_feedback mf\n\t\t\tINNER JOIN developers dev ON dev.id = mf.reviewer_id\n            WHERE mf.mod_version_id = $1",
+  "query": "SELECT mf.id, mf.reviewer_id, dev.display_name AS reviewer_name, dev.admin AS reviewer_admin, mf.type AS \"feedback_type: _\", mf.feedback, mf.decision\n            FROM mod_feedback mf\n\t\t\tINNER JOIN developers dev ON dev.id = mf.reviewer_id\n            WHERE mf.mod_version_id = $1",
   "describe": {
     "columns": [
       {
@@ -25,8 +25,20 @@
       },
       {
         "ordinal": 4,
-        "name": "positive",
-        "type_info": "Bool"
+        "name": "feedback_type: _",
+        "type_info": {
+          "Custom": {
+            "name": "feedback_type",
+            "kind": {
+              "Enum": [
+                "Positive",
+                "Negative",
+                "Suggestion",
+                "Note"
+              ]
+            }
+          }
+        }
       },
       {
         "ordinal": 5,
@@ -54,5 +66,5 @@
       false
     ]
   },
-  "hash": "52cff6768eb7b6e4a6401e703474c1ce5a6220c6d13e4194f22d82bf4f344f8e"
+  "hash": "9b7acc44bb2484b620efd73816879188954aaf9632a417f7ba9362e218fcc021"
 }

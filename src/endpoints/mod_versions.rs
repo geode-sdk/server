@@ -18,7 +18,7 @@ use crate::{
         },
     }, webhook::send_webhook, AppData
 };
-use crate::types::models::mod_feedback::ModFeedback;
+use crate::types::models::mod_feedback::{ModFeedback,FeedbackTypeEnum};
 
 #[derive(Deserialize)]
 struct IndexPath {
@@ -327,19 +327,27 @@ pub async fn update_version(
         return Err(e);
     }
 
-    if let Err(e) = ModFeedback::set(
-        &version,
-        dev.id,
-        payload.status == ModVersionStatusEnum::Accepted,
-        payload.info.as_deref().unwrap_or_default(),
-        true,
-        &mut transaction
-    ).await {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(e);
+    let feedback_type = match payload.status {
+        ModVersionStatusEnum::Accepted => FeedbackTypeEnum::Positive,
+        ModVersionStatusEnum::Rejected => FeedbackTypeEnum::Negative,
+        _ => FeedbackTypeEnum::Note,
+    };
+
+    if feedback_type != FeedbackTypeEnum::Note {
+        if let Err(e) = ModFeedback::set(
+            &version,
+            dev.id,
+            feedback_type,
+            payload.info.as_deref().unwrap_or_default(),
+            true,
+            &mut transaction
+        ).await {
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
+            return Err(e);
+        }
     }
 
     transaction

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_feedback (mod_version_id, reviewer_id, type, feedback, decision)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (mod_version_id, reviewer_id)\n            DO UPDATE SET type = EXCLUDED.type, feedback = EXCLUDED.feedback, decision = EXCLUDED.decision",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        {
+          "Custom": {
+            "name": "feedback_type",
+            "kind": {
+              "Enum": [
+                "Positive",
+                "Negative",
+                "Suggestion",
+                "Note"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "65406a8107f5b918cb90946352ab511848845b04460426bababfca7bc164b1bb"
+}
