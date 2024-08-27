@@ -36,12 +36,14 @@ pub async fn get_mod_feedback(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    if !Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await? && !dev.admin && !dev.verified {
+    let access = Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?;
+
+    if !access && !dev.admin && !dev.verified {
         return Err(ApiError::Forbidden);
     }
 
     let mut note_only = false;
-    if !Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await? && !dev.admin {
+    if !access && !dev.admin {
         note_only = true;
     }
 
@@ -78,11 +80,13 @@ pub async fn post_mod_feedback(
         return Err(ApiError::Forbidden);
     }
 
-    if Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await? && payload.feedback_type != FeedbackTypeEnum::Note {
+    let access = Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await?;
+
+    if access && payload.feedback_type != FeedbackTypeEnum::Note {
         return Err(ApiError::Forbidden);
     }
 
-    if !Developer::has_access_to_mod(dev.id, &path.id, &mut transaction).await? && payload.feedback_type == FeedbackTypeEnum::Note {
+    if !access && payload.feedback_type == FeedbackTypeEnum::Note {
         return Err(ApiError::BadRequest("Only mod owners can leave notes".to_string()));
     }
 
