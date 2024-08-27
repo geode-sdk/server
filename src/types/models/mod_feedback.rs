@@ -1,5 +1,4 @@
 use std::cmp::PartialEq;
-use std::str::FromStr;
 use serde::{Serialize, Deserialize};
 use sqlx::{PgConnection,FromRow};
 
