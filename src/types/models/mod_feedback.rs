@@ -133,4 +133,25 @@ impl ModFeedback {
 
         Ok(())
     }
+
+    pub async fn remove(
+        version: &ModVersion,
+        reviewer_id: i32,
+        pool: &mut PgConnection
+    ) -> Result<(), ApiError> {
+        sqlx::query!(
+            r#"DELETE FROM mod_feedback
+            WHERE mod_version_id = $1 AND reviewer_id = $2"#,
+            version.id,
+            reviewer_id
+        )
+        .execute(&mut *pool)
+        .await
+        .map_err(|e| {
+            log::error!("{}", e);
+            ApiError::DbError
+        })?;
+
+        Ok(())
+    }
 }

@@ -692,6 +692,25 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+    delete:
+      tags:
+        - mods
+      summary: Delete feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      responses:
+        "204":
+          description: No Content (Feedback deleted)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:

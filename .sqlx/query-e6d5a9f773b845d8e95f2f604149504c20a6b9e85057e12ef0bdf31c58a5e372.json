@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mod_feedback\n            WHERE mod_version_id = $1 AND reviewer_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e6d5a9f773b845d8e95f2f604149504c20a6b9e85057e12ef0bdf31c58a5e372"
+}
