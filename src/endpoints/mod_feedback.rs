@@ -14,6 +14,7 @@ use crate::{
 };
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_feedback::{ModFeedback,FeedbackTypeEnum};
+use crate::types::models::mod_version_status::ModVersionStatusEnum;
 
 #[derive(Deserialize)]
 pub struct GetModFeedbackPath {
@@ -48,13 +49,11 @@ pub async fn get_mod_feedback(
     }
 
     let mod_version = {
-        // latest bugs for some reason
-
-        //if path.version == "latest" {
-        //    ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut pool).await?
-        //} else {
-        ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut pool).await?
-        //}
+        if path.version == "latest" {
+            ModVersion::get_latest_for_mod(&path.id, None, vec![], None, vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending, ModVersionStatusEnum::Rejected, ModVersionStatusEnum::Unlisted], &mut pool).await?
+        } else {
+            ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut pool).await?
+        }
     };
 
     let feedback = ModFeedback::get_for_mod_version_id(&mod_version, note_only, &mut pool).await?;
@@ -76,7 +75,7 @@ pub async fn post_mod_feedback(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    if (!dev.verified && !dev.admin) {
+    if !dev.verified && !dev.admin {
         return Err(ApiError::Forbidden);
     }
 
@@ -91,13 +90,11 @@ pub async fn post_mod_feedback(
     }
 
     let mod_version = {
-        // latest bugs for some reason
-
-        //if path.version == "latest" {
-        //    ModVersion::get_latest_for_mod(&path.id, None, vec![], None, &mut transaction).await?
-        //} else {
-        ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut transaction).await?
-        //}
+        if path.version == "latest" {
+            ModVersion::get_latest_for_mod(&path.id, None, vec![], None, vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending, ModVersionStatusEnum::Rejected, ModVersionStatusEnum::Unlisted], &mut transaction).await?
+        } else {
+            ModVersion::get_one(path.id.strip_prefix('v').unwrap_or(&path.id), &path.version, false, false, &mut transaction).await?
+        }
     };
 
     let result = ModFeedback::set(&mod_version, dev.id, payload.feedback_type.clone(), &payload.feedback, false, &mut transaction).await;
