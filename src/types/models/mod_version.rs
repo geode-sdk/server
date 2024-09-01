@@ -676,6 +676,9 @@ impl ModVersion {
         mod_version_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        // TODO: unfreeze mod count
+        return Ok(());
+
         if let Err(e) = sqlx::query!(
             "UPDATE mod_versions mv 
             SET download_count = mv.download_count + (

@@ -7,6 +7,9 @@ pub async fn create_download(
     mod_version_id: i32,
     pool: &mut PgConnection,
 ) -> Result<bool, ApiError> {
+    // TODO: unfreeze mod count
+    return Ok(false);
+
     let existing = match sqlx::query!(
         r#"
         SELECT * FROM mod_downloads

@@ -1,6 +1,9 @@
 use sqlx::PgConnection;
 
 pub async fn start(pool: &mut PgConnection) -> Result<(), String> {
+    // TODO: unfreeze mod count
+    return Ok(());
+
     // update mod_versions counts
     if let Err(e) = sqlx::query!(
         "UPDATE mod_versions mv SET download_count = mv.download_count + (

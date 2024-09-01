@@ -1045,6 +1045,9 @@ impl Mod {
         mod_id: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        // TODO: unfreeze mod count
+        return Ok(());
+        
         if let Err(e) = sqlx::query!(
             "UPDATE mods m SET download_count = (
                 SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
