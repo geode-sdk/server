@@ -204,14 +204,14 @@ pub async fn download_version(
         // only accepted mods can have their download counts incremented
         // we'll just fix this once they're updated anyways
 
-        if mod_version.status == ModVersionStatusEnum::Accepted {
+        if (downloaded_version || downloaded_mod) && mod_version.status == ModVersionStatusEnum::Accepted {
             tokio::spawn(async move {
                 if downloaded_version {
                     // we must nest more
                     if let Err(e) = ModVersion::increment_downloads(mod_version.id, &mut pool).await
                     {
                         log::error!(
-                            "Failed increment downloads for mod version {}. Error: {}",
+                            "Failed to increment downloads for mod version {}. Error: {}",
                             version,
                             e
                         );
@@ -221,7 +221,7 @@ pub async fn download_version(
                 if downloaded_mod {
                     if let Err(e) = Mod::increment_downloads(&mod_version.mod_id, &mut pool).await {
                         log::error!(
-                            "Failed increment downloads for mod {}. Error: {}",
+                            "Failed to increment downloads for mod {}. Error: {}",
                             name,
                             e
                         );
