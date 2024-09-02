@@ -681,8 +681,18 @@ paths:
                   description: The feedback given by the reviewer
                   example: "This mod is great!"
       responses:
-        "204":
-          description: No Content (Feedback added)
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  payload:
+                    description: The ID of the new feedback (for use in deleting)
+                    type: integer
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -701,6 +711,16 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ModID"
         - $ref: "#/components/parameters/ModVersion"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  description: The ID of the feedback to delete
+                  example: 1
       responses:
         "204":
           description: No Content (Feedback deleted)
@@ -1069,6 +1089,22 @@ components:
         admin:
           type: boolean
           description: Whether the reviewer is an admin
+        dev:
+          type: boolean
+          description: Whether the reviewer is a developer of the mod
+
+    Score:
+      type: object
+      properties:
+        score:
+          type: integer
+          description: The score of the mod, calculated as a sum of all feedback where positive is 1 and negative is -1
+        positive:
+          type: integer
+          description: The number of positive feedback
+        negative:
+          type: integer
+          description: The number of negative feedback
 
     ModFeedbackOne:
       type: object
@@ -1095,8 +1131,8 @@ components:
       type: object
       properties:
         score:
-          type: integer
-          description: The score of the mod, calculated as a sum of all feedback where positive is 1 and negative is -1
+          $ref: "#/components/schemas/Score"
+          description: The mod's score
         mod_id:
           $ref: "#/components/schemas/ModID"
         mod_version:
