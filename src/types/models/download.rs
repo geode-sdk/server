@@ -28,13 +28,7 @@ pub async fn create_download(
     pool: &mut PgConnection,
 ) -> Result<(bool, bool), ApiError> {
     // hold it in a transaction, so we don't get duplicate downloads or something
-    let mut tx = match pool.begin().await {
-        Ok(e) => e,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-    };
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let existing = match sqlx::query!(
         r#"
@@ -56,7 +50,7 @@ pub async fn create_download(
 
     if existing.is_some() {
         // we don't really care about a read transaction failing
-        let _ = tx.commit().await;
+        tx.commit().await.or(Err(ApiError::TransactionError))?;
 
         return Ok((false, false));
     }
@@ -98,7 +92,7 @@ pub async fn create_download(
     .await
     {
         Ok(_) => {
-            let _ = tx.commit().await;
+            tx.commit().await.or(Err(ApiError::TransactionError))?;
 
             Ok((true, !downloaded_mod))
         },
