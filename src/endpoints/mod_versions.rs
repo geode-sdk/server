@@ -195,26 +195,40 @@ pub async fn download_version(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if download::create_download(net, mod_version.id, &mut pool).await? {
+    if let Ok((downloaded_version, downloaded_mod)) = download::create_download(
+        net, mod_version.id, &mod_version.mod_id, &mut pool
+    ).await {
         let name = mod_version.mod_id.clone();
         let version = mod_version.version.clone();
-        tokio::spawn(async move {
-            if let Err(e) = ModVersion::calculate_cached_downloads(mod_version.id, &mut pool).await
-            {
-                log::error!(
-                    "Failed to calculate cached downloads for mod version {}. Error: {}",
-                    version,
-                    e
-                );
-            }
-            if let Err(e) = Mod::calculate_cached_downloads(&mod_version.mod_id, &mut pool).await {
-                log::error!(
-                    "Failed to calculate cached downloads for mod {}. Error: {}",
-                    name,
-                    e
-                );
-            }
-        });
+
+        // only accepted mods can have their download counts incremented
+        // we'll just fix this once they're updated anyways
+
+        if mod_version.status == ModVersionStatusEnum::Accepted {
+            tokio::spawn(async move {
+                if downloaded_version {
+                    // we must nest more
+                    if let Err(e) = ModVersion::increment_downloads(mod_version.id, &mut pool).await
+                    {
+                        log::error!(
+                            "Failed increment downloads for mod version {}. Error: {}",
+                            version,
+                            e
+                        );
+                    }
+                }
+
+                if downloaded_mod {
+                    if let Err(e) = Mod::increment_downloads(&mod_version.mod_id, &mut pool).await {
+                        log::error!(
+                            "Failed increment downloads for mod {}. Error: {}",
+                            name,
+                            e
+                        );
+                    }
+                }
+            });
+        }
     }
 
     Ok(HttpResponse::Found()

@@ -1041,13 +1041,25 @@ impl Mod {
         Ok(())
     }
 
+    pub async fn increment_downloads(
+        mod_id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        if let Err(e) = sqlx::query!(
+            "UPDATE mods m
+            SET download_count = download_count + 1
+            WHERE m.id = $1", mod_id
+        ).execute(&mut *pool).await {
+            log::error!("{}", e);
+            return Err(ApiError::DbError);
+        }
+        Ok(())
+    }
+
     pub async fn calculate_cached_downloads(
         mod_id: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        // TODO: unfreeze mod count
-        return Ok(());
-        
         if let Err(e) = sqlx::query!(
             "UPDATE mods m SET download_count = (
                 SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
