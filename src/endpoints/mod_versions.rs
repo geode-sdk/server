@@ -149,7 +149,7 @@ pub async fn get_one(
             let platform_string = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_string);
 
-            ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool).await?
+            ModVersion::get_latest_for_mod_statuses(&path.id, gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool).await?
         } else {
             ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
         }
@@ -182,7 +182,7 @@ pub async fn download_version(
         if path.version == "latest" {
             let platform_str = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_str);
-            ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool)
+            ModVersion::get_latest_for_mod_statuses(&path.id, query.gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool)
                 .await?
         } else {
             ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
@@ -338,6 +338,7 @@ pub async fn update_version(
             feedback_type,
             payload.info.as_deref().unwrap_or_default(),
             true,
+            Developer::has_access_to_mod(dev.id, &version.mod_id, &mut transaction).await?,
             &mut transaction
         ).await {
             transaction

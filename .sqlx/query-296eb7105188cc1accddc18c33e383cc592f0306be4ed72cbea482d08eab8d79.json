@@ -1,8 +1,14 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO mod_feedback (mod_version_id, reviewer_id, type, feedback, decision)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (mod_version_id, reviewer_id)\n            DO UPDATE SET type = EXCLUDED.type, feedback = EXCLUDED.feedback, decision = EXCLUDED.decision",
+  "query": "INSERT INTO mod_feedback (mod_version_id, reviewer_id, type, feedback, decision, dev)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING id",
   "describe": {
-    "columns": [],
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
     "parameters": {
       "Left": [
         "Int4",
@@ -21,10 +27,13 @@
           }
         },
         "Text",
+        "Bool",
         "Bool"
       ]
     },
-    "nullable": []
+    "nullable": [
+      false
+    ]
   },
-  "hash": "65406a8107f5b918cb90946352ab511848845b04460426bababfca7bc164b1bb"
+  "hash": "296eb7105188cc1accddc18c33e383cc592f0306be4ed72cbea482d08eab8d79"
 }

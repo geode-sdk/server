@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mf.id, mf.reviewer_id, dev.display_name AS reviewer_name, dev.admin AS reviewer_admin, mf.type AS \"feedback_type: _\", mf.feedback, mf.decision\n            FROM mod_feedback mf\n\t\t\tINNER JOIN developers dev ON dev.id = mf.reviewer_id\n            WHERE mf.mod_version_id = $1",
+  "query": "SELECT mf.id, mf.reviewer_id, dev.display_name AS reviewer_name, dev.admin AS reviewer_admin, mf.type AS \"feedback_type: _\", mf.feedback, mf.decision, mf.dev\n            FROM mod_feedback mf\n\t\t\tINNER JOIN developers dev ON dev.id = mf.reviewer_id\n            WHERE mf.id = $1",
   "describe": {
     "columns": [
       {
@@ -49,6 +49,11 @@
         "ordinal": 6,
         "name": "decision",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "dev",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -63,8 +68,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "9b7acc44bb2484b620efd73816879188954aaf9632a417f7ba9362e218fcc021"
+  "hash": "aca5f555d538070d553442baff1b5ebd88fda942ab6a7ed34e3f0b230e6152c0"
 }

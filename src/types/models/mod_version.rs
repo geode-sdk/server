@@ -436,6 +436,16 @@ impl ModVersion {
         gd: Option<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
         major: Option<u32>,
+        pool: &mut PgConnection,
+    ) -> Result<ModVersion, ApiError> {
+        Self::get_latest_for_mod_statuses(id, gd, platforms, major, vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Rejected, ModVersionStatusEnum::Unlisted, ModVersionStatusEnum::Pending], pool).await
+    }
+
+    pub async fn get_latest_for_mod_statuses(
+        id: &str,
+        gd: Option<GDVersionEnum>,
+        platforms: Vec<VerPlatform>,
+        major: Option<u32>,
         statuses: Vec<ModVersionStatusEnum>,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
