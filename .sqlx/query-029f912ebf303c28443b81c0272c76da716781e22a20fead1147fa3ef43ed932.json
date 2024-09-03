@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT md.mod_version_id FROM mod_downloads md\n        INNER JOIN mod_versions mv ON md.mod_version_id = mv.id\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE mv.mod_id = $2 AND mvs.status = 'accepted' AND ip = $1 LIMIT 1;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "029f912ebf303c28443b81c0272c76da716781e22a20fead1147fa3ef43ed932"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_versions mv\n            SET download_count = mv.download_count + 1\n            FROM mod_version_statuses mvs\n            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "aa57dd8a81be512862dcf376b533f83feb978cae69a12150bda352ac2d1270a8"
+}
