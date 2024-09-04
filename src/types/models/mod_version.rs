@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
+use chrono::SecondsFormat;
 use semver::Version;
 use serde::Serialize;
-use sqlx::{PgConnection, Postgres, QueryBuilder, Row};
+use sqlx::{
+    types::chrono::{DateTime, Utc},
+    PgConnection, Postgres, QueryBuilder, Row
+};
 
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
@@ -41,6 +44,9 @@ pub struct ModVersion {
     pub developers: Option<Vec<Developer>>,
     pub tags: Option<Vec<String>>,
 
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Reason given to status
     pub info: Option<String>,
@@ -63,6 +69,8 @@ struct ModVersionGetOne {
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
+    created_at: Option<DateTime<Utc>>,
+    updated_at: Option<DateTime<Utc>>,
     #[sqlx(default)]
     info: Option<String>,
 }
@@ -108,6 +116,8 @@ impl ModVersionGetOne {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
+            created_at: self.created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            updated_at: self.updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
         }
     }
 }
@@ -298,10 +308,10 @@ impl ModVersion {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
-                q.early_load, q.api, q.mod_id, q.status FROM (
+                q.early_load, q.api, q.mod_id, q.status, q.created_at, q.updated_at FROM (
                     SELECT
                     mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count, mvs.status,
-                    mv.early_load, mv.api, mv.mod_id, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
+                    mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
                     INNER JOIN mod_versions mv ON m.id = mv.mod_id
                     INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                     INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
@@ -398,7 +408,7 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
             mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
-            mv.early_load, mv.api, mv.mod_id, mvs.status FROM mod_versions mv 
+            mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at, mvs.status FROM mod_versions mv 
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE mvs.status = 'pending' AND mv.mod_id IN ("#,
         );
@@ -441,11 +451,12 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, 
                 q.hash, q.geode, q.download_count,
-                q.early_load, q.api, q.mod_id, q.status 
+                q.early_load, q.api, q.mod_id, q.status,
+                q.created_at, q.updated_at
             FROM (
                 SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link, 
                     mv.hash, mv.geode, mv.download_count, mvs.status,
-                    mv.early_load, mv.api, mv.mod_id, 
+                    mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                     row_number() over (partition by m.id order by mv.id desc) rn 
                 FROM mods m 
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
@@ -489,7 +500,7 @@ impl ModVersion {
                 return Err(ApiError::NotFound("".to_string()));
             }
             Err(e) => {
-                log::info!("{:?}", e);
+                log::error!("{:?}", e);
                 return Err(ApiError::DbError);
             }
         };
@@ -626,7 +637,8 @@ impl ModVersion {
             ModVersionGetOne,
             r#"SELECT mv.id, mv.name, mv.description, mv.version, 
                 mv.download_link, mv.download_count,
-                mv.hash, mv.geode, mv.early_load, mv.api, 
+                mv.hash, mv.geode, mv.early_load, mv.api,
+                mv.created_at, mv.updated_at,
                 mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id

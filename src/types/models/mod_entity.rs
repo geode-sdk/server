@@ -89,6 +89,8 @@ struct ModRecordGetOne {
     changelog: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    mod_version_created_at: Option<DateTime<Utc>>,
+    mod_version_updated_at: Option<DateTime<Utc>>,
     info: Option<String>,
 }
 
@@ -579,6 +581,7 @@ impl Mod {
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
+                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
                 mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
@@ -623,6 +626,8 @@ impl Mod {
                 tags: None,
                 dependencies: None,
                 incompatibilities: None,
+                created_at: x.mod_version_created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+                updated_at: x.mod_version_updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
                 direct_download_link: Some(x.download_link.clone()),
                 info: x.info.clone(),
             })
