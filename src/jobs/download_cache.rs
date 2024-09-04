@@ -3,9 +3,9 @@ use sqlx::PgConnection;
 pub async fn start(pool: &mut PgConnection) -> Result<(), String> {
     // update mod_versions counts
     if let Err(e) = sqlx::query!(
-        "UPDATE mod_versions mv SET download_count = mv.download_count + (
+        "UPDATE mod_versions mv SET download_count = (
             SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
-            WHERE md.mod_version_id = mv.id AND md.time_downloaded > mv.last_download_cache_refresh 
+            WHERE md.mod_version_id = mv.id
         ), last_download_cache_refresh = now()
         FROM mod_version_statuses mvs
         WHERE mv.status_id = mvs.id AND mvs.status = 'accepted'"
