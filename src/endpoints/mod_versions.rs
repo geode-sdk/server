@@ -189,6 +189,13 @@ pub async fn download_version(
     };
     let url = mod_version.download_link;
 
+    if data.disable_downloads {
+        // whatever
+        return Ok(HttpResponse::Found()
+            .append_header(("Location", url))
+            .finish());
+    }
+
     let ip = match info.realip_remote_addr() {
         None => return Err(ApiError::InternalError),
         Some(i) => i,
