@@ -839,6 +839,21 @@ impl ModVersion {
             };
         }
 
+        match sqlx::query!(
+            "UPDATE mod_versions SET updated_at=$1 WHERE id=$2",
+            Utc::now(),
+            id
+        )
+        .execute(&mut *pool)
+        .await
+        {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::DbError);
+            }
+            Ok(r) => r,
+        };
+
         Ok(())
     }
 
