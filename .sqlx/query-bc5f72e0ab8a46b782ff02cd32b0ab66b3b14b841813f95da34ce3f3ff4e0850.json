@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 \n            AND ($2 = false OR mvs.status = 'accepted')",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 \n            AND ($2 = false OR mvs.status = 'accepted')",
   "describe": {
     "columns": [
       {
@@ -75,31 +75,41 @@
       },
       {
         "ordinal": 14,
+        "name": "mod_version_created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "mod_version_updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
         "name": "hash",
         "type_info": "Text"
       },
       {
-        "ordinal": 15,
+        "ordinal": 17,
         "name": "geode",
         "type_info": "Text"
       },
       {
-        "ordinal": 16,
+        "ordinal": 18,
         "name": "early_load",
         "type_info": "Bool"
       },
       {
-        "ordinal": 17,
+        "ordinal": 19,
         "name": "api",
         "type_info": "Bool"
       },
       {
-        "ordinal": 18,
+        "ordinal": 20,
         "name": "mod_id",
         "type_info": "Text"
       },
       {
-        "ordinal": 19,
+        "ordinal": 21,
         "name": "status: _",
         "type_info": {
           "Custom": {
@@ -116,7 +126,7 @@
         }
       },
       {
-        "ordinal": 20,
+        "ordinal": 22,
         "name": "info",
         "type_info": "Text"
       }
@@ -142,6 +152,8 @@
       false,
       false,
       false,
+      true,
+      true,
       false,
       false,
       false,
@@ -151,5 +163,5 @@
       true
     ]
   },
-  "hash": "8f5eec1fd0b603639cde480f2bc3ef805299a96c0aad31603bac54126f817b58"
+  "hash": "bc5f72e0ab8a46b782ff02cd32b0ab66b3b14b841813f95da34ce3f3ff4e0850"
 }
