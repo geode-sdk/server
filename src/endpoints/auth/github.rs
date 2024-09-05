@@ -73,6 +73,10 @@ pub async fn poll_github_login(
 
     let result = match result {
         PollResult::Pending | PollResult::Expired | PollResult::TooFast => {
+            transaction
+                .commit()
+                .await
+                .or(Err(ApiError::TransactionError))?;
             return Ok(HttpResponse::build(resp_data.0).json(ApiResponse {
                 error: resp_data.1.to_string(),
                 payload: "",
