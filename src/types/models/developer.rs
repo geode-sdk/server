@@ -5,12 +5,17 @@ use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::{ApiError, PaginatedData};
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, sqlx::FromRow)]
 pub struct Developer {
     pub id: i32,
     pub username: String,
     pub display_name: String,
-    pub is_owner: bool,
+    pub verified: bool,
+    pub admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[sqlx(default)]
+    pub is_owner: Option<bool>,
 }
 
 #[derive(Serialize, Clone)]
@@ -34,8 +39,8 @@ pub struct FetchedDeveloper {
 impl Developer {
     pub async fn get_total_count(pool: &mut PgConnection) -> Result<i64, ApiError> {
         match sqlx::query_scalar!("SELECT COUNT(*) FROM developers",)
-        .fetch_optional(&mut *pool)
-        .await
+            .fetch_optional(&mut *pool)
+            .await
         {
             Err(e) => {
                 log::error!("{}", e);
@@ -290,7 +295,7 @@ impl Developer {
     ) -> Result<Vec<Developer>, ApiError> {
         match sqlx::query_as!(
             Developer,
-            "SELECT dev.id, dev.username, dev.display_name, md.is_owner FROM developers dev
+            "SELECT dev.id, dev.username, dev.display_name, dev.verified, dev.admin, md.is_owner FROM developers dev
             INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id = $1",
             mod_id
         )
@@ -319,10 +324,12 @@ impl Developer {
             pub username: String,
             pub display_name: String,
             pub is_owner: bool,
+            pub verified: bool,
+            pub admin: bool,
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT dev.id, dev.username, dev.display_name, dev.verified, md.is_owner, md.mod_id FROM developers dev 
+            "SELECT dev.id, dev.username, dev.display_name, dev.verified, dev.admin. md.is_owner, md.mod_id FROM developers dev 
             INNER JOIN mods_developers md ON md.developer_id = dev.id WHERE md.mod_id IN ("
         );
 
@@ -351,7 +358,9 @@ impl Developer {
                 id: result_item.id,
                 username: result_item.username,
                 display_name: result_item.display_name,
-                is_owner: result_item.is_owner,
+                is_owner: Some(result_item.is_owner),
+                verified: result_item.verified,
+                admin: result_item.admin,
             };
             match ret.entry(result_item.mod_id) {
                 Entry::Vacant(e) => {

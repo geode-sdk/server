@@ -16,6 +16,7 @@ mod auth;
 mod endpoints;
 mod extractors;
 mod jobs;
+mod repositories;
 mod types;
 mod webhook;
 
@@ -71,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
         app_url: app_url.clone(),
         github_client_id: github_client.clone(),
         github_client_secret: github_secret.clone(),
-        webhook_url: webhook_url.clone()
+        webhook_url: webhook_url.clone(),
     };
 
     let args = Args::parse();
@@ -110,12 +111,11 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::update_version)
             .service(endpoints::auth::github::poll_github_login)
             .service(endpoints::auth::github::start_github_login)
+            .service(endpoints::auth::github::oauth_callback)
             .service(endpoints::developers::developer_index)
             .service(endpoints::developers::get_developer)
             .service(endpoints::developers::add_developer_to_mod)
             .service(endpoints::developers::remove_dev_from_mod)
-            .service(endpoints::developers::delete_token)
-            .service(endpoints::developers::delete_tokens)
             .service(endpoints::developers::update_profile)
             .service(endpoints::developers::get_own_mods)
             .service(endpoints::developers::get_me)

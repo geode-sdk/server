@@ -1,42 +1,55 @@
-use actix_web::{dev::ConnectionInfo, post, web, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
+use reqwest::StatusCode;
 use serde::Deserialize;
-use sqlx::{types::ipnetwork::IpNetwork, Acquire};
+use serde_json::json;
+use sqlx::Acquire;
 use uuid::Uuid;
 
 use crate::{
-    auth::{github, token::create_token_for_developer},
+    auth::{
+        github::client::GitHubOAuthClient,
+        oauth_client::{PollResult, PollingOAuthClient},
+    },
+    repositories::{self, developer},
     types::{
         api::{ApiError, ApiResponse},
-        models::{developer::Developer, github_login_attempt::GithubLoginAttempt},
+        models::developer::Developer,
     },
     AppData,
 };
 
 #[derive(Deserialize)]
 struct PollParams {
-    uuid: String,
+    uuid: Uuid,
+}
+
+#[derive(Deserialize)]
+struct CallbackParams {
+    code: Option<String>,
+    error: Option<String>,
+    #[serde(default = "default_show_tokens")]
+    show_tokens: bool,
+    state: Uuid,
+}
+
+fn default_show_tokens() -> bool {
+    false
 }
 
 #[post("v1/login/github")]
-pub async fn start_github_login(
-    data: web::Data<AppData>,
-    info: ConnectionInfo,
-) -> Result<impl Responder, ApiError> {
+pub async fn start_github_login(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let client = github::GithubClient::new(
-        data.github_client_id.to_string(),
-        data.github_client_secret.to_string(),
-    );
-    let ip = match info.realip_remote_addr() {
-        None => return Err(ApiError::InternalError),
-        Some(i) => i,
-    };
-    let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
+    let client = GitHubOAuthClient::new(&data.github_client_id, &data.github_client_secret);
 
-    let result = client.start_auth(net, &mut pool).await?;
+    let result = client
+        .start_auth(
+            &format!("{}/v1/login/github/callback", data.app_url),
+            &mut pool,
+        )
+        .await?;
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
-        payload: result,
+        payload: json!({ "url": result.0, "attempt": result.1 }),
     }))
 }
 
@@ -44,184 +57,130 @@ pub async fn start_github_login(
 pub async fn poll_github_login(
     json: web::Json<PollParams>,
     data: web::Data<AppData>,
-    connection_info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let uuid = match Uuid::parse_str(&json.uuid) {
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest(format!("Invalid uuid {}", json.uuid)));
-        }
-        Ok(u) => u,
-    };
-    let attempt = match GithubLoginAttempt::get_one(uuid, &mut transaction).await? {
-        None => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            return Err(ApiError::BadRequest(format!(
-                "No attempt made for uuid {}",
-                json.uuid
-            )));
-        }
-        Some(a) => a,
+
+    let client = GitHubOAuthClient::new(&data.github_client_id, &data.github_client_secret);
+    let result = client.poll(json.uuid, &mut transaction).await?;
+
+    let resp_data = match result {
+        PollResult::Done(_) => (StatusCode::OK, ""),
+        PollResult::Expired => (StatusCode::GONE, "This authentication session has expired"),
+        PollResult::Pending => (StatusCode::BAD_REQUEST, "The user hasn't authenticated yet"),
+        PollResult::TooFast => (StatusCode::TOO_MANY_REQUESTS, "Slow down"),
     };
 
-    let ip = match connection_info.realip_remote_addr() {
-        None => {
-            log::error!("Couldn't parse IP from request");
-            return Err(ApiError::InternalError);
+    let result = match result {
+        PollResult::Pending | PollResult::Expired | PollResult::TooFast => {
+            return Ok(HttpResponse::build(resp_data.0).json(ApiResponse {
+                error: resp_data.1.to_string(),
+                payload: "",
+            }));
         }
-        Some(i) => i,
+        PollResult::Done(result) => result,
     };
-    let net: IpNetwork = match ip.parse() {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest("Invalid IP".to_string()));
-        }
-        Ok(n) => n,
-    };
-    if attempt.ip.ip() != net.ip() {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        log::error!("{} compared to {}", attempt.ip, net);
-        return Err(ApiError::BadRequest(
-            "Request IP does not match stored attempt IP".to_string(),
-        ));
-    }
-    if !attempt.interval_passed() {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(ApiError::BadRequest("Too fast".to_string()));
-    }
-    if attempt.is_expired() {
-        match GithubLoginAttempt::remove(uuid, &mut transaction).await {
-            Err(e) => {
-                transaction
-                    .rollback()
-                    .await
-                    .or(Err(ApiError::TransactionError))?;
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(_) => {
-                transaction
-                    .commit()
-                    .await
-                    .or(Err(ApiError::TransactionError))?;
-                return Err(ApiError::BadRequest("Login attempt expired".to_string()));
-            }
-        };
-    }
 
-    let client = github::GithubClient::new(
-        data.github_client_id.to_string(),
-        data.github_client_secret.to_string(),
-    );
-    GithubLoginAttempt::poll(uuid, &mut transaction).await;
-    let token = client.poll_github(&attempt.device_code).await?;
-    if let Err(e) = GithubLoginAttempt::remove(uuid, &mut transaction).await {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        log::error!("{}", e);
+    let user_info: Option<(i64, String)> = client.get_user_profile(&result.0).await?;
+
+    if user_info.is_none() {
+        let _ = transaction.rollback().await;
         return Err(ApiError::InternalError);
-    };
-    let user = match client.get_user(token).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-        Ok(u) => u,
-    };
+    }
+
+    let user_info = user_info.unwrap();
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt
-
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    if let Some(dev) = Developer::get_by_github_id(user_info.0, &mut pool).await? {
+        return Ok(HttpResponse::build(resp_data.0).json(ApiResponse {
+            error: "".to_string(),
+            payload: json!({
+                "token": result.0,
+                "refresh_token": result.1,
+                "user": Developer {
+                        id: dev.id,
+                        username: dev.username,
+                        display_name: dev.display_name,
+                        verified: dev.verified,
+                        admin: dev.admin,
+                        is_owner: None
+                    }
+            }),
+        }));
+    }
 
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    let id = match user.get("id") {
-        None => return Err(ApiError::InternalError),
-        Some(id) => id.as_i64().unwrap(),
-    };
-    if let Some(x) = Developer::get_by_github_id(id, &mut transaction).await? {
-        let token = match create_token_for_developer(x.id, &mut transaction).await {
-            Err(_) => {
-                transaction
-                    .rollback()
-                    .await
-                    .or(Err(ApiError::TransactionError))?;
-                return Err(ApiError::InternalError);
-            }
-            Ok(t) => t,
-        };
-        transaction
-            .commit()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Ok(web::Json(ApiResponse {
-            error: "".to_string(),
-            payload: token.to_string(),
-        }));
-    }
-    let username = match user.get("login") {
-        None => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            return Err(ApiError::InternalError);
-        }
-        Some(user) => user.to_string(),
-    };
-    let id = match Developer::create(id, username, &mut transaction).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-        Ok(i) => i,
-    };
-    let token = match create_token_for_developer(id, &mut transaction).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-        Ok(t) => t,
-    };
+    let developer = repositories::developer::create(
+        developer::CreateDto {
+            github_id: user_info.0,
+            username: user_info.1,
+        },
+        &mut transaction,
+    )
+    .await?;
+
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
 
-    Ok(web::Json(ApiResponse {
+    Ok(HttpResponse::build(resp_data.0).json(ApiResponse {
         error: "".to_string(),
-        payload: token.to_string(),
+        payload: json!({
+            "token": result.0,
+            "refresh_token": result.1,
+            "user": developer
+        }),
     }))
+}
+
+#[get("v1/login/github/callback")]
+pub async fn oauth_callback(
+    data: web::Data<AppData>,
+    query: web::Query<CallbackParams>,
+) -> Result<impl Responder, ApiError> {
+    if query.code.as_ref().is_none() {
+        if let Some(e) = &query.error {
+            return Ok(HttpResponse::build(StatusCode::UNAUTHORIZED).body(e.clone()));
+        }
+    }
+
+    let code = query.code.clone().unwrap();
+
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let found = repositories::oauth_attempts::find_one(&query.state, &mut pool).await?;
+
+    let client = GitHubOAuthClient::new(&data.github_client_id, &data.github_client_secret);
+    match client.exchange_tokens(code).await? {
+        None => Err(ApiError::Unauthorized),
+        Some(tokens) => {
+            if let Some(found) = found {
+                let _ = repositories::oauth_attempts::set_tokens(
+                    &found.uid, &tokens.0, &tokens.1, &mut pool,
+                )
+                .await?;
+            }
+
+            if query.show_tokens {
+                Ok(HttpResponse::build(StatusCode::OK).json(ApiResponse {
+                    error: "".to_string(),
+                    payload: json!({
+                        "token": tokens.0,
+                        "refresh_token": tokens.1
+                    }),
+                }))
+            } else {
+                Ok(HttpResponse::build(StatusCode::OK).json(ApiResponse {
+                    error: "".to_string(),
+                    payload: "All done, you can return to the client!",
+                }))
+            }
+        }
+    }
 }

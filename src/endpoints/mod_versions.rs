@@ -5,7 +5,8 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    extractors::auth::Auth, types::{
+    extractors::auth::Auth,
+    types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -16,7 +17,9 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    }, webhook::send_webhook, AppData
+    },
+    webhook::send_webhook,
+    AppData,
 };
 
 #[derive(Deserialize)]
@@ -92,9 +95,8 @@ pub async fn get_version_index(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut result = ModVersion::get_index(
@@ -130,9 +132,8 @@ pub async fn get_one(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut version = {
@@ -243,8 +244,11 @@ pub async fn create_version(
     }
 
     // remove invalid characters from link - they break the location header on download
-    let download_link: String = payload.download_link.chars()
-        .filter(|c| c.is_ascii() && *c != '\0').collect();
+    let download_link: String = payload
+        .download_link
+        .chars()
+        .filter(|c| c.is_ascii() && *c != '\0')
+        .collect();
 
     let mut file_path = download_geode_file(&download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified)
@@ -262,10 +266,17 @@ pub async fn create_version(
             json.name.clone(),
             json.version.clone(),
             true,
-            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
+            Developer {
+                id: dev.id,
+                username: dev.username.clone(),
+                display_name: dev.display_name.clone(),
+                is_owner: Some(true),
+                admin: dev.admin,
+                verified: dev.verified,
+            },
             dev.clone(),
             data.webhook_url.clone(),
-            data.app_url.clone()
+            data.app_url.clone(),
         )
         .await;
     }
@@ -303,8 +314,9 @@ pub async fn update_version(
         path.version.as_str(),
         false,
         false,
-        &mut pool
-    ).await?;
+        &mut pool,
+    )
+    .await?;
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
@@ -344,14 +356,14 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
-    
+
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
         let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
             .await?
             .into_iter()
-            .find(|dev| dev.is_owner);
+            .find(|dev| dev.is_owner.is_some() && dev.is_owner.unwrap());
 
         send_webhook(
             version.mod_id,
@@ -361,8 +373,9 @@ pub async fn update_version(
             owner.as_ref().unwrap().clone(),
             dev.clone(),
             data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
+            data.app_url.clone(),
+        )
+        .await;
     }
 
     Ok(HttpResponse::NoContent())
