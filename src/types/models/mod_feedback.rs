@@ -62,7 +62,7 @@ pub enum FeedbackTypeEnum {
 impl ModFeedback {
     pub async fn get_for_mod_version_id(
         version: &ModVersion,
-        dev_only: bool,
+        filter_user: Option<i32>,
         pool: &mut PgConnection,
     ) -> Result<ModFeedback, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -72,8 +72,10 @@ impl ModFeedback {
             WHERE mf.mod_version_id = "#
         );
         query_builder.push_bind(version.id);
-        if dev_only {
-            query_builder.push(" AND mf.dev = true");
+        if let Some(user_id) = filter_user {
+            query_builder.push(" AND (mf.dev = true OR mf.reviewer_id = ");
+            query_builder.push_bind(user_id);
+            query_builder.push(")");
         }
         query_builder.push(" ORDER BY created_at DESC");
         let result = match query_builder
