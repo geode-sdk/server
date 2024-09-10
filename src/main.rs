@@ -125,6 +125,9 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::update_developer)
             .service(endpoints::tags::index)
             .service(endpoints::stats::get_stats)
+            .service(endpoints::mod_feedback::get_mod_feedback)
+            .service(endpoints::mod_feedback::post_mod_feedback)
+            .service(endpoints::mod_feedback::delete_mod_feedback)
             .service(health)
     })
     .bind((addr, port))?;
