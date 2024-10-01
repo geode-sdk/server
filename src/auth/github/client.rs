@@ -185,6 +185,7 @@ impl PollingOAuthClient for GitHubOAuthClient {
                     found.refresh_token.unwrap(),
                 )))
             } else {
+                let _ = repositories::oauth_attempts::update_poll(&found.uid, connection).await;
                 Ok(PollResult::Pending)
             }
         } else {

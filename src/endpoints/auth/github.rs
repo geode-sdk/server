@@ -19,6 +19,12 @@ use crate::{
 };
 
 #[derive(Deserialize)]
+struct LoginParams {
+    #[serde(default = "default_false")]
+    polling: bool,
+}
+
+#[derive(Deserialize)]
 struct PollParams {
     uuid: Uuid,
 }
@@ -27,17 +33,20 @@ struct PollParams {
 struct CallbackParams {
     code: Option<String>,
     error: Option<String>,
-    #[serde(default = "default_show_tokens")]
+    #[serde(default = "default_false")]
     show_tokens: bool,
     state: Uuid,
 }
 
-fn default_show_tokens() -> bool {
+fn default_false() -> bool {
     false
 }
 
 #[post("v1/login/github")]
-pub async fn start_github_login(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
+pub async fn start_github_login(
+    data: web::Data<AppData>,
+    query: web::Query<LoginParams>,
+) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let client = GitHubOAuthClient::new(&data.github_client_id, &data.github_client_secret);
 

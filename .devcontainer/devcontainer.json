@@ -1,0 +1,9 @@
+{
+    "name": "Geode Index",
+    "dockerComposeFile": [
+        "../compose.yaml"
+    ],
+    "service": "app",
+    "workspaceFolder": "/app",
+    "postCreateCommand": "chown -R 1000:1000 /app 2>/dev/null || true"
+}
