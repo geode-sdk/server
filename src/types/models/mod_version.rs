@@ -5,13 +5,13 @@ use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder, Row
+    PgConnection, Postgres, QueryBuilder, Row,
 };
 
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
-    models::{mod_entity::Mod, download},
+    models::{download, mod_entity::Mod},
 };
 
 use super::{
@@ -116,8 +116,12 @@ impl ModVersionGetOne {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
-            created_at: self.created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-            updated_at: self.updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            created_at: self
+                .created_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            updated_at: self
+                .updated_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
         }
     }
 }
@@ -697,7 +701,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -719,7 +724,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -790,12 +796,9 @@ impl ModVersion {
             // should probably spawn this, but we do a download in the transaction which is probably
             // a little worse. idk
 
-            let info = match sqlx::query!(
-                "SELECT mod_id FROM mod_versions WHERE id = $1",
-                id
-            )
-            .fetch_one(&mut *pool)
-            .await
+            let info = match sqlx::query!("SELECT mod_id FROM mod_versions WHERE id = $1", id)
+                .fetch_one(&mut *pool)
+                .await
             {
                 Err(e) => {
                     log::error!("{}", e);

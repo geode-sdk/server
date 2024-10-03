@@ -32,9 +32,12 @@ impl Tag {
         tags: Vec<String>,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedTag>, ApiError> {
-        let db_tags = match sqlx::query_as!(FetchedTag, "SELECT id, name FROM mod_tags")
-            .fetch_all(&mut *pool)
-            .await
+        let db_tags = match sqlx::query_as!(
+            FetchedTag,
+            "SELECT id, name FROM mod_tags WHERE readonly = false"
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Ok(tags) => tags,
             Err(e) => {
