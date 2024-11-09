@@ -29,6 +29,18 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.206")]
     #[sqlx(rename = "2.206")]
     GD2206,
+    #[serde(rename = "2.207")]
+    #[sqlx(rename = "2.207")]
+    GD2207,
+    #[serde(rename = "2.2071")]
+    #[sqlx(rename = "2.2071")]
+    GD22071,
+    #[serde(rename = "2.2072")]
+    #[sqlx(rename = "2.2072")]
+    GD22072,
+    #[serde(rename = "2.2073")]
+    #[sqlx(rename = "2.2073")]
+    GD22073,
 }
 
 impl FromStr for GDVersionEnum {
@@ -41,6 +53,10 @@ impl FromStr for GDVersionEnum {
             "2.204" => Ok(GDVersionEnum::GD2204),
             "2.205" => Ok(GDVersionEnum::GD2205),
             "2.206" => Ok(GDVersionEnum::GD2206),
+            "2.207" => Ok(GDVersionEnum::GD2207),
+            "2.2071" => Ok(GDVersionEnum::GD22071),
+            "2.2072" => Ok(GDVersionEnum::GD22072),
+            "2.2073" => Ok(GDVersionEnum::GD22073),
             _ => Err(()),
         }
     }
