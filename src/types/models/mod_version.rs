@@ -149,7 +149,7 @@ impl ModVersion {
             r#"
             SELECT mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash, mv.geode,
-            mv.early_load, mv.api, mv.mod_id, mvs.status
+            mv.early_load, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
