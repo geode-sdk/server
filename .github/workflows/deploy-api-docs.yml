@@ -17,6 +17,8 @@ jobs:
           version: "5.11.0"
           output: swagger-ui
           spec-file: ./openapi.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
