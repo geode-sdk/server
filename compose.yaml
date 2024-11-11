@@ -6,6 +6,7 @@ services:
       dockerfile: Dockerfile
     container_name: geode-index
     restart: unless-stopped
+    stdin_open: true
     tty: true
     depends_on:
       - postgres
@@ -15,6 +16,7 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:
       - ./:/app
+      - "${HOME}/.config/nvim:/root/.config/nvim"
   postgres:
     container_name: geode-postgres
     image: postgres:14-alpine3.20

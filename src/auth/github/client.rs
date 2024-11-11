@@ -112,7 +112,7 @@ impl PollingOAuthClient for GitHubOAuthClient {
             error: String,
         }
 
-        match self
+        let response = self
             .reqwest
             .post("https://github.com/login/oauth/access_token")
             .query(&[
@@ -122,44 +122,44 @@ impl PollingOAuthClient for GitHubOAuthClient {
             ])
             .send()
             .await
-        {
-            Ok(r) => {
-                let status = r.status();
-                if !status.is_success() {
-                    if status == StatusCode::UNAUTHORIZED {
-                        return Ok(None);
-                    }
-
-                    let error = r.json::<ErrorType>().await.unwrap_or(ErrorType {
-                        error: "Unidentified".to_string(),
-                    });
-
-                    match error.error.as_str() {
-                        "bad_verification_code" => {
-                            return Err(ApiError::BadRequest("Code expired or invalid".to_string()))
-                        },
-                        "unverified_user_email" => {
-                            return Err(ApiError::BadRequest("The email of the GitHub user isn't verified. Please verify your email.".to_string()))
-                        }
-                        _ => return Err(ApiError::InternalError),
-                    }
-                }
-
-                let body = match r.json::<TokenResult>().await {
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return Err(ApiError::InternalError);
-                    }
-                    Ok(v) => v,
-                };
-
-                Ok(Some((body.access_token, body.refresh_token)))
-            }
-            Err(e) => {
+            .map_err(|e| {
                 log::error!("Failed to exchange tokens: {}", e);
-                Err(ApiError::InternalError)
+                ApiError::InternalError
+            })?;
+
+        let status = r.status();
+        if !status.is_success() {
+            if status == StatusCode::UNAUTHORIZED {
+                return Ok(None);
+            }
+
+            let error = r.json::<ErrorType>().await.unwrap_or(ErrorType {
+                error: "Unidentified".to_string(),
+            });
+
+            match error.error.as_str() {
+                "bad_verification_code" => {
+                    return Err(ApiError::BadRequest("Code expired or invalid".to_string()))
+                }
+                "unverified_user_email" => {
+                    return Err(ApiError::BadRequest(
+                        "The email of the GitHub user isn't verified. Please verify your email."
+                            .to_string(),
+                    ))
+                }
+                _ => return Err(ApiError::InternalError),
             }
         }
+
+        let body = match r.json::<TokenResult>().await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(v) => v,
+        };
+
+        Ok(Some((body.access_token, body.refresh_token)))
     }
 
     async fn poll(
