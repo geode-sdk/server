@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  build-api-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         with:
           path: swagger-ui
 
-  deploy:
+  deploy-api-docs:
     needs: build
     permissions:
       pages: write

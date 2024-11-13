@@ -9,27 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Install stuff
-        run: sudo apt-get update && sudo apt-get install --assume-yes --no-install-recommends g++-aarch64-linux-gnu
-
-      - name: Setup env
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-
-      - name: Install rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup target add aarch64-unknown-linux-gnu
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Build
-        id: build
-        run: |
-          cargo build --release --target aarch64-unknown-linux-gnu
+        uses: ./.github/actions/build
 
       - name: Create ssh key
         run: |
