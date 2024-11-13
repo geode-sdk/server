@@ -10,7 +10,12 @@ pub struct FetchedTag {
     pub name: String,
 }
 
-pub struct Tag;
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Tag {
+    pub id: i32,
+    pub name: String,
+    pub display_name: String,
+}
 
 impl Tag {
     pub async fn get_tags(pool: &mut PgConnection) -> Result<Vec<String>, ApiError> {
@@ -26,6 +31,37 @@ impl Tag {
         };
 
         Ok(tags.into_iter().map(|x| x.name).collect::<Vec<String>>())
+    }
+
+    pub async fn get_detailed_tags(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
+        struct QueryResult {
+            id: i32,
+            name: String,
+            display_name: Option<String>,
+        }
+        let tags = sqlx::query_as!(
+            QueryResult,
+            "SELECT 
+                id,
+                name,
+                display_name
+            FROM mod_tags"
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|err| {
+            log::error!("Failed to fetch detailed tags: {}", err);
+            ApiError::DbError
+        })?;
+
+        Ok(tags
+            .into_iter()
+            .map(|i| Tag {
+                id: i.id,
+                name: i.name.clone(),
+                display_name: i.display_name.unwrap_or(i.name),
+            })
+            .collect())
     }
 
     pub async fn get_tag_ids(
