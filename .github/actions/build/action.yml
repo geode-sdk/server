@@ -5,12 +5,15 @@ runs:
   using: "composite"
   steps:
     - name: Install ARM cross-compilation tools
+      shell: bash
       run: sudo apt-get update && sudo apt-get install --assume-yes --no-install-recommends g++-aarch64-linux-gnu
 
     - name: Setup environment
+      shell: bash
       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
     - name: Install rust
+      shell: bash
       run: |
         rustup toolchain install stable --profile minimal
         rustup target add aarch64-unknown-linux-gnu
@@ -19,6 +22,7 @@ runs:
       uses: Swatinem/rust-cache@v2
 
     - name: Build
+      shell: bash
       id: build
       run: |
         cargo build --release --target aarch64-unknown-linux-gnu
