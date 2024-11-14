@@ -269,7 +269,10 @@ pub async fn create_version(
 
     let mut file_path = download_geode_file(&download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified)
-        .or(Err(ApiError::FilesystemError))?;
+        .map_err(|err| {
+            log::error!("Failed to parse mod.json: {}", err);
+            ApiError::FilesystemError
+        })?;
     if json.id != path.id {
         return Err(ApiError::BadRequest(format!(
             "Request id {} does not match mod.json id {}",
