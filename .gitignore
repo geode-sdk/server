@@ -1,5 +1,5 @@
 /target
 *.db
 .env
-
+.idea/
 .vscode/settings.json

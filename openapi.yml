@@ -465,7 +465,7 @@ paths:
       tags:
         - mods
       summary: Add a developer to a mod
-      description: This endpoint is only used for adding a developer to a mod. Must be the owner the mod to access this endpoint.
+      description: This endpoint is only used for adding a developer to a mod. Must be the owner of the mod to access this endpoint.
       security:
         - bearerAuth: []
 
@@ -625,6 +625,109 @@ paths:
           description: No Content (Tokens revoked)
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/mods/{id}/versions/{version}/feedback:
+    get:
+      tags:
+        - mods
+      summary: Get feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                  $ref: "#/components/schemas/ModFeedback"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags:
+        - mods
+      summary: Add feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                feedback_type:
+                  type: string
+                  enum:
+                    - Positive
+                    - Negative
+                    - Suggestion
+                    - Note
+                  description: Type of feedback - positive/negative modifies score, note is mod dev only
+                  example: Positive
+                feedback:
+                  type: string
+                  description: The feedback given by the reviewer
+                  example: "This mod is great!"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  payload:
+                    description: The ID of the new feedback (for use in deleting)
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags:
+        - mods
+      summary: Delete feedback for a specific version of a mod
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ModID"
+        - $ref: "#/components/parameters/ModVersion"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  description: The ID of the feedback to delete
+                  example: 1
+      responses:
+        "204":
+          description: No Content (Feedback deleted)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -973,6 +1076,72 @@ components:
         - android32
         - android64
         - ios
+
+    Reviewer:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The developer ID of the reviewer
+        display_name:
+          type: string
+          description: The display name of the reviewer
+        admin:
+          type: boolean
+          description: Whether the reviewer is an admin
+        dev:
+          type: boolean
+          description: Whether the reviewer is a developer of the mod
+
+    Score:
+      type: object
+      properties:
+        score:
+          type: integer
+          description: The score of the mod, calculated as a sum of all feedback where positive is 1 and negative is -1
+        positive:
+          type: integer
+          description: The number of positive feedback
+        negative:
+          type: integer
+          description: The number of negative feedback
+
+    ModFeedbackOne:
+      type: object
+      properties:
+        reviewer:
+          $ref: "#/components/schemas/Reviewer"
+          description: The reviewer that gave the feedback
+        feedback_type:
+          type: string
+          enum:
+            - Positive
+            - Negative
+            - Suggestion
+            - Note
+          description: Type of feedback - positive/negative modifies score, note is mod dev only
+        feedback:
+          type: string
+          description: The feedback given by the reviewer
+        decision:
+          type: boolean
+          description: Whether or not this feedback was used to make a decision
+
+    ModFeedback:
+      type: object
+      properties:
+        score:
+          $ref: "#/components/schemas/Score"
+          description: The mod's score
+        mod_id:
+          $ref: "#/components/schemas/ModID"
+        mod_version:
+          $ref: "#/components/schemas/ModVersionString"
+        feedback:
+          type: array
+          items:
+              $ref: "#/components/schemas/ModFeedbackOne"
+
   parameters:
     ModID:
       name: id
