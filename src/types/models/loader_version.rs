@@ -174,6 +174,5 @@ impl LoaderVersion {
 					Err(ApiError::DbError)
 			}
 		}
-
 	}
 }
