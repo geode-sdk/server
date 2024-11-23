@@ -21,7 +21,6 @@ use crate::{
 struct GetOneQuery {
 	platform: Option<String>,
 	gd: Option<String>,
-	identifier: Option<String>,
 	#[serde(default)]
 	prerelease: bool,
 }
@@ -45,19 +44,17 @@ pub async fn get_one(
 			.transpose()
 			.map_err(|_| ApiError::BadRequest("Invalid platform".to_string()))?;
 
-		// my mess
-		let gd = match (&query.gd, &query.identifier) {
-			(Some(_), Some(_)) => Err(ApiError::BadRequest("Fields identifier and gd are mutually exclusive".to_string()))?,
-			(Some(gd), None) => {
-				Some(GDVersionEnum::from_str(gd)
-					.map_err(|_| ApiError::BadRequest("Invalid gd".to_string()))?)
-			}
-			(None, Some(i)) => {
+
+		let gd = if let Some(i) = &query.gd {
+			if let Ok(g) = GDVersionEnum::from_str(i) {
+				Some(g)
+			} else {
 				let platform = platform
-					.ok_or_else(|| ApiError::BadRequest("Field platform is required when a version identifier is provided".to_string()))?;
+					.ok_or_else(|| ApiError::BadRequest("Platform is required when a version alias is given".to_string()))?;
 				Some(GDVersionAlias::find(platform, i, &mut pool).await?)
-			},
-			(None, None) => None
+			}
+		} else {
+			None
 		};
 
 		LoaderVersion::get_latest(gd, platform, query.prerelease, &mut pool).await?
