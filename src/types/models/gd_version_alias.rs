@@ -34,7 +34,7 @@ pub struct GDVersionAliasRecord {
 }
 
 impl GDVersionAliasRecord {
-	pub fn to_gd_version_alias(self) -> GDVersionAlias {
+	pub fn into_gd_version_alias(self) -> GDVersionAlias {
 		GDVersionAlias {
 			version_name: self.version_name,
 			mac_arm_uuid: self.mac_arm_uuid.map(|u| u.to_string()),

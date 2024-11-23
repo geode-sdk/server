@@ -1,45 +1,45 @@
 use crate::types::{
-	models::mod_gd_version::{GDVersionEnum, VerPlatform},
+	models::mod_gd_version::{GDVersionEnum, VerPlatform, DetailedGDVersion},
 	api::ApiError,
 };
 
 use chrono::SecondsFormat;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use sqlx::{
 	types::chrono::{DateTime, Utc},
 	PgConnection, Postgres, QueryBuilder
 };
 
-#[derive(sqlx::FromRow, Deserialize, Serialize, Debug, Clone)]
-pub struct LoaderGDVersion {
-	pub win: Option<GDVersionEnum>,
-	pub android: Option<GDVersionEnum>,
-	pub mac: Option<GDVersionEnum>,
-}
-
 #[derive(Debug)]
 pub struct LoaderVersionCreate {
 	pub tag: String,
-	pub gd: LoaderGDVersion,
-	pub prerelease: bool
+	pub prerelease: bool,
+	pub commit_hash: String,
+	pub mac: Option<GDVersionEnum>,
+	pub win: Option<GDVersionEnum>,
+	pub android: Option<GDVersionEnum>,
 }
 
 #[derive(Serialize, Debug)]
 pub struct LoaderVersion {
+	pub version: String,
 	pub tag: String,
-	pub gd: LoaderGDVersion,
+	pub gd: DetailedGDVersion,
 	pub prerelease: bool,
+	pub commit_hash: String,
 	pub created_at: String,
 }
 
 #[derive(sqlx::FromRow, Debug)]
 pub struct LoaderVersionGetOne {
 	pub tag: String,
-	#[sqlx(flatten)]
-	pub gd: LoaderGDVersion,
 	pub prerelease: bool,
-	pub created_at: DateTime<Utc>
+	pub commit_hash: String,
+	pub created_at: DateTime<Utc>,
+	pub mac: Option<GDVersionEnum>,
+	pub win: Option<GDVersionEnum>,
+	pub android: Option<GDVersionEnum>,
 }
 
 pub struct GetVersionsQuery {
@@ -51,10 +51,21 @@ pub struct GetVersionsQuery {
 impl LoaderVersionGetOne {
 	pub fn into_loader_version(self) -> LoaderVersion {
 		LoaderVersion {
-			tag: self.tag,
+			tag: format!("v{}", self.tag),
+			version: self.tag,
 			prerelease: self.prerelease,
 			created_at: self.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-			gd: self.gd
+			commit_hash: self.commit_hash,
+			gd: DetailedGDVersion {
+				win: self.win,
+				mac: self.mac,
+				mac_arm: self.mac,
+				mac_intel: self.mac,
+				android: self.android,
+				android32: self.android,
+				android64: self.android,
+				ios: None,
+			}
 		}
 	}
 }
@@ -68,7 +79,7 @@ impl LoaderVersion {
 	) -> Result<LoaderVersion, ApiError> {
 		let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
 			r#"SELECT
-				mac, win, android, tag, created_at, prerelease
+				mac, win, android, tag, commit_hash, created_at, prerelease
 			FROM geode_versions"#
 		);
 
@@ -142,12 +153,12 @@ impl LoaderVersion {
 	}
 
 	pub async fn get_one(tag: &str, pool: &mut PgConnection) -> Result<LoaderVersion, ApiError> {
-		match sqlx::query_as::<Postgres, LoaderVersionGetOne>(
+		match sqlx::query_as!(LoaderVersionGetOne,
 			r#"SELECT
-				mac, win, android, tag, created_at, prerelease
+				mac as "mac: _", win as "win: _", android as "android: _",
+				tag, created_at, commit_hash, prerelease
 			FROM geode_versions
-				WHERE tag = $1"#)
-			.bind(tag)
+				WHERE tag = $1"#, tag)
 			.fetch_optional(&mut *pool)
 			.await
 		{
@@ -163,14 +174,15 @@ impl LoaderVersion {
 	pub async fn create_version(version: LoaderVersionCreate, pool: &mut PgConnection) -> Result<(), ApiError> {
 		match sqlx::query(
 			r#"INSERT INTO geode_versions
-				(tag, prerelease, mac, win, android)
+				(tag, prerelease, mac, win, android, commit_hash)
 			VALUES
-				($1, $2, $3, $4, $5)"#)
+				($1, $2, $3, $4, $5, $6)"#)
 			.bind(version.tag)
 			.bind(version.prerelease)
-			.bind(version.gd.mac)
-			.bind(version.gd.win)
-			.bind(version.gd.android)
+			.bind(version.mac)
+			.bind(version.win)
+			.bind(version.android)
+			.bind(version.commit_hash)
 			.execute(&mut *pool)
 			.await
 		{
@@ -192,7 +204,7 @@ impl LoaderVersion {
 		let offset = (page - 1) * per_page;
 
 		let mut query_builder = QueryBuilder::new(r#"
-			SELECT mac, win, android, tag, created_at, prerelease FROM geode_versions
+			SELECT mac, win, android, tag, created_at, commit_hash, prerelease FROM geode_versions
 		"#);
 
 		match (query.platform, query.gd) {

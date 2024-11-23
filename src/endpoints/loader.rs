@@ -13,7 +13,6 @@ use crate::{
 			loader_version::{
 				LoaderVersion,
 				LoaderVersionCreate,
-				LoaderGDVersion,
 				GetVersionsQuery
 			},
 			mod_gd_version::{GDVersionEnum, VerPlatform}
@@ -70,9 +69,15 @@ pub async fn get_one(
 #[derive(Deserialize)]
 struct CreateVersionBody {
 	pub tag: String,
-	pub gd: LoaderGDVersion,
 	#[serde(default)]
-	pub prerelease: bool
+	pub prerelease: bool,
+	pub commit_hash: String,
+	#[serde(default)]
+	pub win: Option<GDVersionEnum>,
+	#[serde(default)]
+	pub mac: Option<GDVersionEnum>,
+	#[serde(default)]
+	pub android: Option<GDVersionEnum>,
 }
 
 #[post("v1/loader/versions")]
@@ -90,9 +95,12 @@ pub async fn create_version(
 
 	let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 	if let Err(e) = LoaderVersion::create_version(LoaderVersionCreate {
-		tag: payload.tag.clone(),
-		gd: payload.gd.clone(),
-		prerelease: payload.prerelease
+		tag: payload.tag.trim_start_matches('v').to_string(),
+		prerelease: payload.prerelease,
+		commit_hash: payload.commit_hash.clone(),
+		win: payload.win.clone(),
+		mac: payload.mac.clone(),
+		android: payload.android.clone(),
 	}, &mut transaction).await {
 		transaction
 			.rollback()
@@ -129,7 +137,7 @@ pub async fn get_many(
 		GetVersionsQuery {
 			gd: query.gd,
 			platform: query.platform,
-			prerelease: query.prerelease.unwrap_or(true)
+			prerelease: query.prerelease.unwrap_or_default()
 		},
 		query.per_page.unwrap_or(10),
 		query.page.unwrap_or(1),
