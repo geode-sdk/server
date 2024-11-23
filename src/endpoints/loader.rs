@@ -9,6 +9,7 @@ use crate::{
 	types::{
 		api::{ApiError, ApiResponse},
 		models::{
+			gd_version_alias::GDVersionAlias,
 			loader_version::{LoaderVersion, LoaderVersionCreate},
 			mod_gd_version::{GDVersionEnum, VerPlatform}
 		}
@@ -20,6 +21,7 @@ use crate::{
 struct GetOneQuery {
 	platform: Option<String>,
 	gd: Option<String>,
+	identifier: Option<String>,
 	#[serde(default)]
 	prerelease: bool,
 }
@@ -38,15 +40,25 @@ pub async fn get_one(
 	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
 	let version = if path.version == "latest" {
-		let gd = query.gd.as_ref()
-			.map(|s| GDVersionEnum::from_str(s))
-			.transpose()
-			.map_err(|_| ApiError::BadRequest("Invalid gd".to_string()))?;
-
 		let platform = query.platform.as_ref()
 			.map(|s| VerPlatform::from_str(s))
 			.transpose()
 			.map_err(|_| ApiError::BadRequest("Invalid platform".to_string()))?;
+
+		// my mess
+		let gd = match (&query.gd, &query.identifier) {
+			(Some(_), Some(_)) => Err(ApiError::BadRequest("Fields identifier and gd are mutually exclusive".to_string()))?,
+			(Some(gd), None) => {
+				Some(GDVersionEnum::from_str(gd)
+					.map_err(|_| ApiError::BadRequest("Invalid gd".to_string()))?)
+			}
+			(None, Some(i)) => {
+				let platform = platform
+					.ok_or_else(|| ApiError::BadRequest("Field platform is required when a version identifier is provided".to_string()))?;
+				Some(GDVersionAlias::find(platform, i, &mut pool).await?)
+			},
+			(None, None) => None
+		};
 
 		LoaderVersion::get_latest(gd, platform, query.prerelease, &mut pool).await?
 	} else {
