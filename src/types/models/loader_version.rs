@@ -4,20 +4,28 @@ use crate::types::{
 };
 
 use chrono::SecondsFormat;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use sqlx::{
 	types::chrono::{DateTime, Utc}, PgConnection, Postgres, QueryBuilder
 };
 
-#[derive(sqlx::FromRow, Serialize, Copy, Clone, Debug)]
+#[derive(sqlx::FromRow, Deserialize, Serialize, Debug)]
 pub struct LoaderGDVersion {
 	pub win: Option<GDVersionEnum>,
 	pub android: Option<GDVersionEnum>,
 	pub mac: Option<GDVersionEnum>,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Deserialize, Debug)]
+pub struct LoaderVersionCreate {
+	pub tag: String,
+	pub gd: LoaderGDVersion,
+	#[serde(default)]
+	pub prerelease: bool
+}
+
+#[derive(Serialize, Debug)]
 pub struct LoaderVersion {
 	pub tag: String,
 	pub gd: LoaderGDVersion,
@@ -25,7 +33,7 @@ pub struct LoaderVersion {
 	pub created_at: String,
 }
 
-#[derive(sqlx::FromRow, Clone, Debug)]
+#[derive(sqlx::FromRow, Debug)]
 pub struct LoaderVersionGetOne {
 	pub tag: String,
 	#[sqlx(flatten)]
@@ -144,5 +152,28 @@ impl LoaderVersion {
 					Err(ApiError::DbError)
 			}
 		}
+	}
+
+	pub async fn create_version(version: LoaderVersionCreate, pool: &mut PgConnection) -> Result<(), ApiError> {
+		match sqlx::query(
+			r#"INSERT INTO geode_versions
+				(tag, prerelease, mac, win, android)
+			VALUES
+				($1, $2, $3, $4, $5)"#)
+			.bind(version.tag)
+			.bind(version.prerelease)
+			.bind(version.gd.mac)
+			.bind(version.gd.win)
+			.bind(version.gd.android)
+			.execute(&mut *pool)
+			.await
+		{
+			Ok(_) => Ok(()),
+			Err(e) => {
+					log::error!("{:?}", e);
+					Err(ApiError::DbError)
+			}
+		}
+
 	}
 }

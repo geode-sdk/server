@@ -1,12 +1,15 @@
 use std::str::FromStr;
-use actix_web::{web, get, Responder};
+use actix_web::{web, get, post, Responder, HttpResponse};
 use serde::Deserialize;
 
+use sqlx::Acquire;
+
 use crate::{
+	extractors::auth::Auth,
 	types::{
 		api::{ApiError, ApiResponse},
 		models::{
-			loader_version::LoaderVersion,
+			loader_version::{LoaderVersion, LoaderVersionCreate},
 			mod_gd_version::{GDVersionEnum, VerPlatform}
 		}
 	},
@@ -54,4 +57,34 @@ pub async fn get_one(
 			error: "".to_string(),
 			payload: version,
 	}))
+}
+
+#[post("v1/loader/versions")]
+pub async fn create_version(
+	data: web::Data<AppData>,
+	payload: web::Json<LoaderVersionCreate>,
+	auth: Auth,
+) -> Result<impl Responder, ApiError> {
+	let dev = auth.developer()?;
+	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+	if !dev.admin {
+		return Err(ApiError::Forbidden);
+	}
+
+	let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+	if let Err(e) = LoaderVersion::create_version(payload.into_inner(), &mut transaction).await {
+		transaction
+			.rollback()
+			.await
+			.or(Err(ApiError::TransactionError))?;
+		return Err(e);
+	}
+
+	transaction
+		.commit()
+		.await
+		.or(Err(ApiError::TransactionError))?;
+
+	Ok(HttpResponse::NoContent())
 }

@@ -127,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
             .service(endpoints::loader::get_one)
+            .service(endpoints::loader::create_version)
             .service(health)
     })
     .bind((addr, port))?;
