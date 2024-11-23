@@ -7,21 +7,21 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 
 use sqlx::{
-	types::chrono::{DateTime, Utc}, PgConnection, Postgres, QueryBuilder
+	types::chrono::{DateTime, Utc},
+	PgConnection, Postgres, QueryBuilder
 };
 
-#[derive(sqlx::FromRow, Deserialize, Serialize, Debug)]
+#[derive(sqlx::FromRow, Deserialize, Serialize, Debug, Clone)]
 pub struct LoaderGDVersion {
 	pub win: Option<GDVersionEnum>,
 	pub android: Option<GDVersionEnum>,
 	pub mac: Option<GDVersionEnum>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 pub struct LoaderVersionCreate {
 	pub tag: String,
 	pub gd: LoaderGDVersion,
-	#[serde(default)]
 	pub prerelease: bool
 }
 
@@ -40,6 +40,12 @@ pub struct LoaderVersionGetOne {
 	pub gd: LoaderGDVersion,
 	pub prerelease: bool,
 	pub created_at: DateTime<Utc>
+}
+
+pub struct GetVersionsQuery {
+	pub gd: Option<GDVersionEnum>,
+	pub platform: Option<VerPlatform>,
+	pub prerelease: bool
 }
 
 impl LoaderVersionGetOne {
@@ -169,6 +175,76 @@ impl LoaderVersion {
 			.await
 		{
 			Ok(_) => Ok(()),
+			Err(e) => {
+					log::error!("{:?}", e);
+					Err(ApiError::DbError)
+			}
+		}
+	}
+
+	pub async fn get_many(
+		query: GetVersionsQuery,
+		per_page: i64,
+		page: i64,
+		pool: &mut PgConnection
+	) -> Result<Vec<LoaderVersion>, ApiError> {
+		let limit = per_page;
+		let offset = (page - 1) * per_page;
+
+		let mut query_builder = QueryBuilder::new(r#"
+			SELECT mac, win, android, tag, created_at, prerelease FROM geode_versions
+		"#);
+
+		match (query.platform, query.gd) {
+			(Some(p), Some(g)) => {
+				match p {
+					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" WHERE android="),
+					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac="),
+					VerPlatform::Win => query_builder.push(" WHERE win="),
+					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+				};
+
+				query_builder.push_bind(g);
+			}
+			(Some(p), None) => {
+				match p {
+					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" WHERE android IS NOT NULL"),
+					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac IS NOT NULL"),
+					VerPlatform::Win => query_builder.push(" WHERE win IS NOT NULL"),
+					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+				};
+			}
+			(None, Some(g)) => {
+				query_builder.push(" WHERE android=");
+				query_builder.push_bind(g);
+				query_builder.push(" or mac=");
+				query_builder.push_bind(g);
+				query_builder.push(" or win=");
+				query_builder.push_bind(g);
+			}
+			_ => {
+				query_builder.push(" WHERE 1=1");
+			}
+		}
+
+		if !query.prerelease {
+			query_builder.push(" AND prerelease=FALSE ");
+		}
+
+		query_builder.push(" ORDER BY created_at DESC ");
+
+		query_builder.push(" LIMIT ");
+		query_builder.push_bind(limit);
+		query_builder.push(" OFFSET ");
+		query_builder.push_bind(offset);
+
+		match query_builder
+			.build_query_as::<LoaderVersionGetOne>()
+			.fetch_all(&mut *pool)
+			.await
+		{
+			Ok(r) =>
+				Ok(r.into_iter().map(|x| x.into_loader_version()).collect()),
 			Err(e) => {
 					log::error!("{:?}", e);
 					Err(ApiError::DbError)

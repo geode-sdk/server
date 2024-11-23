@@ -10,7 +10,12 @@ use crate::{
 		api::{ApiError, ApiResponse},
 		models::{
 			gd_version_alias::GDVersionAlias,
-			loader_version::{LoaderVersion, LoaderVersionCreate},
+			loader_version::{
+				LoaderVersion,
+				LoaderVersionCreate,
+				LoaderGDVersion,
+				GetVersionsQuery
+			},
 			mod_gd_version::{GDVersionEnum, VerPlatform}
 		}
 	},
@@ -19,7 +24,7 @@ use crate::{
 
 #[derive(Deserialize)]
 struct GetOneQuery {
-	platform: Option<String>,
+	platform: Option<VerPlatform>,
 	gd: Option<String>,
 	#[serde(default)]
 	prerelease: bool,
@@ -39,17 +44,11 @@ pub async fn get_one(
 	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
 	let version = if path.version == "latest" {
-		let platform = query.platform.as_ref()
-			.map(|s| VerPlatform::from_str(s))
-			.transpose()
-			.map_err(|_| ApiError::BadRequest("Invalid platform".to_string()))?;
-
-
 		let gd = if let Some(i) = &query.gd {
 			if let Ok(g) = GDVersionEnum::from_str(i) {
 				Some(g)
 			} else {
-				let platform = platform
+				let platform = query.platform
 					.ok_or_else(|| ApiError::BadRequest("Platform is required when a version alias is given".to_string()))?;
 				Some(GDVersionAlias::find(platform, i, &mut pool).await?)
 			}
@@ -57,7 +56,7 @@ pub async fn get_one(
 			None
 		};
 
-		LoaderVersion::get_latest(gd, platform, query.prerelease, &mut pool).await?
+		LoaderVersion::get_latest(gd, query.platform, query.prerelease, &mut pool).await?
 	} else {
 		LoaderVersion::get_one(&path.version, &mut pool).await?
 	};
@@ -68,10 +67,18 @@ pub async fn get_one(
 	}))
 }
 
+#[derive(Deserialize)]
+struct CreateVersionBody {
+	pub tag: String,
+	pub gd: LoaderGDVersion,
+	#[serde(default)]
+	pub prerelease: bool
+}
+
 #[post("v1/loader/versions")]
 pub async fn create_version(
 	data: web::Data<AppData>,
-	payload: web::Json<LoaderVersionCreate>,
+	payload: web::Json<CreateVersionBody>,
 	auth: Auth,
 ) -> Result<impl Responder, ApiError> {
 	let dev = auth.developer()?;
@@ -82,7 +89,11 @@ pub async fn create_version(
 	}
 
 	let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-	if let Err(e) = LoaderVersion::create_version(payload.into_inner(), &mut transaction).await {
+	if let Err(e) = LoaderVersion::create_version(LoaderVersionCreate {
+		tag: payload.tag.clone(),
+		gd: payload.gd.clone(),
+		prerelease: payload.prerelease
+	}, &mut transaction).await {
 		transaction
 			.rollback()
 			.await
@@ -96,4 +107,37 @@ pub async fn create_version(
 		.or(Err(ApiError::TransactionError))?;
 
 	Ok(HttpResponse::NoContent())
+}
+
+#[derive(Deserialize)]
+struct GetManyQuery {
+	pub gd: Option<GDVersionEnum>,
+	pub platform: Option<VerPlatform>,
+	pub per_page: Option<i64>,
+	pub page: Option<i64>,
+	pub prerelease: Option<bool>
+}
+
+#[get("v1/loader/versions")]
+pub async fn get_many(
+	data: web::Data<AppData>,
+	query: web::Query<GetManyQuery>,
+) -> Result<impl Responder, ApiError> {
+	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+
+	let versions = LoaderVersion::get_many(
+		GetVersionsQuery {
+			gd: query.gd,
+			platform: query.platform,
+			prerelease: query.prerelease.unwrap_or(true)
+		},
+		query.per_page.unwrap_or(10),
+		query.page.unwrap_or(1),
+		&mut pool
+	).await?;
+
+	Ok(web::Json(ApiResponse {
+			error: "".to_string(),
+			payload: versions,
+	}))
 }

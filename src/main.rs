@@ -128,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::stats::get_stats)
             .service(endpoints::loader::get_one)
             .service(endpoints::loader::create_version)
+            .service(endpoints::loader::get_many)
             .service(health)
     })
     .bind((addr, port))?;
