@@ -1,10 +1,10 @@
 CREATE TABLE gd_version_aliases (
-		version_name gd_version PRIMARY KEY NOT NULL,
-		mac_arm_uuid uuid UNIQUE,
-    mac_intel_uuid uuid UNIQUE,
-    android_manifest_id INTEGER UNIQUE,
-    windows_timestamp INTEGER UNIQUE,
-		added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+	version_name gd_version PRIMARY KEY NOT NULL,
+	mac_arm_uuid uuid UNIQUE,
+	mac_intel_uuid uuid UNIQUE,
+	android_manifest_id INTEGER UNIQUE,
+	windows_timestamp INTEGER UNIQUE,
+	added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 -- yet again, some default values, idk

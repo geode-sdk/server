@@ -1,10 +1,10 @@
 CREATE TABLE geode_versions (
-		tag TEXT PRIMARY KEY NOT NULL,
-		mac gd_version,
-		win gd_version,
-		android gd_version,
-		prerelease BOOLEAN DEFAULT FALSE NOT NULL,
-		created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+	tag TEXT PRIMARY KEY NOT NULL,
+	mac gd_version,
+	win gd_version,
+	android gd_version,
+	prerelease BOOLEAN DEFAULT FALSE NOT NULL,
+	created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 -- prefill some versions for the android updater
