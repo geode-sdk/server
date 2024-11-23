@@ -696,15 +696,8 @@ paths:
                 prerelease:
                   required: false
                   type: boolean
-                win:
-                  required: true
-                  $ref: "#/components/schemas/GDVersionString"
-                mac:
-                  required: true
-                  $ref: "#/components/schemas/GDVersionString"
-                android:
-                  required: true
-                  $ref: "#/components/schemas/GDVersionString"
+                gd:
+                  $ref: "#/components/schemas/GDVersionObject"
 
       responses:
         "204":

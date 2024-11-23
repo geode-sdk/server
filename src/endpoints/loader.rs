@@ -11,11 +11,13 @@ use crate::{
 		models::{
 			gd_version_alias::GDVersionAlias,
 			loader_version::{
-				LoaderVersion,
-				LoaderVersionCreate,
-				GetVersionsQuery
+				GetVersionsQuery, LoaderVersion, LoaderVersionCreate
 			},
-			mod_gd_version::{GDVersionEnum, VerPlatform}
+			mod_gd_version::{
+				DetailedGDVersion,
+				GDVersionEnum,
+				VerPlatform,
+			}
 		}
 	},
 	AppData,
@@ -72,12 +74,7 @@ struct CreateVersionBody {
 	#[serde(default)]
 	pub prerelease: bool,
 	pub commit_hash: String,
-	#[serde(default)]
-	pub win: Option<GDVersionEnum>,
-	#[serde(default)]
-	pub mac: Option<GDVersionEnum>,
-	#[serde(default)]
-	pub android: Option<GDVersionEnum>,
+	pub gd: DetailedGDVersion,
 }
 
 #[post("v1/loader/versions")]
@@ -98,9 +95,9 @@ pub async fn create_version(
 		tag: payload.tag.trim_start_matches('v').to_string(),
 		prerelease: payload.prerelease,
 		commit_hash: payload.commit_hash.clone(),
-		win: payload.win.clone(),
-		mac: payload.mac.clone(),
-		android: payload.android.clone(),
+		win: payload.gd.win.clone(),
+		mac: payload.gd.mac.clone(),
+		android: payload.gd.android.clone(),
 	}, &mut transaction).await {
 		transaction
 			.rollback()
