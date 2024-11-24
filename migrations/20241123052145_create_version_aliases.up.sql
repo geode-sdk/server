@@ -21,3 +21,5 @@ INSERT INTO gd_version_aliases
 	('2.2072', null, null, null, 1731130219),
 	('2.2073', null, null, null, 1731156923),
 	('2.2074', '27044C8B-76BD-303C-A035-5314AF1D9E6E', 'DB5CADC0-E533-3123-8A63-5A434FE391ED', 40, 1731376950);
+
+CREATE INDEX idx_gd_version_aliases_added_at ON gd_version_aliases(added_at);

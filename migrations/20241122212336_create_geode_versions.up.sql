@@ -23,3 +23,4 @@ INSERT INTO geode_versions
 	('2.0.0-beta.27', '2.200', '2.204', '2.205', '2024-05-26T14:37:03Z', '6510df7c8557668744044471ed2a0391759c3f7f', FALSE),
 	('2.0.0-beta.4', '2.200', '2.204', '2.200', '2024-01-21T16:37:45Z', 'c2f626b93767ef3678b9df1daca14b89fec6c6f7', FALSE);
 
+CREATE INDEX idx_geode_versions_created_at ON geode_versions(created_at);
