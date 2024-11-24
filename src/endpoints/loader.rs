@@ -63,8 +63,8 @@ pub async fn get_one(
 	};
 
 	Ok(web::Json(ApiResponse {
-			error: "".to_string(),
-			payload: version,
+		error: "".to_string(),
+		payload: version,
 	}))
 }
 
@@ -142,7 +142,7 @@ pub async fn get_many(
 	).await?;
 
 	Ok(web::Json(ApiResponse {
-			error: "".to_string(),
-			payload: versions,
+		error: "".to_string(),
+		payload: versions,
 	}))
 }
