@@ -636,7 +636,7 @@ paths:
       tags:
         - loader
       summary: Get all loader versions, paginated
-      description: Returns a paginated list of all loader versions. This list is currently sorted by when the mods were added, not by their versions.
+      description: Returns a paginated list of all loader versions. This list is sorted by when the version was added, not by their version number.
 
       parameters:
         - name: gd
