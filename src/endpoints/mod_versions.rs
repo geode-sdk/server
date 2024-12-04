@@ -5,18 +5,21 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    extractors::auth::Auth, types::{
+    extractors::auth::Auth,
+    types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
             developer::Developer,
             download,
             mod_entity::{download_geode_file, Mod},
-            mod_gd_version::{GDVersionEnum, VerPlatform},
+            mod_gd_version::{add_all_to_gdvec, GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    }, webhook::send_webhook, AppData
+    },
+    webhook::send_webhook,
+    AppData,
 };
 
 #[derive(Deserialize)]
@@ -92,9 +95,8 @@ pub async fn get_version_index(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut result = ModVersion::get_index(
@@ -130,20 +132,21 @@ pub async fn get_one(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut version = {
         if path.version == "latest" {
-            let gd: Option<GDVersionEnum> = match query.gd {
-                Some(ref gd) => Some(
-                    GDVersionEnum::from_str(gd)
-                        .or(Err(ApiError::BadRequest("Invalid gd".to_string())))?,
-                ),
-                None => None,
-            };
+            let mut gd = match query.gd {
+                Some(ref gd) => match GDVersionEnum::from_str(gd) {
+                    Ok(g) => Ok(vec![g]),
+                    Err(_) => Err(ApiError::BadRequest("Invalid gd".to_string())),
+                },
+                None => Ok(vec![]),
+            }?;
+
+            add_all_to_gdvec(&mut gd);
 
             let platform_string = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_string);
@@ -178,10 +181,18 @@ pub async fn download_version(
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mod_version = {
+        let mut gd_vec: Vec<GDVersionEnum> = Vec::with_capacity(2);
+
+        if let Some(gd) = query.gd {
+            gd_vec.push(gd);
+        }
+
+        add_all_to_gdvec(&mut gd_vec);
+
+        let platform_str = query.platforms.clone().unwrap_or_default();
+        let platforms = VerPlatform::parse_query_string(&platform_str);
         if path.version == "latest" {
-            let platform_str = query.platforms.clone().unwrap_or_default();
-            let platforms = VerPlatform::parse_query_string(&platform_str);
-            ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
+            ModVersion::get_latest_for_mod(&path.id, gd_vec, platforms, query.major, &mut pool)
                 .await?
         } else {
             ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
@@ -202,16 +213,18 @@ pub async fn download_version(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if let Ok((downloaded_version, downloaded_mod)) = download::create_download(
-        net, mod_version.id, &mod_version.mod_id, &mut pool
-    ).await {
+    if let Ok((downloaded_version, downloaded_mod)) =
+        download::create_download(net, mod_version.id, &mod_version.mod_id, &mut pool).await
+    {
         let name = mod_version.mod_id.clone();
         let version = mod_version.version.clone();
 
         // only accepted mods can have their download counts incremented
         // we'll just fix this once they're updated anyways
 
-        if (downloaded_version || downloaded_mod) && mod_version.status == ModVersionStatusEnum::Accepted {
+        if (downloaded_version || downloaded_mod)
+            && mod_version.status == ModVersionStatusEnum::Accepted
+        {
             tokio::spawn(async move {
                 if downloaded_version {
                     // we must nest more
@@ -264,8 +277,11 @@ pub async fn create_version(
     }
 
     // remove invalid characters from link - they break the location header on download
-    let download_link: String = payload.download_link.chars()
-        .filter(|c| c.is_ascii() && *c != '\0').collect();
+    let download_link: String = payload
+        .download_link
+        .chars()
+        .filter(|c| c.is_ascii() && *c != '\0')
+        .collect();
 
     let mut file_path = download_geode_file(&download_link).await?;
     let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified)
@@ -283,10 +299,15 @@ pub async fn create_version(
             json.name.clone(),
             json.version.clone(),
             true,
-            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
+            Developer {
+                id: dev.id,
+                username: dev.username.clone(),
+                display_name: dev.display_name.clone(),
+                is_owner: true,
+            },
             dev.clone(),
             data.webhook_url.clone(),
-            data.app_url.clone()
+            data.app_url.clone(),
         )
         .await;
     }
@@ -324,8 +345,9 @@ pub async fn update_version(
         path.version.as_str(),
         false,
         false,
-        &mut pool
-    ).await?;
+        &mut pool,
+    )
+    .await?;
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
@@ -365,7 +387,7 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
-    
+
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
@@ -382,8 +404,9 @@ pub async fn update_version(
             owner.as_ref().unwrap().clone(),
             dev.clone(),
             data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
+            data.app_url.clone(),
+        )
+        .await;
     }
 
     Ok(HttpResponse::NoContent())

@@ -5,13 +5,13 @@ use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder, Row
+    PgConnection, Postgres, QueryBuilder, Row,
 };
 
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
-    models::{mod_entity::Mod, download},
+    models::{download, mod_entity::Mod},
 };
 
 use super::{
@@ -116,8 +116,12 @@ impl ModVersionGetOne {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
-            created_at: self.created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-            updated_at: self.updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            created_at: self
+                .created_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            updated_at: self
+                .updated_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
         }
     }
 }
@@ -261,7 +265,8 @@ impl ModVersion {
         }
 
         let version_ids: Vec<i32> = records.iter().map(|x| x.id).collect();
-        let deps = Dependency::get_for_mod_versions(&version_ids, None, None, None, pool).await?;
+        let deps =
+            Dependency::get_for_mod_versions(&version_ids, vec![], vec![], None, pool).await?;
         let incompat =
             Incompatibility::get_for_mod_versions(&version_ids, None, None, None, pool).await?;
 
@@ -443,7 +448,7 @@ impl ModVersion {
 
     pub async fn get_latest_for_mod(
         id: &str,
-        gd: Option<GDVersionEnum>,
+        gd: Vec<GDVersionEnum>,
         platforms: Vec<VerPlatform>,
         major: Option<u32>,
         pool: &mut PgConnection,
@@ -469,24 +474,25 @@ impl ModVersion {
             query_builder.push(" AND mv.version LIKE ");
             query_builder.push_bind(major_ver);
         }
-        if let Some(g) = gd {
-            query_builder.push(" AND (mgv.gd = ");
-            query_builder.push_bind(g);
-            query_builder.push(" OR mgv.gd = ");
-            query_builder.push_bind(GDVersionEnum::All);
+
+        if !gd.is_empty() {
+            query_builder.push(" AND mgv.gd IN (");
+            let mut separated = query_builder.separated(", ");
+            for i in gd.iter() {
+                separated.push_bind(*i);
+            }
             query_builder.push(")");
         }
-        for (i, platform) in platforms.iter().enumerate() {
-            if i == 0 {
-                query_builder.push(" AND mgv.platform IN (");
+
+        if !platforms.is_empty() {
+            query_builder.push(" AND mgv.platform IN (");
+            let mut separated = query_builder.separated(", ");
+            for platform in platforms.iter() {
+                separated.push_bind(*platform);
             }
-            query_builder.push_bind(*platform);
-            if i == platforms.len() - 1 {
-                query_builder.push(")");
-            } else {
-                query_builder.push(", ");
-            }
+            query_builder.push(")");
         }
+
         query_builder.push(" AND mv.mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(") q WHERE q.rn = 1");
@@ -508,7 +514,7 @@ impl ModVersion {
         let ids: Vec<i32> = vec![version.id];
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
         version.dependencies = Some(
-            Dependency::get_for_mod_versions(&ids, None, None, None, pool)
+            Dependency::get_for_mod_versions(&ids, platforms, gd, None, pool)
                 .await?
                 .get(&version.id)
                 .cloned()
@@ -664,15 +670,22 @@ impl ModVersion {
         if fetch_extras {
             version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
             let ids = vec![version.id];
+            let geode = semver::Version::parse(version.geode.as_str()).ok();
             version.dependencies = Some(
-                Dependency::get_for_mod_versions(&ids, None, None, None, pool)
-                    .await?
-                    .get(&version.id)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|x| x.to_response())
-                    .collect(),
+                Dependency::get_for_mod_versions(
+                    &ids,
+                    version.gd.to_platform_vec(),
+                    version.gd.to_vec(),
+                    geode.as_ref(),
+                    pool,
+                )
+                .await?
+                .get(&version.id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|x| x.to_response())
+                .collect(),
             );
             let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
             version.incompatibilities =
@@ -697,7 +710,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -719,7 +733,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -790,12 +805,9 @@ impl ModVersion {
             // should probably spawn this, but we do a download in the transaction which is probably
             // a little worse. idk
 
-            let info = match sqlx::query!(
-                "SELECT mod_id FROM mod_versions WHERE id = $1",
-                id
-            )
-            .fetch_one(&mut *pool)
-            .await
+            let info = match sqlx::query!("SELECT mod_id FROM mod_versions WHERE id = $1", id)
+                .fetch_one(&mut *pool)
+                .await
             {
                 Err(e) => {
                     log::error!("{}", e);

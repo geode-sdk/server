@@ -4,11 +4,14 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{
+    postgres::{PgHasArrayType, PgTypeInfo},
+    PgConnection, Postgres, QueryBuilder,
+};
 
 use crate::types::{api::ApiError, mod_json::ModJson};
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "gd_version")]
 pub enum GDVersionEnum {
     #[serde(rename = "*")]
@@ -44,6 +47,12 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.2074")]
     #[sqlx(rename = "2.2074")]
     GD22074,
+}
+
+impl PgHasArrayType for GDVersionEnum {
+    fn array_type_info() -> PgTypeInfo {
+        PgTypeInfo::with_name("gd_version[]")
+    }
 }
 
 impl FromStr for GDVersionEnum {
@@ -86,6 +95,12 @@ pub enum VerPlatform {
     Win,
 }
 
+impl PgHasArrayType for VerPlatform {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        PgTypeInfo::with_name("gd_ver_platform[]")
+    }
+}
+
 impl FromStr for VerPlatform {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, ()> {
@@ -106,6 +121,16 @@ impl FromStr for VerPlatform {
 }
 
 impl VerPlatform {
+    pub fn all_platforms() -> Vec<VerPlatform> {
+        vec![
+            VerPlatform::Android32,
+            VerPlatform::Android64,
+            VerPlatform::Win,
+            VerPlatform::MacArm,
+            VerPlatform::MacIntel,
+        ]
+    }
+
     pub fn parse_query_string(s: &str) -> Vec<VerPlatform> {
         let mut ret = vec![];
         if s.is_empty() {
@@ -163,6 +188,58 @@ pub struct DetailedGDVersion {
 }
 
 impl DetailedGDVersion {
+    pub fn to_platform_vec(&self) -> Vec<VerPlatform> {
+        let mut ret = Vec::with_capacity(6);
+
+        if self.android32.is_some() {
+            ret.push(VerPlatform::Android32);
+        }
+
+        if self.android64.is_some() {
+            ret.push(VerPlatform::Android64);
+        }
+
+        if self.win.is_some() {
+            ret.push(VerPlatform::Win);
+        }
+
+        if self.mac_arm.is_some() {
+            ret.push(VerPlatform::MacArm);
+        }
+
+        if self.mac_intel.is_some() {
+            ret.push(VerPlatform::MacIntel);
+        }
+
+        ret
+    }
+
+    pub fn to_vec(&self) -> Vec<GDVersionEnum> {
+        let mut ret = Vec::with_capacity(6);
+
+        if let Some(v) = self.android32 {
+            ret.push(v);
+        }
+
+        if let Some(v) = self.android64 {
+            ret.push(v);
+        }
+
+        if let Some(v) = self.win {
+            ret.push(v);
+        }
+
+        if let Some(v) = self.mac_arm {
+            ret.push(v);
+        }
+
+        if let Some(v) = self.mac_intel {
+            ret.push(v);
+        }
+
+        ret
+    }
+
     pub fn to_create_payload(&self, json: &ModJson) -> Vec<ModGDVersionCreate> {
         let mut ret: Vec<_> = vec![];
         if self.android.is_some() {
@@ -369,6 +446,15 @@ impl ModGDVersion {
 
         Ok(ret)
     }
+}
+
+pub fn add_all_to_gdvec(v: &mut Vec<GDVersionEnum>) {
+    for i in v.iter() {
+        if *i == GDVersionEnum::All {
+            return;
+        }
+    }
+    v.push(GDVersionEnum::All);
 }
 
 fn check_for_duplicate_platforms(versions: &Vec<ModGDVersionCreate>) -> Result<(), String> {

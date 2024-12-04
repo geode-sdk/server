@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use crate::types::api::ApiError;
+use crate::types::{api::ApiError, models::mod_gd_version::add_all_to_gdvec};
 
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
@@ -130,8 +130,8 @@ impl Dependency {
 
     pub async fn get_for_mod_versions(
         ids: &Vec<i32>,
-        platform: Option<VerPlatform>,
-        gd: Option<GDVersionEnum>,
+        platforms: Vec<VerPlatform>,
+        gd: Vec<GDVersionEnum>,
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
@@ -145,6 +145,17 @@ impl Dependency {
             dependency: String,
             importance: DependencyImportance,
         }
+        
+        let mut gd = gd;
+        add_all_to_gdvec(&mut gd);
+
+        let platforms = {
+            if !platforms.is_empty() {
+                platforms
+            } else {
+                VerPlatform::all_platforms()
+            }
+        };
 
         let q = sqlx::query_as::<Postgres, QueryResult>(
             r#"
@@ -176,8 +187,8 @@ impl Dependency {
                     INNER JOIN mod_version_statuses dpcy_status ON dpcy_version.status_id = dpcy_status.id
                     WHERE dpcy_status.status = 'accepted'
                     AND mv.id = ANY($1)
-                    AND ($2 IS NULL OR dpcy_mgv.gd = $2 OR dpcy_mgv.gd = '*')
-                    AND ($3 IS NULL OR dpcy_mgv.platform = $3)
+                    AND dpcy_mgv.gd = ANY($2)
+                    AND dpcy_mgv.platform = ANY($3)
                     AND ($4 IS NULL OR (
                         CASE
                             WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version.geode
@@ -230,8 +241,8 @@ impl Dependency {
                     INNER JOIN mod_version_statuses dpcy_status2 ON dpcy_version2.status_id = dpcy_status2.id
                     INNER JOIN dep_tree dt ON dt.dependency_vid = mv2.id
                     WHERE dpcy_status2.status = 'accepted'
-                    AND ($2 IS NULL OR dpcy_mgv2.gd = $2 OR dpcy_mgv2.gd = '*')
-                    AND ($3 IS NULL OR dpcy_mgv2.platform = $3)
+                    AND dpcy_mgv2.gd = ANY($2)
+                    AND dpcy_mgv2.platform = ANY($3)
                     AND ($4 IS NULL OR (
                         CASE
                             WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version2.geode
@@ -260,8 +271,8 @@ impl Dependency {
             SELECT * FROM dep_tree;
             "#,
         ).bind(ids)
-        .bind(gd)
-        .bind(platform)
+        .bind(&gd)
+        .bind(&platforms)
         .bind(geode.map(|x| x.to_string()));
 
         let result = match q.fetch_all(&mut *pool).await {
