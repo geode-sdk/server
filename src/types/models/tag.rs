@@ -15,13 +15,19 @@ pub struct Tag {
     pub id: i32,
     pub name: String,
     pub display_name: String,
+    pub is_readonly: bool,
 }
 
 impl Tag {
     pub async fn get_tags(pool: &mut PgConnection) -> Result<Vec<String>, ApiError> {
-        let tags = match sqlx::query!("SELECT name FROM mod_tags")
-            .fetch_all(&mut *pool)
-            .await
+        let tags = match sqlx::query!(
+            "
+            SELECT name FROM mod_tags
+            WHERE is_readonly = false
+        "
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Ok(tags) => tags,
             Err(e) => {
@@ -38,13 +44,15 @@ impl Tag {
             id: i32,
             name: String,
             display_name: Option<String>,
+            is_readonly: bool,
         }
         let tags = sqlx::query_as!(
             QueryResult,
             "SELECT 
                 id,
                 name,
-                display_name
+                display_name,
+                is_readonly
             FROM mod_tags"
         )
         .fetch_all(&mut *conn)
@@ -60,6 +68,7 @@ impl Tag {
                 id: i.id,
                 name: i.name.clone(),
                 display_name: i.display_name.unwrap_or(i.name),
+                is_readonly: i.is_readonly,
             })
             .collect())
     }
@@ -68,9 +77,12 @@ impl Tag {
         tags: Vec<String>,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedTag>, ApiError> {
-        let db_tags = match sqlx::query_as!(FetchedTag, "SELECT id, name FROM mod_tags")
-            .fetch_all(&mut *pool)
-            .await
+        let db_tags = match sqlx::query_as!(
+            FetchedTag,
+            "SELECT id, name FROM mod_tags WHERE is_readonly = false"
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Ok(tags) => tags,
             Err(e) => {
