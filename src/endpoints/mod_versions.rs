@@ -18,6 +18,7 @@ use crate::{
         },
     }, webhook::send_webhook, AppData
 };
+use crate::types::models::mod_feedback::{ModFeedback,FeedbackTypeEnum};
 
 #[derive(Deserialize)]
 struct IndexPath {
@@ -148,7 +149,7 @@ pub async fn get_one(
             let platform_string = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_string);
 
-            ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
+            ModVersion::get_latest_for_mod_statuses(&path.id, gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool).await?
         } else {
             ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
         }
@@ -181,7 +182,7 @@ pub async fn download_version(
         if path.version == "latest" {
             let platform_str = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_str);
-            ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
+            ModVersion::get_latest_for_mod_statuses(&path.id, query.gd, platforms, query.major, vec![ModVersionStatusEnum::Accepted], &mut pool)
                 .await?
         } else {
             ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
@@ -331,26 +332,9 @@ pub async fn update_version(
     ).await?;
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let id = match sqlx::query!(
-        "select id from mod_versions where mod_id = $1 and version = $2",
-        &path.id,
-        path.version.trim_start_matches('v')
-    )
-    .fetch_optional(&mut *transaction)
-    .await
-    {
-        Ok(Some(id)) => id.id,
-        Ok(None) => {
-            return Err(ApiError::NotFound(String::from("Not Found")));
-        }
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-    };
 
     if let Err(e) = ModVersion::update_version(
-        id,
+        version.id,
         payload.status,
         payload.info.clone(),
         dev.id,
@@ -364,10 +348,37 @@ pub async fn update_version(
             .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
+
+    let feedback_type = match payload.status {
+        ModVersionStatusEnum::Accepted => FeedbackTypeEnum::Positive,
+        ModVersionStatusEnum::Rejected => FeedbackTypeEnum::Negative,
+        _ => FeedbackTypeEnum::Note,
+    };
+
+    if feedback_type != FeedbackTypeEnum::Note {
+        if let Err(e) = ModFeedback::set(
+            &version,
+            dev.id,
+            feedback_type,
+            payload.info.as_deref().unwrap_or_default(),
+            true,
+            Developer::has_access_to_mod(dev.id, &version.mod_id, &mut transaction).await?,
+            &mut transaction
+        ).await {
+            transaction
+                .rollback()
+                .await
+                .or(Err(ApiError::TransactionError))?;
+            return Err(e);
+        }
+    }
+
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+
     
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;

@@ -448,6 +448,17 @@ impl ModVersion {
         major: Option<u32>,
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
+        Self::get_latest_for_mod_statuses(id, gd, platforms, major, vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Rejected, ModVersionStatusEnum::Unlisted, ModVersionStatusEnum::Pending], pool).await
+    }
+
+    pub async fn get_latest_for_mod_statuses(
+        id: &str,
+        gd: Option<GDVersionEnum>,
+        platforms: Vec<VerPlatform>,
+        major: Option<u32>,
+        statuses: Vec<ModVersionStatusEnum>,
+        pool: &mut PgConnection,
+    ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, 
                 q.hash, q.geode, q.download_count,
@@ -461,9 +472,19 @@ impl ModVersion {
                 FROM mods m 
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
                 INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                WHERE mvs.status = 'accepted'"#,
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id"#,
         );
+        for (i, status) in statuses.iter().enumerate() {
+            if i == 0 {
+                query_builder.push(" WHERE mvs.status IN (");
+            }
+            query_builder.push_bind(*status);
+            if i == statuses.len() - 1 {
+                query_builder.push(")");
+            } else {
+                query_builder.push(", ");
+            }
+        }
         if let Some(m) = major {
             let major_ver = format!("{}.%", m);
             query_builder.push(" AND mv.version LIKE ");
