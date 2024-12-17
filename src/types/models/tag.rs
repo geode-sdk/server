@@ -10,13 +10,24 @@ pub struct FetchedTag {
     pub name: String,
 }
 
-pub struct Tag;
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Tag {
+    pub id: i32,
+    pub name: String,
+    pub display_name: String,
+    pub is_readonly: bool,
+}
 
 impl Tag {
     pub async fn get_tags(pool: &mut PgConnection) -> Result<Vec<String>, ApiError> {
-        let tags = match sqlx::query!("SELECT name FROM mod_tags")
-            .fetch_all(&mut *pool)
-            .await
+        let tags = match sqlx::query!(
+            "
+            SELECT name FROM mod_tags
+            WHERE is_readonly = false
+        "
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Ok(tags) => tags,
             Err(e) => {
@@ -28,13 +39,50 @@ impl Tag {
         Ok(tags.into_iter().map(|x| x.name).collect::<Vec<String>>())
     }
 
+    pub async fn get_detailed_tags(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
+        struct QueryResult {
+            id: i32,
+            name: String,
+            display_name: Option<String>,
+            is_readonly: bool,
+        }
+        let tags = sqlx::query_as!(
+            QueryResult,
+            "SELECT 
+                id,
+                name,
+                display_name,
+                is_readonly
+            FROM mod_tags"
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|err| {
+            log::error!("Failed to fetch detailed tags: {}", err);
+            ApiError::DbError
+        })?;
+
+        Ok(tags
+            .into_iter()
+            .map(|i| Tag {
+                id: i.id,
+                name: i.name.clone(),
+                display_name: i.display_name.unwrap_or(i.name),
+                is_readonly: i.is_readonly,
+            })
+            .collect())
+    }
+
     pub async fn get_tag_ids(
         tags: Vec<String>,
         pool: &mut PgConnection,
     ) -> Result<Vec<FetchedTag>, ApiError> {
-        let db_tags = match sqlx::query_as!(FetchedTag, "SELECT id, name FROM mod_tags")
-            .fetch_all(&mut *pool)
-            .await
+        let db_tags = match sqlx::query_as!(
+            FetchedTag,
+            "SELECT id, name FROM mod_tags WHERE is_readonly = false"
+        )
+        .fetch_all(&mut *pool)
+        .await
         {
             Ok(tags) => tags,
             Err(e) => {
