@@ -792,9 +792,7 @@ impl Mod {
             ApiError::InternalError
         })?;
         let new_version = Version::parse(json.version.trim_start_matches('v'))
-            .map_err(|err| {
-                ApiError::BadRequest(format!("Invalid semver {}", json.version))
-            })?;
+            .map_err(|err| ApiError::BadRequest(format!("Invalid semver {}", json.version)))?;
         if new_version <= version {
             return Err(ApiError::BadRequest(format!(
                 "mod.json version {} is smaller / equal to latest mod version {}",
