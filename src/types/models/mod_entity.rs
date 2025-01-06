@@ -121,7 +121,7 @@ impl Mod {
             FROM (
                 select m.id, m.download_count, row_number() over(partition by m.id) rn
                 FROM mods m
-                INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+                INNER JOIN mod_versions mv ON mv.mod_id = m.id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 WHERE mvs.status = 'accepted'
             ) q
@@ -616,7 +616,7 @@ impl Mod {
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1 
+            WHERE m.id = $1
             AND ($2 = false OR mvs.status = 'accepted')"#,
             id,
             only_accepted
@@ -737,7 +737,7 @@ impl Mod {
 
     pub async fn new_version(
         json: &ModJson,
-        developer: FetchedDeveloper,
+        developer: &FetchedDeveloper,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let result = sqlx::query!(
@@ -861,9 +861,9 @@ impl Mod {
         }
         match sqlx::query_as!(
             QueryResult,
-            "SELECT m.image 
+            "SELECT m.image
             FROM mods m
-            INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+            INNER JOIN mod_versions mv ON mv.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE m.id = $1",
             id
@@ -981,7 +981,7 @@ impl Mod {
                 }
 
                 let counts = match sqlx::query!(
-                    "select 
+                    "select
                     count(1) filter (where mvs.status = ANY(array['accepted', 'pending']::mod_version_status[])) as not_rejected,
                     count(1) filter (where mvs.status = 'rejected') as rejected,
                     count(1) filter (where mvs.status = 'accepted') as validated
@@ -1318,20 +1318,20 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT 
-                q.id, 
-                q.inner_version as version, 
+            r#"SELECT
+                q.id,
+                q.inner_version as version,
                 q.mod_version_id
             FROM (
-                SELECT m.id, 
+                SELECT m.id,
                     mv.id as mod_version_id,
                     mv.version as inner_version,
-                    row_number() over (partition by m.id order by mv.id desc) rn 
+                    row_number() over (partition by m.id order by mv.id desc) rn
                 FROM mods m
-                INNER JOIN mod_versions mv ON mv.mod_id = m.id 
+                INNER JOIN mod_versions mv ON mv.mod_id = m.id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
-                WHERE mvs.status = 'accepted' 
+                WHERE mvs.status = 'accepted'
                     AND mgv.platform = "#,
         );
         builder.push_bind(platforms);
