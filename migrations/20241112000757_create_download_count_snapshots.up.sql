@@ -18,4 +18,4 @@ CREATE TABLE IF NOT EXISTS mods_download_count_snapshots(
     FOREIGN KEY (mod_id) 
         REFERENCES mods(id) 
         ON DELETE CASCADE
-)
+);

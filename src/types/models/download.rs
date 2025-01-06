@@ -1,8 +1,11 @@
-use sqlx::{types::ipnetwork::IpNetwork, PgConnection, Acquire};
+use sqlx::{types::ipnetwork::IpNetwork, Acquire, PgConnection};
 
 use crate::types::api::ApiError;
 
-pub async fn downloaded_version(mod_version_id: i32, pool: &mut PgConnection) -> Result<bool, ApiError> {
+pub async fn downloaded_version(
+    mod_version_id: i32,
+    pool: &mut PgConnection,
+) -> Result<bool, ApiError> {
     match sqlx::query!(
         r#"
         SELECT mod_version_id FROM mod_downloads md
@@ -95,7 +98,7 @@ pub async fn create_download(
             tx.commit().await.or(Err(ApiError::TransactionError))?;
 
             Ok((true, !downloaded_mod))
-        },
+        }
         Err(e) => {
             log::error!("{}", e);
             Err(ApiError::InternalError)
