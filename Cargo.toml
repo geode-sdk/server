@@ -4,11 +4,11 @@ version = "0.34.1"
 edition = "2021"
 
 [dependencies]
-image = { version = "0.24", features = ["png"] }
+image = { version = "0.25", features = ["png"] }
 actix-web = "4.6"
 anyhow = "1.0"
 dotenvy = "0.15"
-env_logger = "0.10"
+env_logger = "0.11"
 log = "0.4"
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
@@ -21,9 +21,9 @@ sqlx = { version = "0.8", features = [
     "ipnetwork",
 ] }
 tokio = { version = "1.38", features = ["rt", "macros", "rt-multi-thread"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
-zip = "0.6"
+zip = "2.2"
 sha256 = "1.5"
 semver = "1.0"
 clap = { version = "4.5", features = ["derive"] }
