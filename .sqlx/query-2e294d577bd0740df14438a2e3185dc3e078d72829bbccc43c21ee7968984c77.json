@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM incompatibilities\n            WHERE mod_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2e294d577bd0740df14438a2e3185dc3e078d72829bbccc43c21ee7968984c77"
+}

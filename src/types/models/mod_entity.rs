@@ -6,9 +6,7 @@ use crate::{
     types::{
         api::{ApiError, PaginatedData},
         mod_json::{self, ModJson, ModJsonLinks},
-        models::{
-            mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
-        },
+        models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
     },
 };
 use actix_web::web::Bytes;
@@ -20,10 +18,19 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
 };
-use std::{collections::HashMap, io::{Cursor, Read}, str::FromStr};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read},
+    str::FromStr,
+};
 
 use super::{
-    dependency::ResponseDependency, developer::{Developer, FetchedDeveloper}, incompatibility::{Replacement, ResponseIncompatibility}, mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform}, mod_link::ModLinks, tag::Tag
+    dependency::ResponseDependency,
+    developer::{Developer, FetchedDeveloper},
+    incompatibility::{Replacement, ResponseIncompatibility},
+    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
+    mod_link::ModLinks,
+    tag::Tag,
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
@@ -39,7 +46,7 @@ pub struct Mod {
     pub changelog: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-    pub links: Option<ModLinks>
+    pub links: Option<ModLinks>,
 }
 
 #[derive(Serialize, Debug)]
@@ -98,7 +105,7 @@ pub enum CheckExistingResult {
     Exists,
     NotExists,
     ExistsNotValidated,
-    ExistsWithRejected
+    ExistsWithRejected,
 }
 
 pub struct ModStats {
@@ -108,7 +115,8 @@ pub struct ModStats {
 
 impl Mod {
     pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, ApiError> {
-        match sqlx::query!("
+        match sqlx::query!(
+            "
             SELECT COUNT(id), SUM(download_count)
             FROM (
                 select m.id, m.download_count, row_number() over(partition by m.id) rn
@@ -118,7 +126,8 @@ impl Mod {
                 WHERE mvs.status = 'accepted'
             ) q
             WHERE q.rn = 1
-        ")
+        "
+        )
         .fetch_optional(&mut *pool)
         .await
         {
@@ -126,11 +135,20 @@ impl Mod {
                 log::error!("{}", e);
                 Err(ApiError::DbError)
             }
-            Ok(r) => if let Some((Some(total_count), Some(total_downloads))) = r.map(|o| (o.count, o.sum)) {
-                Ok(ModStats { total_count, total_downloads })
-            }
-            else {
-                Ok(ModStats { total_count: 0, total_downloads: 0 })
+            Ok(r) => {
+                if let Some((Some(total_count), Some(total_downloads))) =
+                    r.map(|o| (o.count, o.sum))
+                {
+                    Ok(ModStats {
+                        total_count,
+                        total_downloads,
+                    })
+                } else {
+                    Ok(ModStats {
+                        total_count: 0,
+                        total_downloads: 0,
+                    })
+                }
             }
         }
     }
@@ -159,11 +177,11 @@ impl Mod {
                     VerPlatform::Android => {
                         platforms.push(VerPlatform::Android32);
                         platforms.push(VerPlatform::Android64);
-                    },
+                    }
                     VerPlatform::Mac => {
                         platforms.push(VerPlatform::MacArm);
                         platforms.push(VerPlatform::MacIntel);
-                    },
+                    }
                     _ => platforms.push(platform),
                 }
             }
@@ -174,7 +192,7 @@ impl Mod {
             row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "#
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "#,
         );
         let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(DISTINCT m.id) FROM mods m
@@ -203,7 +221,7 @@ impl Mod {
             builder.push(sql);
             counter_builder.push(sql);
 
-            builder.push_bind(&tags); 
+            builder.push_bind(&tags);
             counter_builder.push_bind(&tags);
             let sql = ") AND ";
             builder.push(sql);
@@ -394,7 +412,14 @@ impl Mod {
         }
 
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
-        let versions = ModVersion::get_latest_for_mods(pool, ids.clone(), query.gd, platforms, query.geode.as_ref()).await?;
+        let versions = ModVersion::get_latest_for_mods(
+            pool,
+            ids.clone(),
+            query.gd,
+            platforms,
+            query.geode.as_ref(),
+        )
+        .await?;
         let developers = Developer::fetch_for_mods(&ids, pool).await?;
         let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
@@ -428,7 +453,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: None,
                     changelog: None,
-                    links
+                    links,
                 }
             })
             .collect();
@@ -475,7 +500,7 @@ impl Mod {
                     updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
                     about: x.about,
                     changelog: x.changelog,
-                    links
+                    links,
                 }
             })
             .collect::<Vec<Mod>>();
@@ -501,7 +526,7 @@ impl Mod {
             mod_version_download_count: i32,
             validated: bool,
             status: ModVersionStatusEnum,
-            info: Option<String>
+            info: Option<String>,
         }
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -517,15 +542,16 @@ impl Mod {
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mods_developers md ON md.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE md.developer_id = "
+            WHERE md.developer_id = ",
         );
         query_builder.push_bind(id);
         query_builder.push(" AND mvs.status = ");
         query_builder.push_bind(status);
 
-        let records = match query_builder.build_query_as::<Record>()
-        .fetch_all(&mut *pool)
-        .await
+        let records = match query_builder
+            .build_query_as::<Record>()
+            .fetch_all(&mut *pool)
+            .await
         {
             Ok(e) => e,
             Err(e) => {
@@ -547,7 +573,7 @@ impl Mod {
                 download_count: record.mod_version_download_count,
                 validated: record.validated,
                 info: record.info.clone(),
-                status: record.status
+                status: record.status,
             };
 
             versions.entry(record.id.clone()).or_default().push(version);
@@ -575,7 +601,11 @@ impl Mod {
         Ok(mods)
     }
 
-    pub async fn get_one(id: &str, only_accepted: bool, pool: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
+    pub async fn get_one(
+        id: &str,
+        only_accepted: bool,
+        pool: &mut PgConnection,
+    ) -> Result<Option<Mod>, ApiError> {
         let records: Vec<ModRecordGetOne> = sqlx::query_as!(
             ModRecordGetOne,
             r#"SELECT
@@ -591,9 +621,9 @@ impl Mod {
             id,
             only_accepted
         )
-        .fetch_all(&mut *pool)
-        .await
-        .or(Err(ApiError::DbError))?;
+            .fetch_all(&mut *pool)
+            .await
+            .or(Err(ApiError::DbError))?;
         if records.is_empty() {
             return Ok(None);
         }
@@ -626,14 +656,19 @@ impl Mod {
                 tags: None,
                 dependencies: None,
                 incompatibilities: None,
-                created_at: x.mod_version_created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-                updated_at: x.mod_version_updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+                created_at: x
+                    .mod_version_created_at
+                    .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+                updated_at: x
+                    .mod_version_updated_at
+                    .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
                 direct_download_link: Some(x.download_link.clone()),
                 info: x.info.clone(),
             })
             .collect();
         let ids: Vec<i32> = versions.iter().map(|x| x.id).collect();
-        let gd: HashMap<i32, DetailedGDVersion> = ModGDVersion::get_for_mod_versions(&ids, pool).await?;
+        let gd: HashMap<i32, DetailedGDVersion> =
+            ModGDVersion::get_for_mod_versions(&ids, pool).await?;
         let tags: Vec<String> = Tag::get_tags_for_mod(id, pool).await?;
         let devs: Vec<Developer> = Developer::fetch_for_mod(id, pool).await?;
         let links: Option<ModLinks> = ModLinks::fetch(id, pool).await?;
@@ -659,7 +694,7 @@ impl Mod {
                 .to_rfc3339_opts(SecondsFormat::Secs, true),
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
-            links
+            links,
         };
         Ok(Some(mod_entity))
     }
@@ -685,16 +720,15 @@ impl Mod {
 
         Mod::create(json, developer, pool).await?;
         if let Some(l) = &json.links {
-            if l.community.is_some()
-                || l.homepage.is_some()
-                || l.source.is_some() {
+            if l.community.is_some() || l.homepage.is_some() || l.source.is_some() {
                 ModLinks::upsert_for_mod(
-                    &json.id, 
+                    &json.id,
                     l.community.clone(),
                     l.homepage.clone(),
                     l.source.clone(),
-                    pool
-                ).await?;
+                    pool,
+                )
+                .await?;
             }
         }
         ModVersion::create_from_json(json, false, pool).await?;
@@ -710,7 +744,7 @@ impl Mod {
             "SELECT DISTINCT m.id FROM mods m
             INNER JOIN mod_versions mv ON mv.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1 AND mvs.status = 'accepted'",
+            WHERE m.id = $1",
             json.id
         )
         .fetch_optional(&mut *pool)
@@ -718,20 +752,29 @@ impl Mod {
         .or(Err(ApiError::DbError))?;
         if result.is_none() {
             return Err(ApiError::NotFound(format!(
-                "Mod {} doesn't exist or isn't yet validated",
+                "Mod {} doesn't exist",
                 &json.id
             )));
         }
 
-        let latest = match sqlx::query!(
-            "SELECT mv.version, mv.id FROM mod_versions mv
-            INNER JOIN mods m ON mv.mod_id = m.id
-            WHERE m.id = $1
-            ORDER BY mv.id DESC LIMIT 1",
+        struct ModVersionItem {
+            version: String,
+            id: i32,
+            status: ModVersionStatusEnum,
+        }
+
+        let latest = match sqlx::query_as!(
+            ModVersionItem,
+            r#"SELECT mv.version, mv.id, mvs.status as "status!: ModVersionStatusEnum" FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
+            WHERE mv.mod_id = $1
+            AND (mvs.status = 'pending' OR mvs.status = 'accepted' OR mvs.status = 'rejected')
+            ORDER BY mv.id DESC
+            LIMIT 1"#,
             &json.id
         )
-        .fetch_one(&mut *pool)
-        .await
+            .fetch_one(&mut *pool)
+            .await
         {
             Ok(r) => r,
             Err(e) => {
@@ -740,23 +783,28 @@ impl Mod {
             }
         };
 
-        let version = semver::Version::parse(latest.version.trim_start_matches('v')).unwrap();
-        let new_version = match semver::Version::parse(json.version.trim_start_matches('v')) {
-            Ok(v) => v,
-            Err(_) => {
-                return Err(ApiError::BadRequest(format!(
-                    "Invalid semver {}",
-                    json.version
-                )))
-            }
-        };
-        if new_version.le(&version) {
+        let version = Version::parse(&latest.version).map_err(|err| {
+            log::error!(
+                "Invalid semver for locally stored version: id {}, version {}",
+                latest.id,
+                latest.version
+            );
+            ApiError::InternalError
+        })?;
+        let new_version = Version::parse(json.version.trim_start_matches('v'))
+            .map_err(|err| ApiError::BadRequest(format!("Invalid semver {}", json.version)))?;
+        if new_version <= version {
             return Err(ApiError::BadRequest(format!(
                 "mod.json version {} is smaller / equal to latest mod version {}",
-                json.version, latest.version
+                json.version, version
             )));
         }
-        ModVersion::create_from_json(json, developer.verified, pool).await?;
+
+        if latest.status == ModVersionStatusEnum::Pending {
+            ModVersion::update_pending_version(latest.id, json, developer.verified, pool).await?;
+        } else {
+            ModVersion::create_from_json(json, developer.verified, pool).await?;
+        }
 
         Mod::update_existing_with_json(json, developer.verified, pool).await?;
 
@@ -809,7 +857,7 @@ impl Mod {
         pool: &mut PgConnection,
     ) -> Result<Option<Vec<u8>>, ApiError> {
         struct QueryResult {
-            image: Option<Vec<u8>>
+            image: Option<Vec<u8>>,
         }
         match sqlx::query_as!(
             QueryResult,
@@ -828,7 +876,7 @@ impl Mod {
                 Err(ApiError::DbError)
             }
             Ok(Some(r)) => Ok(r.image),
-            Ok(None) => Ok(None)
+            Ok(None) => Ok(None),
         }
     }
 
@@ -843,13 +891,13 @@ impl Mod {
                     "Mod {} already exists, consider creating a new version",
                     json.id
                 )))
-            },
+            }
             CheckExistingResult::ExistsNotValidated => {
                 return Err(ApiError::BadRequest(format!(
                     "Mod {} already exists, but is not yet validated",
                     json.id
                 )))
-            },
+            }
             CheckExistingResult::ExistsWithRejected => {
                 if !Developer::has_access_to_mod(developer.id, &json.id, pool).await? {
                     return Err(ApiError::Forbidden);
@@ -867,8 +915,8 @@ impl Mod {
                 }
 
                 true
-            },
-            CheckExistingResult::NotExists => false 
+            }
+            CheckExistingResult::NotExists => false,
         };
 
         if updated {
@@ -909,10 +957,14 @@ impl Mod {
         Ok(())
     }
 
-    async fn check_for_existing(id: &str, pool: &mut PgConnection) -> Result<CheckExistingResult, ApiError> {
+    async fn check_for_existing(
+        id: &str,
+        pool: &mut PgConnection,
+    ) -> Result<CheckExistingResult, ApiError> {
         let res = match sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
             .fetch_optional(&mut *pool)
-            .await {
+            .await
+        {
             Ok(e) => e,
             Err(e) => {
                 log::error!("{}", e);
@@ -938,16 +990,16 @@ impl Mod {
                     where mv.mod_id = $1",
                     id
                 )
-                .fetch_one(&mut *pool)
-                .await
+                    .fetch_one(&mut *pool)
+                    .await
                 {
                     Ok(e) => {
                         Counts {
                             not_rejected: e.not_rejected.unwrap_or(0),
                             rejected: e.rejected.unwrap_or(0),
                             validated: e.validated.unwrap_or(0),
-                        } 
-                    },
+                        }
+                    }
                     Err(e) => {
                         log::error!("{}", e);
                         return Err(ApiError::DbError);
@@ -959,9 +1011,9 @@ impl Mod {
                 }
                 if counts.validated == 0 && counts.not_rejected > 0 {
                     return Ok(CheckExistingResult::ExistsNotValidated);
-                } 
+                }
                 if counts.rejected > 0 {
-                    return Ok(CheckExistingResult::ExistsWithRejected)
+                    return Ok(CheckExistingResult::ExistsWithRejected);
                 }
 
                 // This probably shouldn't ever happen. If it does I'm jumping off a cliff.
@@ -1010,12 +1062,14 @@ impl Mod {
                 where id = $2",
                 Utc::now(),
                 &json.id
-            ).execute(&mut *pool).await
+            )
+            .execute(&mut *pool)
+            .await
             {
                 Err(e) => {
                     log::error!("{}", e);
                     return Err(ApiError::DbError);
-                },
+                }
                 Ok(r) => {
                     if r.rows_affected() == 0 {
                         log::error!("Couldn't update timestamp on mod. No rows affected.");
@@ -1030,17 +1084,17 @@ impl Mod {
             let links = json.links.clone().unwrap_or(ModJsonLinks {
                 community: None,
                 source: None,
-                homepage: None
+                homepage: None,
             });
             ModLinks::upsert_for_mod(
                 &json.id,
                 links.community,
                 links.homepage,
                 links.source,
-                pool
-            ).await?;
+                pool,
+            )
+            .await?;
         }
-
 
         Ok(())
     }
@@ -1052,8 +1106,12 @@ impl Mod {
         if let Err(e) = sqlx::query!(
             "UPDATE mods m
             SET download_count = download_count + 1
-            WHERE m.id = $1", mod_id
-        ).execute(&mut *pool).await {
+            WHERE m.id = $1",
+            mod_id
+        )
+        .execute(&mut *pool)
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -1071,8 +1129,12 @@ impl Mod {
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 WHERE mv.mod_id = m.id AND mvs.status = 'accepted'
             ), last_download_cache_refresh = now()
-            WHERE m.id = $1", mod_id
-        ).execute(&mut *pool).await {
+            WHERE m.id = $1",
+            mod_id
+        )
+        .execute(&mut *pool)
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -1270,7 +1332,7 @@ impl Mod {
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
                 WHERE mvs.status = 'accepted' 
-                    AND mgv.platform = "#
+                    AND mgv.platform = "#,
         );
         builder.push_bind(platforms);
         builder.push(" AND (mgv.gd = ");
@@ -1362,7 +1424,7 @@ impl Mod {
                 //     .iter()
                 //     .map(|x| x.to_response())
                 //     .collect(),
-                replacement: None
+                replacement: None,
             };
             ret.push(update);
         }
@@ -1370,7 +1432,12 @@ impl Mod {
         Ok(ret)
     }
 
-    pub async fn update_mod_image(id: &str, hash: &str, download_link: &str, pool: &mut PgConnection) -> Result<(), ApiError> {
+    pub async fn update_mod_image(
+        id: &str,
+        hash: &str,
+        download_link: &str,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
         let mut cursor = download_geode_file(download_link).await?;
         let mut bytes: Vec<u8> = vec![];
         match cursor.read_to_end(&mut bytes) {
@@ -1383,7 +1450,10 @@ impl Mod {
 
         let new_hash = sha256::digest(bytes);
         if new_hash != hash {
-            return Err(ApiError::BadRequest(format!("Different hash detected: old: {}, new: {}", hash, new_hash)));
+            return Err(ApiError::BadRequest(format!(
+                "Different hash detected: old: {}, new: {}",
+                hash, new_hash
+            )));
         }
         let mut archive = match zip::ZipArchive::new(cursor) {
             Err(e) => {
@@ -1400,8 +1470,8 @@ impl Mod {
                 // In this case maybe the mod doesn't have a logo
                 log::error!("{}", e);
                 return Ok(());
-            },
-            Ok(i) => i
+            }
+            Ok(i) => i,
         };
 
         let image = mod_json::validate_mod_logo(&mut image_file, true)?;
@@ -1411,12 +1481,14 @@ impl Mod {
             WHERE id = $2",
             image,
             id
-        ).execute(&mut *pool)
-        .await {
+        )
+        .execute(&mut *pool)
+        .await
+        {
             Err(e) => {
                 log::error!("{}", e);
                 return Err(ApiError::DbError);
-            },
+            }
             Ok(m) => {
                 if m.rows_affected() == 0 {
                     log::error!("No rows affected by image update");
