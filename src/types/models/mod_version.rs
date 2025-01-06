@@ -5,13 +5,13 @@ use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder, Row
+    PgConnection, Postgres, QueryBuilder, Row,
 };
 
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
-    models::{mod_entity::Mod, download},
+    models::{download, mod_entity::Mod},
 };
 
 use super::{
@@ -116,8 +116,12 @@ impl ModVersionGetOne {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
-            created_at: self.created_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-            updated_at: self.updated_at.map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            created_at: self
+                .created_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            updated_at: self
+                .updated_at
+                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
         }
     }
 }
@@ -539,7 +543,10 @@ impl ModVersion {
             .execute(&mut *pool)
             .await
         {
-            log::error!("Error while updating constraints for mod_version_statuses: {}", e);
+            log::error!(
+                "Error while updating constraints for mod_version_statuses: {}",
+                e
+            );
             return Err(ApiError::DbError);
         };
 
@@ -627,6 +634,87 @@ impl ModVersion {
         Ok(())
     }
 
+    pub async fn update_pending_version(
+        version_id: i32,
+        json: &ModJson,
+        make_accepted: bool,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        let result = sqlx::query!(
+            "UPDATE mod_versions mv
+                SET name = $1,
+                version = $2,
+                download_link = $3,
+                hash = $4,
+                geode = $5,
+                early_load = $6,
+                api = $7,
+                description = $8,
+                updated_at = NOW()
+            FROM mod_version_statuses mvs
+            WHERE mv.status_id = mvs.id
+            AND mvs.status = 'pending'
+            AND mv.id = $9",
+            &json.name,
+            &json.version,
+            &json.download_url,
+            &json.hash,
+            &json.geode,
+            &json.early_load,
+            &json.api.is_some(),
+            json.description.clone().unwrap_or_default(),
+            version_id
+        )
+        .execute(&mut *pool)
+        .await
+        .map_err(|err| {
+            log::error!(
+                "Failed to update pending version {}-{}: {}",
+                json.id,
+                json.version,
+                err
+            );
+            ApiError::DbError
+        })?;
+
+        let json_tags = json.tags.clone().unwrap_or_default();
+        let tags = Tag::get_tag_ids(json_tags, pool).await?;
+        Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
+        ModGDVersion::clear_for_mod_version(version_id, pool).await.map_err(|err| {
+            log::error!("{}", err);
+            ApiError::DbError
+        })?;
+        ModGDVersion::create_from_json(json.gd.to_create_payload(json), version_id, pool).await?;
+        Dependency::clear_for_mod_version(version_id, pool).await?;
+        Incompatibility::clear_for_mod_version(version_id, pool).await?;
+
+        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
+            let dependencies = json.prepare_dependencies_for_create()?;
+            if !dependencies.is_empty() {
+                Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
+            }
+        }
+        if json
+            .incompatibilities
+            .as_ref()
+            .is_some_and(|x| !x.is_empty())
+        {
+            let incompat = json.prepare_incompatibilities_for_create()?;
+            if !incompat.is_empty() {
+                Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
+            }
+        }
+
+        let status = if make_accepted {
+            ModVersionStatusEnum::Accepted
+        } else {
+            ModVersionStatusEnum::Pending
+        };
+
+        ModVersionStatus::update_for_mod_version(version_id, status, None, None, pool).await?;
+        Ok(())
+    }
+
     pub async fn get_one(
         id: &str,
         version: &str,
@@ -698,7 +786,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -720,7 +809,8 @@ impl ModVersion {
             mod_version_id
         )
         .execute(&mut *pool)
-        .await {
+        .await
+        {
             log::error!("{}", e);
             return Err(ApiError::DbError);
         }
@@ -791,12 +881,9 @@ impl ModVersion {
             // should probably spawn this, but we do a download in the transaction which is probably
             // a little worse. idk
 
-            let info = match sqlx::query!(
-                "SELECT mod_id FROM mod_versions WHERE id = $1",
-                id
-            )
-            .fetch_one(&mut *pool)
-            .await
+            let info = match sqlx::query!("SELECT mod_id FROM mod_versions WHERE id = $1", id)
+                .fetch_one(&mut *pool)
+                .await
             {
                 Err(e) => {
                     log::error!("{}", e);

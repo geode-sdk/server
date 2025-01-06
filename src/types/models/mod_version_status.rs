@@ -46,4 +46,33 @@ impl ModVersionStatus {
             Ok(r) => Ok(r.id),
         }
     }
+
+    pub async fn update_for_mod_version(
+        id: i32,
+        status: ModVersionStatusEnum,
+        info: Option<String>,
+        admin_id: Option<i32>,
+        pool: &mut PgConnection,
+    ) -> Result<(), ApiError> {
+        sqlx::query!(
+            "UPDATE mod_version_statuses mvs
+                SET status = $1,
+                info = $2,
+                admin_id = $3
+            FROM mod_versions mv
+            WHERE mv.status_id = mvs.id
+            AND mv.id = $4",
+            status as ModVersionStatusEnum,
+            info,
+            admin_id,
+            id
+        )
+        .execute(&mut *pool)
+        .await
+        .map(|_| ())
+        .map_err(|err| {
+            log::error!("Failed to update status for version id {}: {}", id, err);
+            ApiError::DbError
+        })
+    }
 }

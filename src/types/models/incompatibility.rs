@@ -110,6 +110,27 @@ impl Incompatibility {
         Ok(())
     }
 
+    pub async fn clear_for_mod_version(
+        id: i32,
+        pool: &mut PgConnection
+    ) -> Result<(), ApiError> {
+        sqlx::query!(
+            "DELETE FROM incompatibilities
+            WHERE mod_id = $1",
+            id
+        )
+            .execute(&mut *pool)
+            .await
+            .map(|_| ())
+            .map_err(|err| {
+                log::error!(
+                    "Failed to remove incompatibilities for mod version {}: {}",
+                    id, err
+                );
+                ApiError::DbError
+            })
+    }
+
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,

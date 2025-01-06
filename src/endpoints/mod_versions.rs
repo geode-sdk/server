@@ -253,7 +253,7 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    let fetched_mod = Mod::get_one(&path.id, true, &mut pool).await?;
+    let fetched_mod = Mod::get_one(&path.id, false, &mut pool).await?;
 
     if fetched_mod.is_none() {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
