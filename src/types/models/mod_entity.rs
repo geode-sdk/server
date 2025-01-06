@@ -698,7 +698,7 @@ impl Mod {
                 ).await?;
             }
         }
-        ModVersion::create_from_json(json, dev_verified, pool).await?;
+        ModVersion::create_from_json(json, false, pool).await?;
         Ok(())
     }
 
