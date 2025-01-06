@@ -669,20 +669,19 @@ impl Mod {
         developer: FetchedDeveloper,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if semver::Version::parse(json.version.trim_start_matches('v')).is_err() {
+        if Version::parse(json.version.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid mod version semver {}",
                 json.version
             )));
         };
 
-        if semver::Version::parse(json.geode.trim_start_matches('v')).is_err() {
+        if Version::parse(json.geode.trim_start_matches('v')).is_err() {
             return Err(ApiError::BadRequest(format!(
                 "Invalid geode version semver {}",
                 json.geode
             )));
         };
-        let dev_verified = developer.verified;
 
         Mod::create(json, developer, pool).await?;
         if let Some(l) = &json.links {
@@ -698,7 +697,7 @@ impl Mod {
                 ).await?;
             }
         }
-        ModVersion::create_from_json(json, dev_verified, pool).await?;
+        ModVersion::create_from_json(json, false, pool).await?;
         Ok(())
     }
 

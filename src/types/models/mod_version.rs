@@ -532,14 +532,14 @@ impl ModVersion {
 
     pub async fn create_from_json(
         json: &ModJson,
-        dev_verified: bool,
+        make_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
             .execute(&mut *pool)
             .await
         {
-            log::error!("{}", e);
+            log::error!("Error while updating constraints for mod_version_statuses: {}", e);
             return Err(ApiError::DbError);
         };
 
@@ -595,7 +595,7 @@ impl ModVersion {
             }
         }
 
-        let status = if dev_verified {
+        let status = if make_accepted {
             ModVersionStatusEnum::Accepted
         } else {
             ModVersionStatusEnum::Pending
@@ -615,6 +615,7 @@ impl ModVersion {
             return Err(ApiError::DbError);
         }
 
+        // Revert deferred constraints
         if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey IMMEDIATE")
             .execute(&mut *pool)
             .await
