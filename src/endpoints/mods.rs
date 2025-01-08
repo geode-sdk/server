@@ -2,7 +2,6 @@ use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
-use crate::webhook::send_webhook;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;

@@ -640,7 +640,7 @@ impl ModVersion {
         make_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let result = sqlx::query!(
+        sqlx::query!(
             "UPDATE mod_versions mv
                 SET name = $1,
                 version = $2,
