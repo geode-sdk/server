@@ -9,7 +9,7 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S)} {h({l})} {m}\n"
     filters:
-      - kind: threashold
+      - kind: threshold
         level: warn
     policy:
       trigger:
