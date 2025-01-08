@@ -1,3 +1,5 @@
+use crate::types::api;
+use crate::types::api::ApiError;
 use actix_cors::Cors;
 use actix_web::{
     get,
@@ -6,11 +8,6 @@ use actix_web::{
     App, HttpServer, Responder,
 };
 use clap::Parser;
-use env_logger::Env;
-use log::info;
-
-use crate::types::api;
-use crate::types::api::ApiError;
 
 mod auth;
 mod endpoints;
@@ -36,14 +33,9 @@ struct Args {
     script: Option<String>,
 }
 
-#[get("/")]
-async fn health() -> Result<impl Responder, ApiError> {
-    Ok(web::Json("The Geode Index is running"))
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+    log4rs::init_file("config/log4rs.yaml", Default::default())?;
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 
@@ -51,29 +43,27 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(10)
         .connect(&env_url)
         .await?;
-    info!("Running migrations");
-    let migration_res = sqlx::migrate!("./migrations").run(&pool).await;
-    if migration_res.is_err() {
-        log::error!(
-            "Error encountered while running migrations: {}",
-            migration_res.err().unwrap()
-        );
+
+    log::info!("Running migrations");
+    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
+        log::error!("Error encountered while running migrations: {}", e);
     }
-    let addr = "0.0.0.0";
+
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let disable_downloads = dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let disable_downloads =
+        dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
 
     let app_data = AppData {
-        db: pool.clone(),
-        app_url: app_url.clone(),
-        github_client_id: github_client.clone(),
-        github_client_secret: github_secret.clone(),
-        webhook_url: webhook_url.clone(),
+        db: pool,
+        app_url,
+        github_client_id: github_client,
+        github_client_secret: github_secret,
+        webhook_url,
         disable_downloads,
     };
 
@@ -86,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         return anyhow::Ok(());
     }
 
-    info!("Starting server on {}:{}", addr, port);
+    log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_data.clone()))
@@ -126,12 +116,12 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
-            .service(health)
+            .service(endpoints::health::health)
     })
-    .bind((addr, port))?;
+    .bind(("0.0.0.0", port))?;
 
     if debug {
-        info!("Running in debug mode, using 1 thread.");
+        log::info!("Running in debug mode, using 1 thread.");
         server.workers(1).run().await?;
     } else {
         server.run().await?;
@@ -139,3 +129,4 @@ async fn main() -> anyhow::Result<()> {
 
     anyhow::Ok(())
 }
+

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default};
+use std::collections::HashMap;
 
 use crate::types::api::ApiError;
 use crate::types::models::dependency::ModVersionCompare;
