@@ -7,7 +7,6 @@ use actix_web::{
     web::{self, QueryConfig},
     App, HttpServer, Responder,
 };
-use clap::Parser;
 
 mod auth;
 mod endpoints;
@@ -15,6 +14,7 @@ mod extractors;
 mod jobs;
 mod types;
 mod webhook;
+mod cli;
 
 #[derive(Clone)]
 pub struct AppData {
@@ -26,12 +26,6 @@ pub struct AppData {
     disable_downloads: bool,
 }
 
-#[derive(Debug, Parser)]
-struct Args {
-    /// Name of the script to run
-    #[arg(short, long)]
-    script: Option<String>,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,11 +37,6 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(10)
         .connect(&env_url)
         .await?;
-
-    log::info!("Running migrations");
-    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
-        log::error!("Error encountered while running migrations: {}", e);
-    }
 
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
@@ -67,13 +56,13 @@ async fn main() -> anyhow::Result<()> {
         disable_downloads,
     };
 
-    let args = Args::parse();
-    if let Some(s) = args.script {
-        if let Err(e) = jobs::start_job(&s, app_data).await {
-            log::error!("Error encountered while running job: {}", e);
-        }
-        log::info!("Job {} completed", s);
-        return anyhow::Ok(());
+    if cli::maybe_cli(&app_data).await? {
+        return Ok(());
+    }
+
+    log::info!("Running migrations");
+    if let Err(e) = sqlx::migrate!("./migrations").run(&app_data.db).await {
+        log::error!("Error encountered while running migrations: {}", e);
     }
 
     log::info!("Starting server on 0.0.0.0:{}", port);
