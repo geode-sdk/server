@@ -127,7 +127,7 @@ impl ModJson {
         };
         json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
-        json.download_url = download_url.to_string();
+        json.download_url = parse_download_url(download_url);
 
         if json.dependencies.is_some() {
             for i in json.dependencies.as_mut().unwrap() {
@@ -529,4 +529,8 @@ pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompar
         Err(_) => Err(()),
         Ok(v) => Ok((v, compare)),
     }
+}
+
+fn parse_download_url(url: &str) -> String {
+    String::from(url.trim_end_matches("\\/"))
 }
