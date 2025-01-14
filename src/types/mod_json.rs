@@ -10,7 +10,6 @@ use reqwest::Url;
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
-use tokio::io::AsyncReadExt;
 use zip::read::ZipFile;
 
 use super::{
