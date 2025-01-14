@@ -95,7 +95,8 @@ impl ModJson {
         store_image: bool,
     ) -> Result<ModJson, ApiError> {
         let mut bytes: Vec<u8> = vec![];
-        match file.take(&mut bytes, 100_000_000) {
+        let mut take = file.take(100_000_000);
+        match take.read_to_end(&mut bytes) {
             Err(e) => {
                 log::error!("Failed to read bytes from {}: {}", download_url, e);
                 return Err(ApiError::FilesystemError);
