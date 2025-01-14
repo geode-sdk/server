@@ -1,11 +1,9 @@
 use crate::types::api;
-use crate::types::api::ApiError;
 use actix_cors::Cors;
 use actix_web::{
-    get,
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer, Responder,
+    App, HttpServer
 };
 
 mod auth;
@@ -15,6 +13,7 @@ mod jobs;
 mod types;
 mod webhook;
 mod cli;
+mod database;
 
 #[derive(Clone)]
 pub struct AppData {

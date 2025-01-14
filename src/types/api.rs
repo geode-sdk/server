@@ -1,12 +1,54 @@
+use std::error::Error;
 use actix_web::{error::QueryPayloadError, http::header::ContentType, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use std::fmt::{Display, Formatter, Write};
+use actix_web::body::BoxBody;
 use actix_web::http::StatusCode;
 
 #[derive(Serialize, Deserialize)]
 pub struct PaginatedData<T> {
     pub data: Vec<T>,
     pub count: i64,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ApiError2 {
+    InternalError(String),
+    NotFound(String),
+    Unauthorized(String),
+    Forbidden(String)
+}
+
+impl Error for ApiError2 {}
+impl Display for ApiError2 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApiError2::InternalError(err) => write!(f, "Internal Server Error: {}", err),
+            ApiError2::NotFound(err) => write!(f, "Not found: {}", err),
+            ApiError2::Unauthorized(err) => write!(f, "Unauthorized: {}", err),
+            ApiError2::Forbidden(err) => write!(f, "Forbidden: {}", err)
+        }
+    }
+}
+
+impl actix_web::ResponseError for ApiError2 {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            ApiError2::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError2::NotFound(_) => StatusCode::NOT_FOUND,
+            ApiError2::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            ApiError2::Forbidden(_) => StatusCode::FORBIDDEN
+        }
+    }
+
+    fn error_response(&self) -> HttpResponse<BoxBody> {
+        HttpResponse::build(self.status_code())
+            .append_header(ContentType::json())
+            .json(ApiResponse {
+                error: self.to_string(),
+                payload: "".to_string(),
+            })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -27,6 +69,8 @@ pub struct ApiResponse<T> {
     pub error: String,
     pub payload: T,
 }
+
+impl Error for ApiError {}
 
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

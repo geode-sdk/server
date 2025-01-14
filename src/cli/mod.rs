@@ -39,7 +39,7 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
 
                     jobs::download_cache::start(&mut transaction)
                         .await
-                        .map_err(|e| anyhow!("Failed to update download cache"))?;
+                        .map_err(|e| anyhow!("Failed to update download cache {}", e))?;
 
                     transaction.commit().await?;
                     Ok(true)
