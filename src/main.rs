@@ -27,6 +27,7 @@ pub struct AppData {
     github_client_secret: String,
     webhook_url: String,
     disable_downloads: bool,
+    max_download_mb: u32,
 }
 
 #[derive(Debug, Parser)]
@@ -66,7 +67,12 @@ async fn main() -> anyhow::Result<()> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let disable_downloads = dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let disable_downloads =
+        dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let max_downloadmb = dotenvy::var("MAX_MOD_FILESIZE_MB")
+        .unwrap_or("250".to_string())
+        .parse::<u32>()
+        .unwrap_or(250);
 
     let app_data = AppData {
         db: pool.clone(),
@@ -75,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
         github_client_secret: github_secret.clone(),
         webhook_url: webhook_url.clone(),
         disable_downloads,
+        max_download_mb: max_downloadmb,
     };
 
     let args = Args::parse();

@@ -93,9 +93,11 @@ impl ModJson {
         file: &mut Cursor<Bytes>,
         download_url: &str,
         store_image: bool,
+        max_size_mb: u32
     ) -> Result<ModJson, ApiError> {
+        let max_size_bytes = max_size_mb * 1_000_000;
         let mut bytes: Vec<u8> = vec![];
-        let mut take = file.take(100_000_000);
+        let mut take = file.take(max_size_bytes as u64);
         match take.read_to_end(&mut bytes) {
             Err(e) => {
                 log::error!("Failed to read bytes from {}: {}", download_url, e);
