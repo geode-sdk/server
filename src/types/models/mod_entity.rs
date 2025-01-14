@@ -1503,7 +1503,7 @@ impl Mod {
 
 pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
     let size = get_download_size(url).await?;
-    if size > 1_000_000_000 {
+    if size > 100_000_000 {
         return Err(ApiError::BadRequest(
             "File size is too large, max 100MB".to_string(),
         ));

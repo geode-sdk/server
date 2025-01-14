@@ -10,6 +10,7 @@ use reqwest::Url;
 use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
+use tokio::io::AsyncReadExt;
 use zip::read::ZipFile;
 
 use super::{
@@ -95,9 +96,9 @@ impl ModJson {
         store_image: bool,
     ) -> Result<ModJson, ApiError> {
         let mut bytes: Vec<u8> = vec![];
-        match file.read_to_end(&mut bytes) {
+        match file.take(&mut bytes, 100_000_000) {
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("Failed to read bytes from {}: {}", download_url, e);
                 return Err(ApiError::FilesystemError);
             }
             Ok(b) => b,
