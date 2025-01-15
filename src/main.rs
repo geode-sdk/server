@@ -6,8 +6,11 @@ use actix_web::{
     App, HttpServer, Responder,
 };
 use clap::Parser;
+use endpoints::mods::{IndexQueryParams, IndexSortType};
 use env_logger::Env;
+use forum::{create_or_update_thread, get_threads};
 use log::info;
+use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
 use crate::types::api::ApiError;
@@ -17,6 +20,7 @@ mod endpoints;
 mod extractors;
 mod jobs;
 mod types;
+mod forum;
 mod webhook;
 
 #[derive(Clone)]
@@ -26,6 +30,9 @@ pub struct AppData {
     github_client_id: String,
     github_client_secret: String,
     webhook_url: String,
+    bot_token: String,
+    guild_id: u64,
+    channel_id: u64,
     disable_downloads: bool,
     max_download_mb: u32,
 }
@@ -67,8 +74,10 @@ async fn main() -> anyhow::Result<()> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let disable_downloads =
-        dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let bot_token = dotenvy::var("DISCORD_BOT_TOKEN").unwrap_or("".to_string());
+    let guild_id = dotenvy::var("DISCORD_GUILD_ID").unwrap_or("0".to_string()).parse::<u64>().unwrap_or(0);
+    let channel_id = dotenvy::var("DISCORD_CHANNEL_ID").unwrap_or("0".to_string()).parse::<u64>().unwrap_or(0);
+    let disable_downloads = dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
     let max_downloadmb = dotenvy::var("MAX_MOD_FILESIZE_MB")
         .unwrap_or("250".to_string())
         .parse::<u32>()
@@ -80,6 +89,9 @@ async fn main() -> anyhow::Result<()> {
         github_client_id: github_client.clone(),
         github_client_secret: github_secret.clone(),
         webhook_url: webhook_url.clone(),
+        bot_token: bot_token.clone(),
+        guild_id: guild_id.clone(),
+        channel_id: channel_id.clone(),
         disable_downloads,
         max_download_mb: max_downloadmb,
     };
@@ -137,6 +149,63 @@ async fn main() -> anyhow::Result<()> {
             .service(health)
     })
     .bind((addr, port))?;
+
+    tokio::spawn(async move {
+        log::info!("Starting forum thread creation job");
+        let pool_res = pool.clone().acquire().await;
+        if pool_res.is_err() {
+            return;
+        }
+        let mut pool = pool_res.unwrap();
+        let query = IndexQueryParams {
+            page: None,
+            per_page: Some(100),
+            query: None,
+            gd: None,
+            platforms: None,
+            sort: IndexSortType::Downloads,
+            geode: None,
+            developer: None,
+            tags: None,
+            featured: None,
+            status: Some(ModVersionStatusEnum::Pending),
+        };
+        let results = Mod::get_index(&mut pool, query).await;
+        if results.is_err() {
+            return;
+        }
+
+        let threads = get_threads(guild_id, channel_id, bot_token.clone()).await;
+        let threads_res = Some(threads);
+        let mut i = 0;
+        for m in results.unwrap().data {
+            let v_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
+            if v_res.is_err() {
+                continue;
+            }
+
+            let v = v_res.unwrap();
+
+            if i != 0 && i % 10 == 0 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            }
+
+            log::info!("Creating thread for mod {}", m.id);
+
+            create_or_update_thread(
+                threads_res.clone(),
+                guild_id,
+                channel_id,
+                bot_token.clone(),
+                m,
+                v,
+                None,
+                app_url.clone()
+            ).await;
+
+            i += 1;
+        }
+    });
 
     if debug {
         info!("Running in debug mode, using 1 thread.");

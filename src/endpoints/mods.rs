@@ -2,6 +2,7 @@ use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
+use crate::forum::create_or_update_thread;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
@@ -9,8 +10,8 @@ use crate::types::models::developer::Developer;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
+use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
-use crate::webhook::send_webhook;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -133,6 +134,33 @@ pub async fn create(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    tokio::spawn(async move {
+        let m_res_res = Mod::get_one(&json.id, false, &mut pool).await;
+        if m_res_res.is_err() {
+            return;
+        }
+        let m_res = m_res_res.unwrap();
+        if m_res.is_none() {
+            return;
+        }
+        let m = m_res.unwrap();
+        let v_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await;
+        if v_res.is_err() {
+            return;
+        }
+        let v = v_res.unwrap();
+        create_or_update_thread(
+            None,
+            data.guild_id,
+            data.channel_id,
+            data.bot_token.clone(),
+            m,
+            v,
+            None,
+            data.app_url.clone(),
+        ).await;
+    });
 
     Ok(HttpResponse::NoContent())
 }

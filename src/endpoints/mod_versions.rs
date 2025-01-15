@@ -5,8 +5,7 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::{
-    extractors::auth::Auth,
-    types::{
+    extractors::auth::Auth, forum::create_or_update_thread, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -17,9 +16,7 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    },
-    webhook::send_webhook,
-    AppData,
+    }, webhook::send_webhook, AppData
 };
 
 #[derive(Deserialize)]
@@ -324,6 +321,28 @@ pub async fn create_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    if !dev.verified {
+        tokio::spawn(async move {
+            let m = fetched_mod.unwrap();
+            let v_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
+            if v_res.is_err() {
+                return;
+            }
+            let v = v_res.unwrap();
+            create_or_update_thread(
+                None,
+                data.guild_id,
+                data.channel_id,
+                data.bot_token.clone(),
+                m,
+                v,
+                None,
+                data.app_url.clone(),
+            ).await;
+        });
+    }
+
     Ok(HttpResponse::NoContent())
 }
 
@@ -407,6 +426,35 @@ pub async fn update_version(
             data.app_url.clone(),
         )
         .await;
+    }
+
+    if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
+        tokio::spawn(async move {
+            let m_res_res = Mod::get_one(&path.id, false, &mut pool).await;
+            if m_res_res.is_err() {
+                return;
+            }
+            let m_res = m_res_res.unwrap();
+            if m_res.is_none() {
+                return;
+            }
+            let m = m_res.unwrap();
+            let v_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await;
+            if v_res.is_err() {
+                return;
+            }
+            let v = v_res.unwrap();
+            create_or_update_thread(
+                None,
+                data.guild_id,
+                data.channel_id,
+                data.bot_token.clone(),
+                m,
+                v,
+                Some(dev.clone()),
+                data.app_url.clone(),
+            ).await;
+        });
     }
 
     Ok(HttpResponse::NoContent())
