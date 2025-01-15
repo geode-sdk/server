@@ -23,12 +23,9 @@ struct TokenLoginParams {
 }
 
 async fn developer_from_token(
-    client: &github::GithubClient,
     pool: &mut PgConnection,
-    token: String
+    user: serde_json::Value
 ) -> Result<Uuid, Option<ApiError>> {
-    let user = client.get_user(token).await?;
-
     let id = user.get("id").ok_or(None)?.as_i64().unwrap();
     let username = user.get("login").ok_or(None)?;
 
@@ -169,9 +166,10 @@ pub async fn poll_github_login(
         .await
         .or(Err(ApiError::TransactionError))?;
 
+    let user = client.get_user(&token).await.map_err(|_| ApiError::InternalError)?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    let token = match developer_from_token(&client, &mut transaction, token).await {
+    let token = match developer_from_token(&mut transaction, user).await {
         Ok(t) => t,
         Err(e) => {
             if let Some(e) = e {
@@ -196,15 +194,18 @@ pub async fn github_token_login(
     json: web::Json<TokenLoginParams>,
     data: web::Data<AppData>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-
     let client = github::GithubClient::new(
         data.github_client_id.to_string(),
         data.github_client_secret.to_string(),
     );
 
-    let token = match developer_from_token(&client, &mut transaction, json.token.to_string()).await {
+    let user = client.get_user(&json.token).await
+        .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?;
+
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+
+    let token = match developer_from_token(&mut transaction, user).await {
         Ok(t) => t,
 
         Err(e) => {

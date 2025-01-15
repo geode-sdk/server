@@ -164,7 +164,7 @@ impl GithubClient {
         }
     }
 
-    pub async fn get_user(&self, token: String) -> Result<serde_json::Value, ApiError> {
+    pub async fn get_user(&self, token: &str) -> Result<serde_json::Value, ApiError> {
         let client = Client::new();
         let resp = match client
             .get("https://api.github.com/user")
