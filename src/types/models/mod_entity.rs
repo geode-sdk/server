@@ -800,13 +800,20 @@ impl Mod {
             )));
         }
 
+        let accepted_versions = ModVersion::get_accepted_count(&json.id, &mut *pool).await?;
+
+        let verified = match accepted_versions {
+            0 => false,
+            _ => developer.verified
+        };
+
         if latest.status == ModVersionStatusEnum::Pending {
-            ModVersion::update_pending_version(latest.id, json, developer.verified, pool).await?;
+            ModVersion::update_pending_version(latest.id, json, verified, pool).await?;
         } else {
-            ModVersion::create_from_json(json, developer.verified, pool).await?;
+            ModVersion::create_from_json(json, verified, pool).await?;
         }
 
-        Mod::update_existing_with_json(json, developer.verified, pool).await?;
+        Mod::update_existing_with_json(json, verified, pool).await?;
 
         Ok(())
     }

@@ -22,7 +22,7 @@ pub struct DeveloperProfile {
     pub admin: bool,
 }
 
-#[derive(sqlx::FromRow, Clone)]
+#[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedDeveloper {
     pub id: i32,
     pub username: String,

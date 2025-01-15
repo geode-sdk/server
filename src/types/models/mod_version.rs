@@ -972,7 +972,11 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<i64, ApiError> {
         let count = match sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM mod_versions mv INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id WHERE mvs.status = 'accepted' AND mv.mod_id = $1",
+            "SELECT COUNT(*)
+            FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
+            WHERE mvs.status = 'accepted'
+            AND mv.mod_id = $1",
             mod_id
         )
         .fetch_one(&mut *pool)
