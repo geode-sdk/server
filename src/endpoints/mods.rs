@@ -136,11 +136,7 @@ pub async fn create(
         .or(Err(ApiError::TransactionError))?;
 
     tokio::spawn(async move {
-        let m_res_res = Mod::get_one(&json.id, false, &mut pool).await;
-        if m_res_res.is_err() {
-            return;
-        }
-        let m_res = m_res_res.unwrap();
+        let m_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
         if m_res.is_none() {
             return;
         }

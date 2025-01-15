@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{json, to_string, Value};
 
 use crate::types::models::dependency::DependencyImportance;
 use crate::types::models::developer::FetchedDeveloper;
@@ -9,20 +9,7 @@ use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 
 fn gd_to_string(gd: Option<GDVersionEnum>) -> String {
-    match gd {
-        Some(GDVersionEnum::All) => "*",
-        Some(GDVersionEnum::GD2113) => "2.113",
-        Some(GDVersionEnum::GD2200) => "2.200",
-        Some(GDVersionEnum::GD2204) => "2.204",
-        Some(GDVersionEnum::GD2205) => "2.205",
-        Some(GDVersionEnum::GD2206) => "2.206",
-        Some(GDVersionEnum::GD2207) => "2.207",
-        Some(GDVersionEnum::GD22071) => "2.2071",
-        Some(GDVersionEnum::GD22072) => "2.2072",
-        Some(GDVersionEnum::GD22073) => "2.2073",
-        Some(GDVersionEnum::GD22074) => "2.2074",
-        None => "N/A",
-    }.to_string()
+    gd.map(|x| to_string(&x).ok()).flatten().unwrap_or_else(|| "N/A".to_string()).replace("\"", "")
 }
 
 fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {

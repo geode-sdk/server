@@ -432,11 +432,7 @@ pub async fn update_version(
 
     if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
         tokio::spawn(async move {
-            let m_res_res = Mod::get_one(&path.id, false, &mut pool).await;
-            if m_res_res.is_err() {
-                return;
-            }
-            let m_res = m_res_res.unwrap();
+            let m_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
             if m_res.is_none() {
                 return;
             }
