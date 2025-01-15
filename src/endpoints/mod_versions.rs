@@ -298,7 +298,9 @@ pub async fn create_version(
         return Err(e);
     }
 
-    if dev.verified {
+    let accepted_count = ModVersion::get_accepted_count(&json.id, &mut transaction).await?;
+
+    if dev.verified && accepted_count > 0 {
         send_webhook(
             json.id.clone(),
             json.name.clone(),
@@ -322,7 +324,7 @@ pub async fn create_version(
         .await
         .or(Err(ApiError::TransactionError))?;
 
-    if !dev.verified {
+    if !dev.verified || accepted_count == 0 {
         tokio::spawn(async move {
             let m = fetched_mod.unwrap();
             let v_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;

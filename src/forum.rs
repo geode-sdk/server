@@ -308,7 +308,7 @@ pub async fn create_or_update_thread(
                     format!(" by {}", admin.unwrap().display_name)
                 } else {
                     "".to_string()
-                }, if v.info.is_some() {
+                }, if v.info.is_some() && !v.info.clone().unwrap().is_empty() {
                     format!(": `{}`", v.info.clone().unwrap())
                 } else {
                     "".to_string()
