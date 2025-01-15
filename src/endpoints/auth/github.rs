@@ -1,6 +1,6 @@
 use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
-use sqlx::{types::ipnetwork::IpNetwork, Acquire};
+use sqlx::{types::ipnetwork::IpNetwork, Acquire, PgConnection};
 use uuid::Uuid;
 
 use crate::{
@@ -15,6 +15,29 @@ use crate::{
 #[derive(Deserialize)]
 struct PollParams {
     uuid: String,
+}
+
+#[derive(Deserialize)]
+struct TokenLoginParams {
+    token: String,
+}
+
+async fn developer_from_token(
+    client: &github::GithubClient,
+    pool: &mut PgConnection,
+    token: String
+) -> Result<Uuid, Option<ApiError>> {
+    let user = client.get_user(token).await?;
+
+    let id = user.get("id").ok_or(None)?.as_i64().unwrap();
+    let username = user.get("login").ok_or(None)?;
+
+    let dev_id = match Developer::get_by_github_id(id, pool).await? {
+        Some(x) => x.id,
+        None => Developer::create(id, username.to_string(), pool).await?
+    };
+
+    create_token_for_developer(dev_id, pool).await.map_err(Some)
 }
 
 #[post("v1/login/github")]
@@ -138,17 +161,6 @@ pub async fn poll_github_login(
         log::error!("{}", e);
         return Err(ApiError::InternalError);
     };
-    let user = match client.get_user(token).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-        Ok(u) => u,
-    };
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt
 
@@ -159,69 +171,56 @@ pub async fn poll_github_login(
 
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    let id = match user.get("id") {
-        None => return Err(ApiError::InternalError),
-        Some(id) => id.as_i64().unwrap(),
-    };
-    if let Some(x) = Developer::get_by_github_id(id, &mut transaction).await? {
-        let token = match create_token_for_developer(x.id, &mut transaction).await {
-            Err(_) => {
-                transaction
-                    .rollback()
-                    .await
-                    .or(Err(ApiError::TransactionError))?;
-                return Err(ApiError::InternalError);
-            }
-            Ok(t) => t,
-        };
-        transaction
-            .commit()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Ok(web::Json(ApiResponse {
-            error: "".to_string(),
-            payload: token.to_string(),
-        }));
-    }
-    let username = match user.get("login") {
-        None => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            return Err(ApiError::InternalError);
-        }
-        Some(user) => user.to_string(),
-    };
-    let id = match Developer::create(id, username, &mut transaction).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
-        Ok(i) => i,
-    };
-    let token = match create_token_for_developer(id, &mut transaction).await {
-        Err(e) => {
-            transaction
-                .rollback()
-                .await
-                .or(Err(ApiError::TransactionError))?;
-            log::error!("{}", e);
-            return Err(ApiError::InternalError);
-        }
+    let token = match developer_from_token(&client, &mut transaction, token).await {
         Ok(t) => t,
+        Err(e) => {
+            if let Some(e) = e {
+                log::error!("{}", e);
+            }
+
+            transaction.rollback().await.map_or_else(
+                |_| Err(ApiError::TransactionError),
+                |_| Err(ApiError::InternalError)
+            )?
+        }
     };
-    transaction
-        .commit()
-        .await
-        .or(Err(ApiError::TransactionError))?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: token.to_string(),
+    }))
+}
+
+#[post("v1/login/github/token")]
+pub async fn github_token_login(
+    json: web::Json<TokenLoginParams>,
+    data: web::Data<AppData>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
+
+    let client = github::GithubClient::new(
+        data.github_client_id.to_string(),
+        data.github_client_secret.to_string(),
+    );
+
+    let token = match developer_from_token(&client, &mut transaction, json.token.to_string()).await {
+        Ok(t) => t,
+
+        Err(e) => {
+            if let Some(e) = e {
+                log::error!("{}", e);
+            }
+
+            transaction.rollback().await.map_or_else(
+                |_| Err(ApiError::TransactionError),
+                |_| Err(ApiError::InternalError)
+            )?
+        }
+    };
+
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: token.to_string()
     }))
 }
