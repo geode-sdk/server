@@ -181,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
         for m in results.unwrap().data {
             let v_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
             if v_res.is_err() {
+                i += 1;
                 continue;
             }
 

@@ -143,7 +143,7 @@ fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
             },
             {
                 "name": "Hash",
-                "value": v.hash,
+                "value": format!("`{}`", v.hash),
                 "inline": true
             },
             {
@@ -190,7 +190,9 @@ pub async fn get_threads(
         return vec![];
     }
 
-    let vec1 = res.as_array().unwrap().clone();
+    let vec1 = res.as_array().unwrap().clone().into_iter()
+        .filter(|t| t["parent_id"].as_str().unwrap_or("").to_string().parse::<u64>().unwrap_or(0) == channel_id)
+        .collect::<Vec<Value>>();
 
     let res2 = client
         .get(format!("https://discord.com/api/v10/channels/{}/threads/archived/public", channel_id))
