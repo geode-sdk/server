@@ -680,10 +680,12 @@ impl ModVersion {
         let json_tags = json.tags.clone().unwrap_or_default();
         let tags = Tag::get_tag_ids(json_tags, pool).await?;
         Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
-        ModGDVersion::clear_for_mod_version(version_id, pool).await.map_err(|err| {
-            log::error!("{}", err);
-            ApiError::DbError
-        })?;
+        ModGDVersion::clear_for_mod_version(version_id, pool)
+            .await
+            .map_err(|err| {
+                log::error!("{}", err);
+                ApiError::DbError
+            })?;
         ModGDVersion::create_from_json(json.gd.to_create_payload(json), version_id, pool).await?;
         Dependency::clear_for_mod_version(version_id, pool).await?;
         Incompatibility::clear_for_mod_version(version_id, pool).await?;
@@ -822,6 +824,7 @@ impl ModVersion {
         new_status: ModVersionStatusEnum,
         info: Option<String>,
         admin_id: i32,
+        limit_geode_mb: u32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         struct CurrentStatusRes {
@@ -913,7 +916,14 @@ impl ModVersion {
                 }
                 Ok(r) => r,
             };
-            Mod::update_mod_image(&info.mod_id, &info.hash, &info.download_link, pool).await?;
+            Mod::update_mod_image(
+                &info.mod_id,
+                &info.hash,
+                &info.download_link,
+                limit_geode_mb,
+                pool,
+            )
+            .await?;
         }
 
         if new_status == ModVersionStatusEnum::Accepted {

@@ -1436,9 +1436,10 @@ impl Mod {
         id: &str,
         hash: &str,
         download_link: &str,
+        limit_mb: u32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let mut cursor = download_geode_file(download_link).await?;
+        let mut cursor = download_geode_file(download_link, limit_mb).await?;
         let mut bytes: Vec<u8> = vec![];
         match cursor.read_to_end(&mut bytes) {
             Err(e) => {
@@ -1501,11 +1502,12 @@ impl Mod {
     }
 }
 
-pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
+pub async fn download_geode_file(url: &str, limit_mb: u32) -> Result<Cursor<Bytes>, ApiError> {
+    let limit_bytes = limit_mb * 1_000_000;
     let size = get_download_size(url).await?;
-    if size > 1_000_000_000 {
+    if size > limit_bytes as u64 {
         return Err(ApiError::BadRequest(
-            "File size is too large, max 100MB".to_string(),
+            format!("File size is too large, max {}MB", limit_mb)
         ));
     }
     let res = reqwest::get(url)

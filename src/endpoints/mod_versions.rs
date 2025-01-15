@@ -273,8 +273,14 @@ pub async fn create_version(
         .filter(|c| c.is_ascii() && *c != '\0')
         .collect();
 
-    let mut file_path = download_geode_file(&download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified).map_err(|err| {
+    let mut file_path = download_geode_file(&download_link, data.max_download_mb).await?;
+    let json = ModJson::from_zip(
+        &mut file_path,
+        &download_link,
+        dev.verified,
+        data.max_download_mb,
+    )
+    .map_err(|err| {
         log::error!("Failed to parse mod.json: {}", err);
         ApiError::FilesystemError
     })?;
@@ -366,6 +372,7 @@ pub async fn update_version(
         payload.status,
         payload.info.clone(),
         dev.id,
+        data.max_download_mb,
         &mut transaction,
     )
     .await
