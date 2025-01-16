@@ -136,6 +136,11 @@ pub async fn create(
         .or(Err(ApiError::TransactionError))?;
 
     tokio::spawn(async move {
+        if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+            log::error!("Discord configuration is not set up. Not creating forum threads.");
+            return;
+        }
+
         let m_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
         if m_res.is_none() {
             return;

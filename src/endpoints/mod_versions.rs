@@ -326,6 +326,11 @@ pub async fn create_version(
 
     if !dev.verified || accepted_count == 0 {
         tokio::spawn(async move {
+            if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+                log::error!("Discord configuration is not set up. Not creating forum threads.");
+                return;
+            }
+
             let m = fetched_mod.unwrap();
             let v_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
             if v_res.is_err() {
@@ -432,6 +437,11 @@ pub async fn update_version(
 
     if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
         tokio::spawn(async move {
+            if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+                log::error!("Discord configuration is not set up. Not creating forum threads.");
+                return;
+            }
+
             let m_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
             if m_res.is_none() {
                 return;

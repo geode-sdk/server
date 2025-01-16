@@ -218,6 +218,11 @@ pub async fn create_or_update_thread(
     admin: Option<FetchedDeveloper>,
     base_url: String
 ) {
+    if guild_id == 0 || channel_id == 0 || token.is_empty() {
+        log::error!("Discord configuration is not set up. Not creating forum threads.");
+        return;
+    }
+
     let thread_vec = if threads.is_some() {
         threads.unwrap()
     } else {

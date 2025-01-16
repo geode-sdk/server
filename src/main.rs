@@ -151,6 +151,11 @@ async fn main() -> anyhow::Result<()> {
     .bind((addr, port))?;
 
     tokio::spawn(async move {
+        if guild_id == 0 || channel_id == 0 || bot_token.is_empty() {
+            log::error!("Discord configuration is not set up. Not creating forum threads.");
+            return;
+        }
+
         log::info!("Starting forum thread creation job");
         let pool_res = pool.clone().acquire().await;
         if pool_res.is_err() {
