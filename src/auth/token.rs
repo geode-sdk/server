@@ -10,20 +10,6 @@ pub async fn create_token_for_developer(
     let token = Uuid::new_v4();
     let hash = sha256::digest(token.to_string());
 
-    let count = match sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM auth_tokens WHERE developer_id = $1",
-        id
-    )
-    .fetch_one(&mut *pool)
-    .await
-    {
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-        Ok(c) => c,
-    };
-
     if let Err(e) = sqlx::query!(
         "INSERT INTO auth_tokens (developer_id, token) VALUES ($1, $2)",
         id,

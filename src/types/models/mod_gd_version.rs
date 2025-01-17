@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Connection, PgConnection, Postgres, QueryBuilder};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::{api::ApiError, mod_json::ModJson};
 

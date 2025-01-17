@@ -10,7 +10,6 @@ use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
-use crate::webhook::send_webhook;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
