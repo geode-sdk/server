@@ -7,9 +7,7 @@ use actix_web::{
 };
 use clap::Parser;
 use endpoints::mods::{IndexQueryParams, IndexSortType};
-use env_logger::Env;
 use forum::{create_or_update_thread, get_threads};
-use log::info;
 use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
@@ -77,12 +75,12 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(250);
 
     let app_data = AppData {
-        db: pool,
-        app_url,
+        db: pool.clone(),
+        app_url: app_url.clone(),
         github_client_id: github_client,
         github_client_secret: github_secret,
         webhook_url,
-        bot_token,
+        bot_token: bot_token.clone(),
         guild_id,
         channel_id,
         disable_downloads,
