@@ -800,13 +800,20 @@ impl Mod {
             )));
         }
 
+        let accepted_versions = ModVersion::get_accepted_count(&json.id, &mut *pool).await?;
+
+        let verified = match accepted_versions {
+            0 => false,
+            _ => developer.verified
+        };
+
         if latest.status == ModVersionStatusEnum::Pending {
-            ModVersion::update_pending_version(latest.id, json, developer.verified, pool).await?;
+            ModVersion::update_pending_version(latest.id, json, verified, pool).await?;
         } else {
-            ModVersion::create_from_json(json, developer.verified, pool).await?;
+            ModVersion::create_from_json(json, verified, pool).await?;
         }
 
-        Mod::update_existing_with_json(json, developer.verified, pool).await?;
+        Mod::update_existing_with_json(json, verified, pool).await?;
 
         Ok(())
     }
@@ -1436,9 +1443,10 @@ impl Mod {
         id: &str,
         hash: &str,
         download_link: &str,
+        limit_mb: u32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let mut cursor = download_geode_file(download_link).await?;
+        let mut cursor = download_geode_file(download_link, limit_mb).await?;
         let mut bytes: Vec<u8> = vec![];
         match cursor.read_to_end(&mut bytes) {
             Err(e) => {
@@ -1501,11 +1509,12 @@ impl Mod {
     }
 }
 
-pub async fn download_geode_file(url: &str) -> Result<Cursor<Bytes>, ApiError> {
+pub async fn download_geode_file(url: &str, limit_mb: u32) -> Result<Cursor<Bytes>, ApiError> {
+    let limit_bytes = limit_mb * 1_000_000;
     let size = get_download_size(url).await?;
-    if size > 1_000_000_000 {
+    if size > limit_bytes as u64 {
         return Err(ApiError::BadRequest(
-            "File size is too large, max 100MB".to_string(),
+            format!("File size is too large, max {}MB", limit_mb)
         ));
     }
     let res = reqwest::get(url)

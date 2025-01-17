@@ -1,10 +1,16 @@
-use crate::types::api;
 use actix_cors::Cors;
 use actix_web::{
+    get,
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer
+    App, HttpServer, Responder,
 };
+use clap::Parser;
+use env_logger::Env;
+use log::info;
+
+use crate::types::api;
+use crate::types::api::ApiError;
 
 mod auth;
 mod endpoints;
@@ -12,8 +18,6 @@ mod extractors;
 mod jobs;
 mod types;
 mod webhook;
-mod cli;
-mod database;
 
 #[derive(Clone)]
 pub struct AppData {
@@ -23,12 +27,24 @@ pub struct AppData {
     github_client_secret: String,
     webhook_url: String,
     disable_downloads: bool,
+    max_download_mb: u32,
 }
 
+#[derive(Debug, Parser)]
+struct Args {
+    /// Name of the script to run
+    #[arg(short, long)]
+    script: Option<String>,
+}
+
+#[get("/")]
+async fn health() -> Result<impl Responder, ApiError> {
+    Ok(web::Json("The Geode Index is running"))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    log4rs::init_file("config/log4rs.yaml", Default::default())?;
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 
@@ -36,7 +52,15 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(10)
         .connect(&env_url)
         .await?;
-
+    info!("Running migrations");
+    let migration_res = sqlx::migrate!("./migrations").run(&pool).await;
+    if migration_res.is_err() {
+        log::error!(
+            "Error encountered while running migrations: {}",
+            migration_res.err().unwrap()
+        );
+    }
+    let addr = "0.0.0.0";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
@@ -45,26 +69,31 @@ async fn main() -> anyhow::Result<()> {
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
     let disable_downloads =
         dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let max_downloadmb = dotenvy::var("MAX_MOD_FILESIZE_MB")
+        .unwrap_or("250".to_string())
+        .parse::<u32>()
+        .unwrap_or(250);
 
     let app_data = AppData {
-        db: pool,
-        app_url,
-        github_client_id: github_client,
-        github_client_secret: github_secret,
-        webhook_url,
+        db: pool.clone(),
+        app_url: app_url.clone(),
+        github_client_id: github_client.clone(),
+        github_client_secret: github_secret.clone(),
+        webhook_url: webhook_url.clone(),
         disable_downloads,
+        max_download_mb: max_downloadmb,
     };
 
-    if cli::maybe_cli(&app_data).await? {
-        return Ok(());
+    let args = Args::parse();
+    if let Some(s) = args.script {
+        if let Err(e) = jobs::start_job(&s, app_data).await {
+            log::error!("Error encountered while running job: {}", e);
+        }
+        log::info!("Job {} completed", s);
+        return anyhow::Ok(());
     }
 
-    log::info!("Running migrations");
-    if let Err(e) = sqlx::migrate!("./migrations").run(&app_data.db).await {
-        log::error!("Error encountered while running migrations: {}", e);
-    }
-
-    log::info!("Starting server on 0.0.0.0:{}", port);
+    info!("Starting server on {}:{}", addr, port);
     let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_data.clone()))
@@ -90,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
             .service(endpoints::auth::github::poll_github_login)
+            .service(endpoints::auth::github::github_token_login)
             .service(endpoints::auth::github::start_github_login)
             .service(endpoints::developers::developer_index)
             .service(endpoints::developers::get_developer)
@@ -104,12 +134,12 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
-            .service(endpoints::health::health)
+            .service(health)
     })
-    .bind(("0.0.0.0", port))?;
+    .bind((addr, port))?;
 
     if debug {
-        log::info!("Running in debug mode, using 1 thread.");
+        info!("Running in debug mode, using 1 thread.");
         server.workers(1).run().await?;
     } else {
         server.run().await?;
@@ -117,4 +147,3 @@ async fn main() -> anyhow::Result<()> {
 
     anyhow::Ok(())
 }
-
