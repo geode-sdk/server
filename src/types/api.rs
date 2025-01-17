@@ -1,3 +1,4 @@
+use std::error::Error;
 use actix_web::{error::QueryPayloadError, http::header::ContentType, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -27,6 +28,8 @@ pub struct ApiResponse<T> {
     pub error: String,
     pub payload: T,
 }
+
+impl Error for ApiError {}
 
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
