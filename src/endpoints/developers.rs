@@ -1,4 +1,4 @@
-use actix_web::{delete, get, post, put, web, Error, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
 

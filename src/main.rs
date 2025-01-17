@@ -6,13 +6,13 @@ use actix_web::{
     App, HttpServer, Responder,
 };
 use clap::Parser;
-use env_logger::Env;
-use log::info;
 
 use crate::types::api;
 use crate::types::api::ApiError;
 
 mod auth;
+mod cli;
+mod database;
 mod endpoints;
 mod extractors;
 mod jobs;
@@ -44,7 +44,7 @@ async fn health() -> Result<impl Responder, ApiError> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+    log4rs::init_file("config/log4rs.yaml", Default::default())?;
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 
@@ -52,15 +52,6 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(10)
         .connect(&env_url)
         .await?;
-    info!("Running migrations");
-    let migration_res = sqlx::migrate!("./migrations").run(&pool).await;
-    if migration_res.is_err() {
-        log::error!(
-            "Error encountered while running migrations: {}",
-            migration_res.err().unwrap()
-        );
-    }
-    let addr = "0.0.0.0";
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
@@ -75,25 +66,29 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(250);
 
     let app_data = AppData {
-        db: pool.clone(),
-        app_url: app_url.clone(),
-        github_client_id: github_client.clone(),
-        github_client_secret: github_secret.clone(),
-        webhook_url: webhook_url.clone(),
+        db: pool,
+        app_url,
+        github_client_id: github_client,
+        github_client_secret: github_secret,
+        webhook_url,
         disable_downloads,
         max_download_mb: max_downloadmb,
     };
 
-    let args = Args::parse();
-    if let Some(s) = args.script {
-        if let Err(e) = jobs::start_job(&s, app_data).await {
-            log::error!("Error encountered while running job: {}", e);
-        }
-        log::info!("Job {} completed", s);
-        return anyhow::Ok(());
+    if cli::maybe_cli(&app_data).await? {
+        return Ok(());
     }
 
-    info!("Starting server on {}:{}", addr, port);
+    log::info!("Running migrations");
+    let migration_res = sqlx::migrate!("./migrations").run(&app_data.db).await;
+    if migration_res.is_err() {
+        log::error!(
+            "Error encountered while running migrations: {}",
+            migration_res.err().unwrap()
+        );
+    }
+
+    log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_data.clone()))
@@ -134,12 +129,12 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
-            .service(health)
+            .service(endpoints::health::health)
     })
-    .bind((addr, port))?;
+    .bind(("0.0.0.0", port))?;
 
     if debug {
-        info!("Running in debug mode, using 1 thread.");
+        log::info!("Running in debug mode, using 1 thread.");
         server.workers(1).run().await?;
     } else {
         server.run().await?;

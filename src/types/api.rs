@@ -1,7 +1,7 @@
 use std::error::Error;
 use actix_web::{error::QueryPayloadError, http::header::ContentType, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use actix_web::http::StatusCode;
 
 #[derive(Serialize, Deserialize)]
