@@ -24,12 +24,6 @@ pub async fn create_token_for_developer(
         Ok(c) => c,
     };
 
-    if count == Some(5) {
-        return Err(ApiError::BadRequest(
-            "You have reached the max amount of tokens (5). Invalidate your tokens or use your currently active ones.".to_string(),
-        ));
-    }
-
     if let Err(e) = sqlx::query!(
         "INSERT INTO auth_tokens (developer_id, token) VALUES ($1, $2)",
         id,
