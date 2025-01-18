@@ -1,6 +1,6 @@
 [package]
 name = "geode-index"
-version = "0.38.0"
+version = "0.39.1"
 edition = "2021"
 
 [dependencies]

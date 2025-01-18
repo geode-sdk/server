@@ -4,7 +4,7 @@ use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responde
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
-use crate::database::repository::developers;
+use crate::database::repository::{developers, mod_downloads, mod_versions, mods};
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
 };
@@ -15,7 +15,6 @@ use crate::{
         mod_json::{split_version_and_compare, ModJson},
         models::{
             developer::Developer,
-            download,
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
@@ -193,7 +192,7 @@ pub async fn download_version(
     };
     let url = mod_version.download_link;
 
-    if data.disable_downloads {
+    if data.disable_downloads || mod_version.status != ModVersionStatusEnum::Accepted {
         // whatever
         return Ok(HttpResponse::Found()
             .append_header(("Location", url))
@@ -206,43 +205,21 @@ pub async fn download_version(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if let Ok((downloaded_version, downloaded_mod)) =
-        download::create_download(net, mod_version.id, &mod_version.mod_id, &mut pool).await
-    {
-        let name = mod_version.mod_id.clone();
-        let version = mod_version.version.clone();
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-        // only accepted mods can have their download counts incremented
-        // we'll just fix this once they're updated anyways
+    let downloaded_mod_previously =
+        mod_downloads::has_downloaded_mod(net, &mod_version.mod_id, &mut tx).await?;
+    let inserted = mod_downloads::create(net, mod_version.id, &mut tx).await?;
 
-        if (downloaded_version || downloaded_mod)
-            && mod_version.status == ModVersionStatusEnum::Accepted
-        {
-            tokio::spawn(async move {
-                if downloaded_version {
-                    // we must nest more
-                    if let Err(e) = ModVersion::increment_downloads(mod_version.id, &mut pool).await
-                    {
-                        log::error!(
-                            "Failed to increment downloads for mod version {}. Error: {}",
-                            version,
-                            e
-                        );
-                    }
-                }
+    if inserted {
+        mod_versions::increment_downloads(mod_version.id, &mut tx).await?;
 
-                if downloaded_mod {
-                    if let Err(e) = Mod::increment_downloads(&mod_version.mod_id, &mut pool).await {
-                        log::error!(
-                            "Failed to increment downloads for mod {}. Error: {}",
-                            name,
-                            e
-                        );
-                    }
-                }
-            });
+        if !downloaded_mod_previously {
+            mods::increment_downloads(&mod_version.mod_id, &mut tx).await?;
         }
     }
+
+    let _ = tx.commit().await;
 
     Ok(HttpResponse::Found()
         .append_header(("Location", url))
@@ -318,7 +295,7 @@ pub async fn create_version(
             name: json.name.clone(),
             version: json.version.clone(),
             owner,
-            verified: NewModVersionVerification::Admin(dev),
+            verified: NewModVersionVerification::VerifiedDev,
             base_url: data.app_url.clone(),
         }
         .to_discord_webhook()

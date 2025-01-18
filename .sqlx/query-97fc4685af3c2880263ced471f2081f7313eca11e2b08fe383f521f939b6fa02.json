@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mod_downloads md\n        WHERE md.time_downloaded <= $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "97fc4685af3c2880263ced471f2081f7313eca11e2b08fe383f521f939b6fa02"
+}

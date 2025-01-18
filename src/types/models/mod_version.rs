@@ -11,7 +11,7 @@ use sqlx::{
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
-    models::{download, mod_entity::Mod},
+    models::mod_entity::Mod,
 };
 
 use super::{
@@ -760,50 +760,6 @@ impl ModVersion {
         Ok(version)
     }
 
-    pub async fn increment_downloads(
-        mod_version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        // we aren't recalculating, so don't reset the timer
-        if let Err(e) = sqlx::query!(
-            "UPDATE mod_versions mv
-            SET download_count = mv.download_count + 1
-            FROM mod_version_statuses mvs
-            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
-            mod_version_id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-        Ok(())
-    }
-
-    pub async fn calculate_cached_downloads(
-        mod_version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!(
-            "UPDATE mod_versions mv 
-            SET download_count = (
-                SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
-                WHERE md.mod_version_id = mv.id
-            ), last_download_cache_refresh = now()
-            FROM mod_version_statuses mvs
-            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
-            mod_version_id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-        Ok(())
-    }
-
     pub async fn update_version(
         id: i32,
         new_status: ModVersionStatusEnum,
@@ -861,27 +817,6 @@ impl ModVersion {
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
             return Err(ApiError::DbError);
-        }
-
-        if download::downloaded_version(id, pool).await? {
-            // performing this operation will change the mod's download count, so recalculate it
-
-            // should probably spawn this, but we do a download in the transaction which is probably
-            // a little worse. idk
-
-            let info = match sqlx::query!("SELECT mod_id FROM mod_versions WHERE id = $1", id)
-                .fetch_one(&mut *pool)
-                .await
-            {
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                }
-                Ok(r) => r,
-            };
-
-            ModVersion::calculate_cached_downloads(id, pool).await?;
-            Mod::calculate_cached_downloads(&info.mod_id, pool).await?;
         }
 
         if current_status.status == ModVersionStatusEnum::Pending
