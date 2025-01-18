@@ -1,9 +1,8 @@
 use actix_cors::Cors;
 use actix_web::{
-    get,
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer, Responder,
+    App, HttpServer
 };
 use clap::Parser;
 use endpoints::mods::{IndexQueryParams, IndexSortType};
@@ -11,12 +10,12 @@ use forum::{create_or_update_thread, get_threads};
 use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
-use crate::types::api::ApiError;
 
 mod auth;
 mod cli;
 mod database;
 mod endpoints;
+mod events;
 mod extractors;
 mod jobs;
 mod types;
@@ -37,21 +36,10 @@ pub struct AppData {
     max_download_mb: u32,
 }
 
-#[derive(Debug, Parser)]
-struct Args {
-    /// Name of the script to run
-    #[arg(short, long)]
-    script: Option<String>,
-}
-
-#[get("/")]
-async fn health() -> Result<impl Responder, ApiError> {
-    Ok(web::Json("The Geode Index is running"))
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    log4rs::init_file("config/log4rs.yaml", Default::default())?;
+    log4rs::init_file("config/log4rs.yaml", Default::default())
+        .map_err(|e| e.context("Failed to read log4rs config"))?;
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 

@@ -2,8 +2,11 @@ use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
-use crate::forum::create_or_update_thread;
+use crate::database::repository::developers;
+use crate::database::repository::mods;
+use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
+use crate::forum::create_or_update_thread;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::developer::Developer;
@@ -12,6 +15,7 @@ use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
+use crate::webhook::discord::DiscordWebhook;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -242,8 +246,10 @@ pub async fn get_logo(
     data: web::Data<AppData>,
     path: web::Path<String>,
 ) -> Result<impl Responder, ApiError> {
+    use crate::database::repository::*;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let image = Mod::get_logo_for_mod(&path, &mut pool).await?;
+    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
+
     match image {
         Some(i) => {
             if i.is_empty() {
@@ -273,8 +279,10 @@ pub async fn update_mod(
         return Err(ApiError::Forbidden);
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let id = path.into_inner();
+    let featured = mods::is_featured(&id, &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    if let Err(e) = Mod::update_mod(&path, payload.featured, &mut transaction).await {
+    if let Err(e) = Mod::update_mod(&id, payload.featured, &mut transaction).await {
         transaction
             .rollback()
             .await
@@ -285,6 +293,26 @@ pub async fn update_mod(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    if featured != payload.featured {
+        let item = Mod::get_one(&id, true, &mut pool).await?;
+        if let Some(item) = item {
+            let owner = developers::get_owner_for_mod(&id, &mut pool).await?;
+            let first_ver = item.versions.first();
+            if let Some(ver) = first_ver {
+                ModFeaturedEvent {
+                    id: item.id,
+                    name: ver.name.clone(),
+                    owner,
+                    admin: dev,
+                    base_url: data.app_url.clone(),
+                    featured: payload.featured,
+                }
+                .to_discord_webhook()
+                .send(&data.webhook_url);
+            }
+        }
+    }
 
     Ok(HttpResponse::NoContent())
 }
