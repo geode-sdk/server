@@ -11,6 +11,10 @@ CREATE TABLE geode_versions (
 -- prefill some versions for the android updater
 INSERT INTO geode_versions
 	(tag, mac, win, android, created_at, commit_hash, prerelease) VALUES
+	('4.2.0', '2.2074', '2.2074', '2.2074', '2025-01-18T01:40:23Z', 'f540c39d251babf6981f1a197da9accee777b1e8', FALSE),
+	('4.1.2', '2.2074', '2.2074', '2.2074', '2024-12-29T03:37:32Z', 'd9d8a1281bae20b51e4324825f22262499f40049', FALSE),
+	('4.1.1', '2.2074', '2.2074', '2.2074', '2024-12-20T07:36:05Z', 'e558bd3d12b9527cccccfabc2b35444a538bf5f1', FALSE),
+	('4.1.0', '2.2074', '2.2074', '2.2074', '2024-12-12T21:23:18Z', '695f39f6ae4d10a88929b4bdc336f980db9060b6', FALSE),
 	('4.0.1', '2.2074', '2.2074', '2.2074', '2024-11-20T21:39:54Z', 'ed97f3b0405a63f7edfa98df8d493a327e844111', FALSE),
 	('4.0.0', '2.2074', '2.2074', '2.2074', '2024-11-19T14:40:29Z', 'cb8d7571ddcff608d3a4de8f59f1a969ec0aff39', FALSE),
 	('4.0.0-beta.2', '2.2074', '2.2074', '2.2074', '2024-11-19T03:37:04Z', 'c0514b191583d6002dbf5c4f387471cff8fa535e', TRUE),
