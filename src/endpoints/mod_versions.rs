@@ -10,8 +10,7 @@ use crate::events::mod_created::{
 };
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth,
-    types::{
+    extractors::auth::Auth, forum::discord::create_or_update_thread, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -301,6 +300,28 @@ pub async fn create_version(
         }
         .to_discord_webhook()
         .send(&data.webhook_url);
+    } else {
+        tokio::spawn(async move {
+            if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+                log::error!("Discord configuration is not set up. Not creating forum threads.");
+                return;
+            }
+
+            let version_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
+            if version_res.is_err() {
+                return;
+            }
+            create_or_update_thread(
+                None,
+                data.guild_id,
+                data.channel_id,
+                &data.bot_token,
+                &fetched_mod.unwrap(),
+                &version_res.unwrap(),
+                "",
+                &data.app_url,
+            ).await;
+        });
     }
     Ok(HttpResponse::NoContent())
 }
@@ -377,7 +398,7 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified_by: dev,
+                verified_by: dev.clone(),
                 base_url: data.app_url.clone(),
             }
             .to_discord_webhook()
@@ -388,12 +409,40 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified: NewModVersionVerification::Admin(dev),
+                verified: NewModVersionVerification::Admin(dev.clone()),
                 base_url: data.app_url.clone(),
             }
             .to_discord_webhook()
             .send(&data.webhook_url);
         }
+    }
+
+    if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
+        tokio::spawn(async move {
+            if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+                log::error!("Discord configuration is not set up. Not creating forum threads.");
+                return;
+            }
+
+            let mod_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
+            if mod_res.is_none() {
+                return;
+            }
+            let version_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await;
+            if version_res.is_err() {
+                return;
+            }
+            create_or_update_thread(
+                None,
+                data.guild_id,
+                data.channel_id,
+                &data.bot_token,
+                &mod_res.unwrap(),
+                &version_res.unwrap(),
+                &dev.display_name,
+                &data.app_url,
+            ).await;
+        });
     }
 
     Ok(HttpResponse::NoContent())

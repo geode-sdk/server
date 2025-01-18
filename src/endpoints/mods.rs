@@ -6,12 +6,14 @@ use crate::database::repository::developers;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
+use crate::forum::discord::create_or_update_thread;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::developer::Developer;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
+use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use crate::AppData;
@@ -136,6 +138,32 @@ pub async fn create(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    tokio::spawn(async move {
+        if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+            log::error!("Discord configuration is not set up. Not creating forum threads.");
+            return;
+        }
+
+        let mod_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
+        if mod_res.is_none() {
+            return;
+        }
+        let version_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await;
+        if version_res.is_err() {
+            return;
+        }
+        create_or_update_thread(
+            None,
+            data.guild_id,
+            data.channel_id,
+            &data.bot_token,
+            &mod_res.unwrap(),
+            &version_res.unwrap(),
+            "",
+            &data.app_url,
+        ).await;
+    });
 
     Ok(HttpResponse::NoContent())
 }
