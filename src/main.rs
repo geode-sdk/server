@@ -4,9 +4,8 @@ use actix_web::{
     web::{self, QueryConfig},
     App, HttpServer
 };
-use clap::Parser;
 use endpoints::mods::{IndexQueryParams, IndexSortType};
-use forum::{create_or_update_thread, get_threads};
+use forum::discord::{create_or_update_thread, get_threads};
 use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
@@ -163,17 +162,15 @@ async fn main() -> anyhow::Result<()> {
             return;
         }
 
-        let threads = get_threads(guild_id, channel_id, bot_token.clone()).await;
+        let threads = get_threads(guild_id, channel_id, &bot_token).await;
         let threads_res = Some(threads);
-        let mut i = 0;
-        for m in results.unwrap().data {
-            let v_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
-            if v_res.is_err() {
-                i += 1;
+        let mods = results.unwrap();
+        for i in 0..mods.count as usize {
+            let m = &mods.data[i];
+            let version_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
+            if version_res.is_err() {
                 continue;
             }
-
-            let v = v_res.unwrap();
 
             if i != 0 && i % 10 == 0 {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
@@ -185,14 +182,12 @@ async fn main() -> anyhow::Result<()> {
                 threads_res.clone(),
                 guild_id,
                 channel_id,
-                bot_token.clone(),
+                &bot_token,
                 m,
-                v,
-                None,
-                app_url.clone()
+                &version_res.unwrap(),
+                "",
+                &app_url
             ).await;
-
-            i += 1;
         }
     });
 

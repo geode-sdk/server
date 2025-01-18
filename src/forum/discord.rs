@@ -1,39 +1,33 @@
 use serde_json::{json, to_string, Value};
 
-use crate::types::models::dependency::DependencyImportance;
-use crate::types::models::developer::FetchedDeveloper;
-use crate::types::models::incompatibility::IncompatibilityImportance;
 use crate::types::models::mod_entity::Mod;
 use crate::types::models::mod_gd_version::GDVersionEnum;
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 
 fn gd_to_string(gd: Option<GDVersionEnum>) -> String {
-    gd.map(|x| to_string(&x).ok()).flatten().unwrap_or_else(|| "N/A".to_string()).replace("\"", "")
+    gd.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace("\"", "")
 }
 
-fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
-    let deps = v.dependencies.unwrap_or_default().into_iter().map(|d| {
-        format!("`{} {} ({})`", d.mod_id, d.version, match d.importance {
-            DependencyImportance::Required => "required",
-            DependencyImportance::Recommended => "recommended",
-            DependencyImportance::Suggested => "suggested",
-        })
-    }).collect::<Vec<String>>().join("\n");
-    let incompats = v.incompatibilities.unwrap_or_default().into_iter().map(|i| {
-        format!("`{} {} ({})`", i.mod_id, i.version, match i.importance {
-            IncompatibilityImportance::Breaking => "breaking",
-            IncompatibilityImportance::Conflicting => "conflicting",
-            IncompatibilityImportance::Superseded => "superseded",
-        })
-    }).collect::<Vec<String>>().join("\n");
-    let tags = m.tags.into_iter().map(|t| format!("`{}`", t)).collect::<Vec<String>>().join(", ");
+fn map_or_none<T, F>(x: Option<Vec<T>>, f: F, sep: &str) -> String
+    where
+    F: Fn(T) -> String
+{
+    let ret = x.map(|x| x.into_iter().map(f).collect::<Vec<String>>().join(sep)).unwrap_or("None".to_string());
+    if ret.is_empty() {
+        "None".to_string()
+    } else {
+        ret
+    }
+}
+
+fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
     json!({
-        "title": format!("{}{}", if m.featured {
-            "⭐️ "
+        "title": if m.featured {
+            format!("⭐️ {}", v.name)
         } else {
-            ""
-        }, v.name),
+            v.name.clone()
+        },
         "description": v.description,
         "url": format!("https://geode-sdk.org/mods/{}?version={}", m.id, v.version),
         "thumbnail": {
@@ -67,7 +61,7 @@ fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
             },
             {
                 "name": "Developers",
-                "value": m.developers.into_iter().map(|d| {
+                "value": m.developers.clone().into_iter().map(|d| {
                     if d.is_owner {
                         format!("**[{}](https://geode-sdk.org/mods?developer={})**", d.display_name, d.username)
                     } else {
@@ -85,47 +79,29 @@ fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
             },
             {
                 "name": "Dependencies",
-                "value": if !deps.is_empty() {
-                    deps
-                } else {
-                    "None".to_string()
-                },
+                "value": map_or_none(v.dependencies.clone(), |d| format!("`{} {} ({})`", d.mod_id, d.version,
+                    to_string(&d.importance).unwrap_or("unknown".to_string()).replace("\"", "")), "\n"),
                 "inline": false
             },
             {
                 "name": "Incompatibilities",
-                "value": if !incompats.is_empty() {
-                    incompats
-                } else {
-                    "None".to_string()
-                },
+                "value": map_or_none(v.incompatibilities.clone(), |i| format!("`{} {} ({})`", i.mod_id, i.version,
+                    to_string(&i.importance).unwrap_or("unknown".to_string()).replace("\"", "")), "\n"),
                 "inline": false
             },
             {
                 "name": "Source",
-                "value": if m.links.is_some() {
-                    m.links.clone().unwrap().source.unwrap_or("N/A".to_string())
-                } else {
-                    m.repository.unwrap_or("N/A".to_string())
-                },
+                "value": m.links.clone().map(|l| l.source).flatten().unwrap_or(m.repository.clone().unwrap_or("N/A".to_string())),
                 "inline": true
             },
             {
                 "name": "Community",
-                "value": if m.links.is_some() {
-                    m.links.clone().unwrap().community.unwrap_or("N/A".to_string())
-                } else {
-                    "N/A".to_string()
-                },
+                "value": m.links.clone().map(|l| l.community).flatten().unwrap_or("N/A".to_string()),
                 "inline": true
             },
             {
                 "name": "Homepage",
-                "value": if m.links.is_some() {
-                    m.links.clone().unwrap().homepage.unwrap_or("N/A".to_string())
-                } else {
-                    "N/A".to_string()
-                },
+                "value": m.links.clone().map(|l| l.homepage).flatten().unwrap_or("N/A".to_string()),
                 "inline": true
             },
             {
@@ -140,11 +116,7 @@ fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
             },
             {
                 "name": "Tags",
-                "value": if !tags.is_empty() {
-                    tags
-                } else {
-                    "None".to_string()
-                },
+                "value": map_or_none(v.tags.clone(), |t| format!("`{}`", t), ", "),
                 "inline": true
             }
         ]
@@ -153,7 +125,7 @@ fn mod_embed(m: Mod, v: ModVersion, base_url: String) -> Value {
 
 pub async fn get_threads(
     guild_id: u64, channel_id: u64,
-    token: String
+    token: &str
 ) -> Vec<Value> {
     let client = reqwest::Client::new();
     let res = client
@@ -212,11 +184,11 @@ pub async fn get_threads(
 pub async fn create_or_update_thread(
     threads: Option<Vec<Value>>,
     guild_id: u64, channel_id: u64,
-    token: String,
-    m: Mod,
-    v: ModVersion,
-    admin: Option<FetchedDeveloper>,
-    base_url: String
+    token: &str,
+    m: &Mod,
+    v: &ModVersion,
+    admin: &str,
+    base_url: &str
 ) {
     if guild_id == 0 || channel_id == 0 || token.is_empty() {
         log::error!("Discord configuration is not set up. Not creating forum threads.");
@@ -226,7 +198,7 @@ pub async fn create_or_update_thread(
     let thread_vec = if threads.is_some() {
         threads.unwrap()
     } else {
-        get_threads(guild_id, channel_id, token.clone()).await
+        get_threads(guild_id, channel_id, token).await
     };
 
     let thread = thread_vec.iter().find(|t| {
@@ -298,8 +270,8 @@ pub async fn create_or_update_thread(
                     ModVersionStatusEnum::Accepted => "Accepted",
                     ModVersionStatusEnum::Rejected => "Rejected",
                     _ => "",
-                }, if admin.is_some() {
-                    format!(" by {}", admin.unwrap().display_name)
+                }, if !admin.is_empty() {
+                    format!(" by {}", admin)
                 } else {
                     "".to_string()
                 }, if v.info.is_some() && !v.info.clone().unwrap().is_empty() {

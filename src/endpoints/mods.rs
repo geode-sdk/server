@@ -6,7 +6,7 @@ use crate::database::repository::developers;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
-use crate::forum::create_or_update_thread;
+use crate::forum::discord::create_or_update_thread;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::developer::Developer;
@@ -145,25 +145,23 @@ pub async fn create(
             return;
         }
 
-        let m_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
-        if m_res.is_none() {
+        let mod_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
+        if mod_res.is_none() {
             return;
         }
-        let m = m_res.unwrap();
-        let v_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await;
-        if v_res.is_err() {
+        let version_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await;
+        if version_res.is_err() {
             return;
         }
-        let v = v_res.unwrap();
         create_or_update_thread(
             None,
             data.guild_id,
             data.channel_id,
-            data.bot_token.clone(),
-            m,
-            v,
-            None,
-            data.app_url.clone(),
+            &data.bot_token,
+            &mod_res.unwrap(),
+            &version_res.unwrap(),
+            "",
+            &data.app_url,
         ).await;
     });
 

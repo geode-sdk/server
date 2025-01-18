@@ -10,7 +10,7 @@ use crate::events::mod_created::{
 };
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth, forum::create_or_update_thread, types::{
+    extractors::auth::Auth, forum::discord::create_or_update_thread, types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -330,21 +330,19 @@ pub async fn create_version(
                 return;
             }
 
-            let m = fetched_mod.unwrap();
-            let v_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
-            if v_res.is_err() {
+            let version_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
+            if version_res.is_err() {
                 return;
             }
-            let v = v_res.unwrap();
             create_or_update_thread(
                 None,
                 data.guild_id,
                 data.channel_id,
-                data.bot_token.clone(),
-                m,
-                v,
-                None,
-                data.app_url.clone(),
+                &data.bot_token,
+                &fetched_mod.unwrap(),
+                &version_res.unwrap(),
+                "",
+                &data.app_url,
             ).await;
         });
     }
@@ -449,25 +447,23 @@ pub async fn update_version(
                 return;
             }
 
-            let m_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
-            if m_res.is_none() {
+            let mod_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
+            if mod_res.is_none() {
                 return;
             }
-            let m = m_res.unwrap();
-            let v_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await;
-            if v_res.is_err() {
+            let version_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await;
+            if version_res.is_err() {
                 return;
             }
-            let v = v_res.unwrap();
             create_or_update_thread(
                 None,
                 data.guild_id,
                 data.channel_id,
-                data.bot_token.clone(),
-                m,
-                v,
-                Some(dev.clone()),
-                data.app_url.clone(),
+                &data.bot_token,
+                &mod_res.unwrap(),
+                &version_res.unwrap(),
+                &dev.display_name,
+                &data.app_url,
             ).await;
         });
     }
