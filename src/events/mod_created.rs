@@ -48,7 +48,7 @@ impl DiscordWebhook for NewModVersionAcceptedEvent {
         DiscordMessage::new().embed(
             &format!("🎉 Mod updated: {} {}", self.name, self.version),
             Some(&format!(
-                "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\n{})",
+                "https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\n{}",
                 self.id, self.owner.display_name, self.owner.username, accepted_msg
             )),
             Some(&format!("{}/v1/mods/{}/logo", self.base_url, self.id)),
