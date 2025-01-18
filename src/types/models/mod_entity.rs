@@ -31,6 +31,7 @@ use std::{
     io::{Cursor, Read},
     str::FromStr,
 };
+use crate::database::repository::mods;
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -616,7 +617,8 @@ impl Mod {
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE m.id = $1
-            AND ($2 = false OR mvs.status = 'accepted')"#,
+            AND ($2 = false OR mvs.status = 'accepted')
+            ORDER BY mv.id DESC"#,
             id,
             only_accepted
         )
@@ -824,8 +826,6 @@ impl Mod {
         featured: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        use crate::database::repository::*;
-
         if !mods::exists(id, &mut *pool).await? {
             return Err(ApiError::NotFound(format!("Mod {} doesn't exist", id)));
         }

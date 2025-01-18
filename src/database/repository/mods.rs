@@ -1,6 +1,18 @@
 use crate::types::api::ApiError;
 use sqlx::PgConnection;
 
+pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
+    Ok(sqlx::query!("SELECT featured FROM mods WHERE id = $1", id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to check if mod {} exists: {}", id, e);
+            ApiError::DbError
+        })?
+        .map(|row| row.featured)
+        .unwrap_or(false))
+}
+
 pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
     Ok(sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)
