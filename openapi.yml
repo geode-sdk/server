@@ -86,9 +86,14 @@ paths:
           content:
             application/json:
               schema:
-                type: string
-                description: The token used for authentication
-                example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
+                type: object
+                properties:
+                  error:
+                    type: "null"
+                  payload:
+                    type: string
+                    description: The token used for authentication
+                    example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
         "400":
           description: Bad request - for different reasons, like IP mismatch, interval not being respected, etc.
           content:
@@ -102,6 +107,53 @@ paths:
                     type: "null"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /v1/login/github/token:
+    post:
+      tags:
+        - user
+      summary: Login with GitHub access token
+      description: Log in immediately with a GitHub access token. Returns a token if the login was successful.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: The access token from GitHub
+                  example: "ghp_1234567890abcdefgh"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: "null"
+                  payload:
+                    type: object
+                    properties:
+                      type: string
+                      description: The Geode token used for authentication
+                      example: "a1b2c3d4-1234-5678-9abc-1234567890ab"
+        "400":
+          description: Bad request - invalid access token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  payload:
+                    type: "null"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 
   /v1/mods:
     get:

@@ -2,15 +2,14 @@ use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
 
-use crate::webhook::send_webhook;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
+use crate::types::models::developer::Developer;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
-use crate::types::models::developer::Developer;
 use crate::AppData;
 
 #[derive(Deserialize, Default)]
@@ -85,9 +84,8 @@ pub async fn get(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &id, &mut pool).await?,
+        _ => false,
     };
 
     let found = Mod::get_one(&id, false, &mut pool).await?;
@@ -113,8 +111,13 @@ pub async fn create(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut file_path = download_geode_file(&payload.download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &payload.download_link, dev.verified)?;
+    let mut file_path = download_geode_file(&payload.download_link, data.max_download_mb).await?;
+    let json = ModJson::from_zip(
+        &mut file_path,
+        &payload.download_link,
+        false,
+        data.max_download_mb,
+    )?;
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let result = Mod::from_json(&json, dev.clone(), &mut transaction).await;
@@ -129,19 +132,6 @@ pub async fn create(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
-
-    if dev.verified {        
-        send_webhook(
-            json.id,
-            json.name,
-            json.version.clone(),
-            false,
-            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
-            dev,
-            data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
-    }
 
     Ok(HttpResponse::NoContent())
 }

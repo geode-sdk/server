@@ -93,11 +93,14 @@ impl ModJson {
         file: &mut Cursor<Bytes>,
         download_url: &str,
         store_image: bool,
+        max_size_mb: u32
     ) -> Result<ModJson, ApiError> {
+        let max_size_bytes = max_size_mb * 1_000_000;
         let mut bytes: Vec<u8> = vec![];
-        match file.read_to_end(&mut bytes) {
+        let mut take = file.take(max_size_bytes as u64);
+        match take.read_to_end(&mut bytes) {
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("Failed to read bytes from {}: {}", download_url, e);
                 return Err(ApiError::FilesystemError);
             }
             Ok(b) => b,
@@ -127,7 +130,7 @@ impl ModJson {
         };
         json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
-        json.download_url = download_url.to_string();
+        json.download_url = parse_download_url(download_url);
 
         if json.dependencies.is_some() {
             for i in json.dependencies.as_mut().unwrap() {
@@ -459,7 +462,7 @@ pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u
 
     let (width, height) = img.dimensions();
 
-    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color()) {
+    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color().into()) {
         log::error!("{}", e);
         return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
     }
@@ -529,4 +532,8 @@ pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompar
         Err(_) => Err(()),
         Ok(v) => Ok((v, compare)),
     }
+}
+
+fn parse_download_url(url: &str) -> String {
+    String::from(url.trim_end_matches("\\/"))
 }

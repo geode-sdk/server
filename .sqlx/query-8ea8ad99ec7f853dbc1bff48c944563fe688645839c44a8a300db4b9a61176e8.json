@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mod_gd_versions mgv\n            WHERE mgv.mod_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8ea8ad99ec7f853dbc1bff48c944563fe688645839c44a8a300db4b9a61176e8"
+}

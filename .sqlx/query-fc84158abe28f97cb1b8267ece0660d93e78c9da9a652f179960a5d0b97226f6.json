@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT \n                id,\n                name,\n                display_name\n            FROM mod_tags",
+  "query": "SELECT id, name FROM mod_tags WHERE is_readonly = false",
   "describe": {
     "columns": [
       {
@@ -12,11 +12,6 @@
         "ordinal": 1,
         "name": "name",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 2,
-        "name": "display_name",
-        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -24,9 +19,8 @@
     },
     "nullable": [
       false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "e2149be58e919383ea263d1274a1598f846cef768b1d10d14f886e731babf3a6"
+  "hash": "fc84158abe28f97cb1b8267ece0660d93e78c9da9a652f179960a5d0b97226f6"
 }

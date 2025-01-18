@@ -250,6 +250,23 @@ impl ModGDVersion {
         Ok(())
     }
 
+    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), String> {
+        sqlx::query!(
+            "DELETE FROM mod_gd_versions mgv
+            WHERE mgv.mod_id = $1",
+            id
+        )
+        .execute(&mut *pool)
+        .await
+        .map(|_| ())
+        .map_err(|err| {
+            format!(
+                "Failed to remove gd versions for mod version {}: {}",
+                id, err
+            )
+        })
+    }
+
     // to be used for GET mods/{id}/version/{version}
     pub async fn get_for_mod_version(
         id: i32,
