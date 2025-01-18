@@ -296,7 +296,7 @@ pub async fn create_version(
             name: json.name.clone(),
             version: json.version.clone(),
             owner,
-            verified: NewModVersionVerification::Admin(dev),
+            verified: NewModVersionVerification::VerifiedDev,
             base_url: data.app_url.clone(),
         }
         .to_discord_webhook()

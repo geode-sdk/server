@@ -1,5 +1,7 @@
 use crate::{jobs, AppData};
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
+use sqlx::Acquire;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -21,7 +23,6 @@ pub enum JobCommand {
     #[command(subcommand)]
     CleanupDownloads,
     /// Runs migrations
-    #[command(subcommand)]
     Migrate,
 }
 
