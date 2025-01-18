@@ -1,3 +1,11 @@
+use super::{
+    dependency::ResponseDependency,
+    developer::{Developer, FetchedDeveloper},
+    incompatibility::{Replacement, ResponseIncompatibility},
+    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
+    mod_link::ModLinks,
+    tag::Tag,
+};
 use crate::{
     endpoints::{
         developers::{SimpleDevMod, SimpleDevModVersion},
@@ -22,15 +30,6 @@ use std::{
     collections::HashMap,
     io::{Cursor, Read},
     str::FromStr,
-};
-
-use super::{
-    dependency::ResponseDependency,
-    developer::{Developer, FetchedDeveloper},
-    incompatibility::{Replacement, ResponseIncompatibility},
-    mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    mod_link::ModLinks,
-    tag::Tag,
 };
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
@@ -804,7 +803,7 @@ impl Mod {
 
         let verified = match accepted_versions {
             0 => false,
-            _ => developer.verified
+            _ => developer.verified,
         };
 
         if latest.status == ModVersionStatusEnum::Pending {
@@ -818,73 +817,28 @@ impl Mod {
         Ok(())
     }
 
-    /**
-     * At the moment this only sets the mod to featured, can be expanded with more stuff
-     */
+    /// At the moment this is only used to set the mod to featured.
+    /// Checks if the mod exists.
     pub async fn update_mod(
         id: &str,
         featured: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if (match sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
-            .fetch_optional(&mut *pool)
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        })
-        .is_none()
-        {
+        use crate::database::repository::*;
+
+        if !mods::exists(id, &mut *pool).await? {
             return Err(ApiError::NotFound(format!("Mod {} doesn't exist", id)));
         }
 
-        let result = match sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
+        sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
             .execute(&mut *pool)
             .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        if result.rows_affected() == 0 {
-            return Err(ApiError::InternalError);
-        }
+            .map_err(|e| {
+                log::error!("Failed to update mod {}: {}", id, e);
+                ApiError::DbError
+            })?;
 
         Ok(())
-    }
-
-    pub async fn get_logo_for_mod(
-        id: &str,
-        pool: &mut PgConnection,
-    ) -> Result<Option<Vec<u8>>, ApiError> {
-        struct QueryResult {
-            image: Option<Vec<u8>>,
-        }
-        match sqlx::query_as!(
-            QueryResult,
-            "SELECT m.image
-            FROM mods m
-            INNER JOIN mod_versions mv ON mv.mod_id = m.id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1",
-            id
-        )
-        .fetch_optional(&mut *pool)
-        .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(Some(r)) => Ok(r.image),
-            Ok(None) => Ok(None),
-        }
     }
 
     async fn create(
@@ -901,7 +855,7 @@ impl Mod {
             }
             CheckExistingResult::ExistsNotValidated => {
                 return Err(ApiError::BadRequest(format!(
-                    "Mod {} already exists, but is not yet validated",
+                    "Mod {} already exists, but has not been accepted by an index admin",
                     json.id
                 )))
             }
@@ -912,12 +866,21 @@ impl Mod {
                 Mod::update_existing_with_json(json, developer.verified, pool).await?;
 
                 if let Err(e) = sqlx::query!(
-                    "delete from mod_versions mv
-                    using mod_version_statuses mvs
-                    where mv.id = mvs.mod_version_id and mv.mod_id = $1 and mvs.status = 'rejected'",
+                    "DELETE FROM mod_versions mv
+                    USING mod_version_statuses mvs
+                    WHERE mv.id = mvs.mod_version_id
+                        AND mv.mod_id = $1
+                        AND mvs.status = 'rejected'",
                     &json.id
-                ).execute(&mut *pool).await {
-                    log::error!("{}", e);
+                )
+                .execute(&mut *pool)
+                .await
+                {
+                    log::error!(
+                        "Failed to remove existing rejected versions from mod {}: {}",
+                        json.id,
+                        e
+                    );
                     return Err(ApiError::DbError);
                 }
 
@@ -942,21 +905,21 @@ impl Mod {
         }
         query_builder.push("id, image) VALUES (");
         let mut separated = query_builder.separated(", ");
-        if json.repository.is_some() {
-            separated.push_bind(json.repository.as_ref().unwrap());
+        if let Some(repo) = &json.repository {
+            separated.push_bind(repo);
         }
-        if json.changelog.is_some() {
-            separated.push_bind(&json.changelog);
+        if let Some(changelog) = &json.changelog {
+            separated.push_bind(changelog);
         }
-        if json.about.is_some() {
-            separated.push_bind(&json.about);
+        if let Some(about) = &json.about {
+            separated.push_bind(about);
         }
         separated.push_bind(&json.id);
         separated.push_bind(&json.logo);
         separated.push_unseparated(")");
 
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
-            log::error!("{}", e);
+            log::error!("Failed to insert mod {} into database: {}", json.id, e);
             return Err(ApiError::DbError);
         }
         Mod::assign_owner(&json.id, developer.id, pool).await?;
@@ -968,65 +931,58 @@ impl Mod {
         id: &str,
         pool: &mut PgConnection,
     ) -> Result<CheckExistingResult, ApiError> {
-        let res = match sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
+        struct Counts {
+            not_rejected: i64,
+            rejected: i64,
+            validated: i64,
+        }
+
+        let row = sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
             .fetch_optional(&mut *pool)
             .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-        match res {
-            None => Ok(CheckExistingResult::NotExists),
-            Some(_) => {
-                struct Counts {
-                    not_rejected: i64,
-                    rejected: i64,
-                    validated: i64,
-                }
+            .map_err(|e| {
+                log::error!("Failed to fetch existing mod {}: {}", id, e);
+                ApiError::DbError
+            })?;
 
-                let counts = match sqlx::query!(
-                    "select
-                    count(1) filter (where mvs.status = ANY(array['accepted', 'pending']::mod_version_status[])) as not_rejected,
-                    count(1) filter (where mvs.status = 'rejected') as rejected,
-                    count(1) filter (where mvs.status = 'accepted') as validated
-                    from mod_versions mv
-                    inner join mod_version_statuses mvs on mvs.mod_version_id = mv.id
-                    where mv.mod_id = $1",
-                    id
-                )
-                    .fetch_one(&mut *pool)
-                    .await
-                {
-                    Ok(e) => {
-                        Counts {
-                            not_rejected: e.not_rejected.unwrap_or(0),
-                            rejected: e.rejected.unwrap_or(0),
-                            validated: e.validated.unwrap_or(0),
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return Err(ApiError::DbError);
-                    }
-                };
-
-                if counts.validated > 0 {
-                    return Ok(CheckExistingResult::Exists);
-                }
-                if counts.validated == 0 && counts.not_rejected > 0 {
-                    return Ok(CheckExistingResult::ExistsNotValidated);
-                }
-                if counts.rejected > 0 {
-                    return Ok(CheckExistingResult::ExistsWithRejected);
-                }
-
-                // This probably shouldn't ever happen. If it does I'm jumping off a cliff.
-                Ok(CheckExistingResult::NotExists)
-            }
+        if row.is_none() {
+            return Ok(CheckExistingResult::NotExists);
         }
+
+        let counts = sqlx::query!(
+            "SELECT
+            COUNT(1) FILTER (WHERE mvs.status = ANY(ARRAY['accepted', 'pending']::mod_version_status[])) AS not_rejected,
+            COUNT(1) FILTER (WHERE mvs.status = 'rejected') AS rejected,
+            COUNT(1) FILTER (WHERE mvs.status = 'accepted') AS validated
+            FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mv.mod_id = $1",
+            id
+        )
+            .fetch_one(&mut *pool)
+            .await
+            .map(|row| Counts {
+                validated: row.validated.unwrap_or(0),
+                not_rejected: row.not_rejected.unwrap_or(0),
+                rejected: row.rejected.unwrap_or(0)
+            })
+            .map_err(|e| {
+                log::error!("Failed to fetch version counts for mod {}: {}", id, e);
+                ApiError::DbError
+            })?;
+
+        if counts.validated > 0 {
+            return Ok(CheckExistingResult::Exists);
+        }
+        if counts.validated == 0 && counts.not_rejected > 0 {
+            return Ok(CheckExistingResult::ExistsNotValidated);
+        }
+        if counts.rejected > 0 {
+            return Ok(CheckExistingResult::ExistsWithRejected);
+        }
+
+        // Mod exists with no uploaded versions, very rare
+        Ok(CheckExistingResult::NotExists)
     }
 
     async fn update_existing_with_json(
@@ -1110,7 +1066,7 @@ impl Mod {
         mod_id: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!(
+        sqlx::query!(
             "UPDATE mods m
             SET download_count = download_count + 1
             WHERE m.id = $1",
@@ -1118,10 +1074,14 @@ impl Mod {
         )
         .execute(&mut *pool)
         .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
+        .map_err(|e| {
+            log::error!(
+                "Failed to increment download count for mod {}: {}",
+                mod_id,
+                e
+            );
+            ApiError::DbError
+        })?;
         Ok(())
     }
 
@@ -1129,7 +1089,7 @@ impl Mod {
         mod_id: &str,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!(
+        sqlx::query!(
             "UPDATE mods m SET download_count = (
                 SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
                 INNER JOIN mod_versions mv ON md.mod_version_id = mv.id
@@ -1141,10 +1101,10 @@ impl Mod {
         )
         .execute(&mut *pool)
         .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
+        .map_err(|e| {
+            log::error!("Failed to recalculate downloads for mod {}: {}", mod_id, e);
+            ApiError::DbError
+        })?;
         Ok(())
     }
 
@@ -1153,42 +1113,57 @@ impl Mod {
         dev_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let existing = sqlx::query!(
-            "SELECT md.developer_id, md.is_owner FROM mods_developers md
-            INNER JOIN mods m ON md.mod_id = m.id
-            WHERE m.id = $1",
+        sqlx::query!(
+            "UPDATE mods_developers
+            SET is_owner = false
+            WHERE mod_id = $1",
             mod_id
         )
-        .fetch_all(&mut *pool)
-        .await;
+        .execute(&mut *pool)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to unassign owner from mod {}: {}", mod_id, e);
+            ApiError::DbError
+        })?;
 
-        let existing = match existing {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(e) => e,
-        };
-
-        if !existing.is_empty() {
-            let res = sqlx::query!(
-                "UPDATE mods_developers SET is_owner = false
-                WHERE mod_id = $1",
-                mod_id
-            )
-            .execute(&mut *pool)
-            .await;
-
-            if let Err(e) = res {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
+        struct FetchedRow {
+            developer_id: i32,
+            is_owner: bool,
         }
 
-        for record in existing {
-            // we found our dev inside the existing list
-            if record.developer_id == dev_id {
-                if let Err(e) = sqlx::query!(
+        match sqlx::query_as!(
+            FetchedRow,
+            "SELECT
+                md.developer_id,
+                md.is_owner
+            FROM mods_developers md
+            WHERE md.mod_id = $1
+            AND md.developer_id = $2",
+            mod_id,
+            dev_id
+        )
+        .fetch_optional(&mut *pool)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "Failed to fetch existing developer for mod {}: {}",
+                mod_id,
+                e
+            );
+            ApiError::DbError
+        })? {
+            None => {
+                sqlx::query!(
+                    "INSERT INTO mods_developers (mod_id, developer_id, is_owner) VALUES
+                    ($1, $2, true)",
+                    mod_id,
+                    dev_id
+                )
+                .execute(&mut *pool)
+                .await
+            }
+            Some(_) => {
+                sqlx::query!(
                     "UPDATE mods_developers SET is_owner = true
                     WHERE mod_id = $1 AND developer_id = $2",
                     mod_id,
@@ -1196,26 +1171,12 @@ impl Mod {
                 )
                 .execute(&mut *pool)
                 .await
-                {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                }
-                return Ok(());
             }
         }
-
-        if let Err(e) = sqlx::query!(
-            "INSERT INTO mods_developers (mod_id, developer_id, is_owner) VALUES
-            ($1, $2, true)",
-            mod_id,
-            dev_id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
+        .map_err(|e| {
+            log::error!("Failed to assign owner {} to mod {}: {}", dev_id, mod_id, e);
+            ApiError::DbError
+        })?;
         Ok(())
     }
 
@@ -1224,30 +1185,35 @@ impl Mod {
         dev_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let existing = match sqlx::query!(
-            "SELECT md.developer_id, md.is_owner FROM mods_developers md
-            INNER JOIN mods m ON md.mod_id = m.id
-            WHERE m.id = $1",
-            mod_id
-        )
-        .fetch_all(&mut *pool)
-        .await
-        {
-            Ok(e) => e,
-            Err(err) => {
-                log::error!("{}", err);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        if existing.iter().any(|x| x.developer_id == dev_id) {
-            return Err(ApiError::BadRequest(format!(
-                "This developer already exists on mod {}",
-                mod_id
-            )));
+        struct FetchedRow {
+            developer_id: i32,
+            is_owner: bool,
         }
 
-        match sqlx::query!(
+        sqlx::query_as!(
+            FetchedRow,
+            "SELECT md.developer_id, md.is_owner FROM mods_developers md
+            WHERE md.mod_id = $1
+            AND md.developer_id = $2",
+            mod_id,
+            dev_id
+        )
+        .fetch_optional(&mut *pool)
+        .await
+        .map_err(|e| {
+            log::error!(
+                "Failed to fetch existing dev for assignment on mod {}: {}",
+                mod_id,
+                e
+            );
+            ApiError::DbError
+        })?
+        .ok_or(ApiError::BadRequest(format!(
+            "This developer is already assigned on mod {}",
+            mod_id
+        )))?;
+
+        sqlx::query!(
             "INSERT INTO mods_developers (mod_id, developer_id)
             VALUES ($1, $2)",
             mod_id,
@@ -1255,13 +1221,11 @@ impl Mod {
         )
         .execute(&mut *pool)
         .await
-        {
-            Err(err) => {
-                log::error!("{}", err);
-                Err(ApiError::DbError)
-            }
-            Ok(_) => Ok(()),
-        }
+        .map_err(|e| {
+            log::error!("Couldn't add new developer to mod {}: {}", mod_id, e);
+            ApiError::DbError
+        })?;
+        Ok(())
     }
 
     pub async fn unassign_dev(
@@ -1269,38 +1233,37 @@ impl Mod {
         dev_id: i32,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        let existing = match sqlx::query!(
+        struct FetchedRow {
+            developer_id: i32,
+            is_owner: bool,
+        }
+
+        let existing = sqlx::query_as!(
+            FetchedRow,
             "SELECT md.developer_id, md.is_owner FROM mods_developers md
-            INNER JOIN mods m ON md.mod_id = m.id
-            WHERE m.id = $1",
-            mod_id
+            WHERE md.mod_id = $1
+            AND md.developer_id = $2",
+            mod_id,
+            dev_id
         )
-        .fetch_all(&mut *pool)
+        .fetch_optional(&mut *pool)
         .await
-        {
-            Ok(e) => e,
-            Err(err) => {
-                log::error!("{}", err);
-                return Err(ApiError::DbError);
-            }
-        };
+        .map_err(|err| {
+            log::error!("Failed to fetch existing developers: {}", err);
+            ApiError::DbError
+        })
+        .unwrap()
+        .ok_or(ApiError::NotFound(
+            "Developer is not assigned to mod".into(),
+        ))?;
 
-        let found = match existing.iter().find(|x| x.developer_id == dev_id) {
-            None => {
-                return Err(ApiError::NotFound(
-                    "Developer is not assigned to mod".to_string(),
-                ))
-            }
-            Some(f) => f,
-        };
-
-        if found.is_owner {
+        if existing.is_owner {
             return Err(ApiError::BadRequest(
                 "Cannot unassign the owner developer for the mod".to_string(),
             ));
         }
 
-        match sqlx::query!(
+        sqlx::query!(
             "DELETE FROM mods_developers
             WHERE mod_id = $1 AND developer_id = $2",
             mod_id,
@@ -1308,13 +1271,17 @@ impl Mod {
         )
         .execute(&mut *pool)
         .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(_) => Ok(()),
-        }
+        .map_err(|e| {
+            log::error!(
+                "Failed to remove assigned developer {} from mod {}: {}",
+                dev_id,
+                mod_id,
+                e
+            );
+            ApiError::DbError
+        })?;
+
+        Ok(())
     }
 
     pub async fn get_updates(
@@ -1448,13 +1415,10 @@ impl Mod {
     ) -> Result<(), ApiError> {
         let mut cursor = download_geode_file(download_link, limit_mb).await?;
         let mut bytes: Vec<u8> = vec![];
-        match cursor.read_to_end(&mut bytes) {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::FilesystemError);
-            }
-            Ok(b) => b,
-        };
+        cursor.read_to_end(&mut bytes).map_err(|e| {
+            log::error!("Failed to fetch .geode for updating mod image: {}", e);
+            ApiError::InternalError
+        })?;
 
         let new_hash = sha256::digest(bytes);
         if new_hash != hash {
@@ -1463,28 +1427,21 @@ impl Mod {
                 hash, new_hash
             )));
         }
-        let mut archive = match zip::ZipArchive::new(cursor) {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::BadRequest(
-                    "Couldn't unzip .geode file".to_string(),
-                ));
-            }
-            Ok(a) => a,
-        };
 
-        let mut image_file = match archive.by_name("logo.png") {
-            Err(e) => {
-                // In this case maybe the mod doesn't have a logo
-                log::error!("{}", e);
-                return Ok(());
-            }
-            Ok(i) => i,
-        };
+        let mut archive = zip::ZipArchive::new(cursor).map_err(|e| {
+            log::error!("Failed to create ZipArchive for .geode: {}", e);
+            ApiError::BadRequest("Couldn't unzip .geode file".to_string())
+        })?;
+
+        let image_file = archive.by_name("logo.png").ok();
+        if image_file.is_none() {
+            return Ok(());
+        }
+        let mut image_file = image_file.unwrap();
 
         let image = mod_json::validate_mod_logo(&mut image_file, true)?;
 
-        match sqlx::query!(
+        sqlx::query!(
             "UPDATE mods SET image = $1
             WHERE id = $2",
             image,
@@ -1492,18 +1449,10 @@ impl Mod {
         )
         .execute(&mut *pool)
         .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(m) => {
-                if m.rows_affected() == 0 {
-                    log::error!("No rows affected by image update");
-                    return Err(ApiError::DbError);
-                }
-            }
-        }
+        .map_err(|e| {
+            log::error!("{}", e);
+            ApiError::DbError
+        })?;
 
         Ok(())
     }
@@ -1513,39 +1462,43 @@ pub async fn download_geode_file(url: &str, limit_mb: u32) -> Result<Cursor<Byte
     let limit_bytes = limit_mb * 1_000_000;
     let size = get_download_size(url).await?;
     if size > limit_bytes as u64 {
-        return Err(ApiError::BadRequest(
-            format!("File size is too large, max {}MB", limit_mb)
-        ));
+        return Err(ApiError::BadRequest(format!(
+            "File size is too large, max {}MB",
+            limit_mb
+        )));
     }
-    let res = reqwest::get(url)
-        .await
-        .or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
-    let content = Cursor::new(res.bytes().await.or(Err(ApiError::FilesystemError))?);
-    Ok(content)
+    Ok(Cursor::new(
+        reqwest::get(url)
+            .await
+            .map_err(|e| {
+                log::error!("Failed to fetch .geode: {}", e);
+                ApiError::BadRequest("Couldn't download .geode file".into())
+            })?
+            .bytes()
+            .await
+            .map_err(|e| {
+                log::error!("Failed to get bytes from .geode: {}", e);
+                ApiError::InternalError
+            })?,
+    ))
 }
 
 async fn get_download_size(url: &str) -> Result<u64, ApiError> {
     let client = Client::new();
 
-    let res = client
-        .head(url)
-        .send()
-        .await
-        .or(Err(ApiError::BadRequest(String::from("Invalid URL"))))?;
+    let res = client.head(url).send().await.map_err(|err| {
+        log::error!("Failed to send HEAD request for .geode filesize: {}", err);
+        ApiError::BadRequest("Failed to query filesize for given URL".into())
+    })?;
 
-    match res.headers().get("content-length") {
-        Some(s) => {
-            if let Ok(s) = s.to_str() {
-                if let Ok(s) = s.parse::<u64>() {
-                    return Ok(s);
-                }
-            }
-            Err(ApiError::BadRequest(
-                "Couldn't extract download size from URL".to_string(),
-            ))
-        }
-        None => Err(ApiError::BadRequest(
-            "Couldn't extract download size from URL".to_string(),
-        )),
-    }
+    Ok(res
+        .headers()
+        .get("content-length")
+        .ok_or(ApiError::BadRequest(
+            "Couldn't extract download size from URL".into(),
+        ))?
+        .to_str()
+        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))?
+        .parse::<u64>()
+        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))?)
 }

@@ -212,8 +212,10 @@ pub async fn get_logo(
     data: web::Data<AppData>,
     path: web::Path<String>,
 ) -> Result<impl Responder, ApiError> {
+    use crate::database::repository::*;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let image = Mod::get_logo_for_mod(&path, &mut pool).await?;
+    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
+
     match image {
         Some(i) => {
             if i.is_empty() {
