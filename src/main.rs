@@ -44,7 +44,8 @@ async fn health() -> Result<impl Responder, ApiError> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    log4rs::init_file("config/log4rs.yaml", Default::default())?;
+    log4rs::init_file("config/log4rs.yaml", Default::default())
+        .map_err(|e| e.context("Failed to read log4rs config"))?;
 
     let env_url = dotenvy::var("DATABASE_URL")?;
 
