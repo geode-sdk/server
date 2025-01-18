@@ -250,7 +250,7 @@ pub async fn update_mod(
     }
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let id = path.into_inner();
-    let featured = mods::is_featured(&id, &mut pool)?;
+    let featured = mods::is_featured(&id, &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Mod::update_mod(&id, payload.featured, &mut transaction).await {
         transaction
