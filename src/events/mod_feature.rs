@@ -19,7 +19,7 @@ impl DiscordWebhook for ModFeaturedEvent {
 
         DiscordMessage::new().embed(
             title,
-            Some(&format!("https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAction done by: [{}](https://github.com/{}))",
+            Some(&format!("https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAction done by: [{}](https://github.com/{})",
                           self.id, self.owner.display_name, self.owner.username, self.admin.display_name, self.admin.username)),
             Some(&format!("{}/v1/mods/{}/logo", self.base_url, self.id)),
         )

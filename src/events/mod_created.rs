@@ -28,7 +28,7 @@ impl DiscordWebhook for NewModAcceptedEvent {
     fn to_discord_webhook(&self) -> DiscordMessage {
         DiscordMessage::new().embed(
             &format!("New mod accepted: {} {}", self.name, self.version),
-            Some(&format!("https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{}))",
+            Some(&format!("https://geode-sdk.org/mods/{}\n\nOwned by: [{}](https://github.com/{})\nAccepted by: [{}](https://github.com/{})",
                           self.id, self.owner.display_name, self.owner.username, self.verified_by.display_name, self.verified_by.username)),
             Some(&format!("{}/v1/mods/{}/logo", self.base_url, self.id)),
         )
