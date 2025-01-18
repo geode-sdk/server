@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
 
 use actix_web::web::Bytes;
@@ -58,8 +59,8 @@ pub struct ModJson {
     pub logo: Vec<u8>,
     pub about: Option<String>,
     pub changelog: Option<String>,
-    pub dependencies: Option<Vec<ModJsonDependency>>,
-    pub incompatibilities: Option<Vec<ModJsonIncompatibility>>,
+    pub dependencies: Option<ModJsonDependencies>,
+    pub incompatibilities: Option<ModJsonIncompatibilities>,
     pub links: Option<ModJsonLinks>,
 }
 
@@ -71,7 +72,28 @@ pub struct ModJsonLinks {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonDependencies {
+    Old(Vec<OldModJsonDependency>),
+    New(HashMap<String, ModJsonDependencyType>),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonDependencyType {
+    Version(String),
+    Detailed(ModJsonDependency),
+}
+
+#[derive(Deserialize, Debug)]
 pub struct ModJsonDependency {
+    version: String,
+    #[serde(default)]
+    importance: DependencyImportance,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct OldModJsonDependency {
     pub id: String,
     pub version: String,
     #[serde(default)]
@@ -81,7 +103,28 @@ pub struct ModJsonDependency {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonIncompatibilities {
+    Old(Vec<OldModJsonIncompatibility>),
+    New(HashMap<String, ModJsonIncompatibilityType>),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonIncompatibilityType {
+    Version(String),
+    Detailed(ModJsonIncompatibility),
+}
+
+#[derive(Deserialize, Debug)]
 pub struct ModJsonIncompatibility {
+    version: String,
+    #[serde(default)]
+    pub importance: IncompatibilityImportance,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct OldModJsonIncompatibility {
     pub id: String,
     pub version: String,
     #[serde(default)]
@@ -93,7 +136,7 @@ impl ModJson {
         file: &mut Cursor<Bytes>,
         download_url: &str,
         store_image: bool,
-        max_size_mb: u32
+        max_size_mb: u32,
     ) -> Result<ModJson, ApiError> {
         let max_size_bytes = max_size_mb * 1_000_000;
         let mut bytes: Vec<u8> = vec![];
@@ -107,15 +150,10 @@ impl ModJson {
         };
         let hash = sha256::digest(bytes);
         let reader = BufReader::new(file);
-        let mut archive = match zip::ZipArchive::new(reader) {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::BadRequest(
-                    "Couldn't unzip .geode file".to_string(),
-                ));
-            }
-            Ok(a) => a,
-        };
+        let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
+            log::error!("Failed to create ZipArchive of mod: {}", e);
+            ApiError::BadRequest("Failed to unzip .geode file".into())
+        })?;
         let json_file = archive
             .by_name("mod.json")
             .or(Err(ApiError::BadRequest(String::from(
@@ -132,147 +170,37 @@ impl ModJson {
         json.hash = hash;
         json.download_url = parse_download_url(download_url);
 
-        if json.dependencies.is_some() {
-            for i in json.dependencies.as_mut().unwrap() {
-                if !validate_dependency_version_str(&i.version) {
-                    return Err(ApiError::BadRequest(format!(
-                        "Invalid dependency version {} for mod {}",
-                        i.version, i.id
-                    )));
-                }
-                if i.required.is_some() {
-                    return Err(ApiError::BadRequest(format!(
-                        "'required' key for dependencies is deprecated! Found at dependency id {}.",
-                        i.id
-                    )));
-                }
-                i.version = i.version.trim_start_matches('v').to_string();
-            }
-        }
-        if json.incompatibilities.is_some() {
-            for i in json.incompatibilities.as_mut().unwrap() {
-                if !validate_dependency_version_str(&i.version) {
-                    return Err(ApiError::BadRequest(format!(
-                        "Invalid incompatibility version {} for mod {}",
-                        i.version, i.id
-                    )));
-                }
-                i.version = i.version.trim_start_matches('v').to_string();
-            }
-        }
-
         for i in 0..archive.len() {
             if let Ok(mut file) = archive.by_index(i) {
                 if file.name().ends_with(".dll") {
                     json.windows = true;
-                    continue;
-                }
-                if file.name().ends_with(".ios.dylib") {
+                } else if file.name().ends_with(".ios.dylib") {
                     json.ios = true;
-                    continue;
-                }
-                if file.name().ends_with(".dylib") {
-                    let (arm, intel) = ModJson::check_mac_binary(&mut file)?;
+                } else if file.name().ends_with(".dylib") {
+                    let (arm, intel) = check_mac_binary(&mut file)?;
                     json.mac_arm = arm;
                     json.mac_intel = intel;
-                    continue;
-                }
-                if file.name().ends_with(".android32.so") {
+                } else if file.name().ends_with(".android32.so") {
                     json.android32 = true;
-                    continue;
-                }
-                if file.name().ends_with(".android64.so") {
+                } else if file.name().ends_with(".android64.so") {
                     json.android64 = true;
-                    continue;
-                }
-                if file.name().eq("about.md") {
-                    json.about = match parse_zip_entry_to_str(&mut file) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                            return Err(ApiError::InternalError);
-                        }
-                        Ok(r) => Some(r),
-                    };
-                }
-                if file.name().eq("changelog.md") {
-                    json.changelog = match parse_zip_entry_to_str(&mut file) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                            return Err(ApiError::InternalError);
-                        }
-                        Ok(r) => Some(r),
-                    };
-                }
-
-                if file.name() == "logo.png" {
+                } else if file.name().eq("about.md") {
+                    json.about = Some(parse_zip_entry_to_str(&mut file).map_err(|e| {
+                        log::error!("Failed to parse about.md for mod: {}", e);
+                        ApiError::InternalError
+                    })?);
+                } else if file.name().eq("changelog.md") {
+                    json.changelog = Some(parse_zip_entry_to_str(&mut file).map_err(|e| {
+                        log::error!("Failed to parse changelog.md for mod: {}", e);
+                        ApiError::InternalError
+                    })?);
+                } else if file.name() == "logo.png" {
                     let bytes = validate_mod_logo(&mut file, store_image)?;
                     json.logo = bytes;
-                    continue;
                 }
             }
         }
         Ok(json)
-    }
-
-    fn check_mac_binary(file: &mut ZipFile) -> Result<(bool, bool), ApiError> {
-        // 12 bytes is all we need
-        let mut bytes: Vec<u8> = vec![0; 12];
-        if let Err(e) = file.read_exact(&mut bytes) {
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
-        }
-
-        // Information taken from: https://www.jviotti.com/2021/07/23/a-deep-dive-on-macos-universal-binaries.html and some simple xxd fuckery
-
-        // Universal
-        // 4 Bytes for magic
-        // 4 Bytes for num of architectures
-        // Can be either ARM & x86 or only one
-        // 0xCA 0xFE 0xBA 0xBE
-        // Non-Universal
-        // 0xCF 0xFA 0xED 0xFE
-
-        let is_fat_arch =
-            bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
-
-        let is_fat_arch_64 =
-            bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
-
-        let is_single_platform =
-            bytes[0] == 0xCF && bytes[1] == 0xFA && bytes[2] == 0xED && bytes[3] == 0xFE;
-
-        if is_fat_arch || is_fat_arch_64 {
-            let num_arches = bytes[7];
-            if num_arches == 0x1 {
-                let first = bytes[8];
-                let second = bytes[11];
-                // intel - 0x01 0x00 0x00 0x07
-                if first == 0x1 && second == 0x7 {
-                    return Ok((false, true));
-                // arm - 0x01 0x00 0x00 0x0C
-                } else if first == 0x1 && second == 0xC {
-                    return Ok((true, false));
-                // wtf
-                } else {
-                    return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
-                }
-            } else if num_arches == 0x2 {
-                return Ok((true, true));
-            } else {
-                return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
-            }
-        } else if is_single_platform {
-            let first = bytes[4];
-            let second = bytes[7];
-            if first == 0x7 && second == 0x1 {
-                // intel - 0x07 0x00 0x00 0x01
-                return Ok((false, true));
-            } else if first == 0xC && second == 0x1 {
-                // arm - 0x0C 0x00 0x00 0x01
-                return Ok((true, false));
-            }
-        }
-        Err(ApiError::BadRequest("Invalid MacOS binary".to_string()))
     }
 
     pub fn prepare_dependencies_for_create(&self) -> Result<Vec<DependencyCreate>, ApiError> {
@@ -281,40 +209,80 @@ impl ModJson {
             Some(d) => d,
         };
 
-        if deps.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut ret: Vec<DependencyCreate> = vec![];
-
-        for i in deps {
-            if i.version == "*" {
-                ret.push(DependencyCreate {
-                    dependency_id: i.id.clone(),
-                    version: "*".to_string(),
-                    compare: ModVersionCompare::MoreEq,
-                    importance: i.importance,
-                });
-                continue;
-            }
-            let (dependency_ver, compare) = match split_version_and_compare(i.version.as_str()) {
-                Err(_) => {
-                    return Err(ApiError::BadRequest(format!(
-                        "Invalid semver {}",
-                        i.version
-                    )))
+        match deps {
+            ModJsonDependencies::Old(deps) => {
+                if deps.is_empty() {
+                    return Ok(vec![]);
                 }
-                Ok((ver, compare)) => (ver, compare),
-            };
-            ret.push(DependencyCreate {
-                dependency_id: i.id.clone(),
-                version: dependency_ver.to_string(),
-                compare,
-                importance: i.importance,
-            });
-        }
 
-        Ok(ret)
+                let mut ret: Vec<DependencyCreate> = vec![];
+                ret.reserve(deps.len());
+
+                for i in deps {
+                    if i.version == "*" {
+                        ret.push(DependencyCreate {
+                            dependency_id: i.id.clone(),
+                            version: "*".to_string(),
+                            compare: ModVersionCompare::MoreEq,
+                            importance: i.importance,
+                        });
+                        continue;
+                    }
+                    let (dependency_ver, compare) = split_version_and_compare(&(i.version))
+                        .map_err(|_| {
+                            ApiError::BadRequest(format!("Invalid semver {}", i.version))
+                        })?;
+                    ret.push(DependencyCreate {
+                        dependency_id: i.id.clone(),
+                        version: dependency_ver.to_string(),
+                        compare,
+                        importance: i.importance,
+                    });
+                }
+                Ok(ret)
+            }
+            ModJsonDependencies::New(deps) => {
+                if deps.is_empty() {
+                    return Ok(vec![]);
+                }
+
+                let mut ret: Vec<DependencyCreate> = vec![];
+                ret.reserve(deps.len());
+
+                for (id, dep) in deps {
+                    match dep {
+                        ModJsonDependencyType::Version(version) => {
+                            let (dependency_ver, compare) = split_version_and_compare(version)
+                                .map_err(|_| {
+                                    ApiError::BadRequest(format!("Invalid semver {}", version))
+                                })?;
+                            ret.push(DependencyCreate {
+                                dependency_id: id.clone(),
+                                version: dependency_ver.to_string(),
+                                compare,
+                                importance: DependencyImportance::default(),
+                            });
+                        }
+                        ModJsonDependencyType::Detailed(detailed) => {
+                            let (dependency_ver, compare) =
+                                split_version_and_compare(&(detailed.version)).map_err(|_| {
+                                    ApiError::BadRequest(format!(
+                                        "Invalid semver {}",
+                                        detailed.version
+                                    ))
+                                })?;
+                            ret.push(DependencyCreate {
+                                dependency_id: id.clone(),
+                                version: dependency_ver.to_string(),
+                                compare,
+                                importance: detailed.importance,
+                            });
+                        }
+                    }
+                }
+                Ok(ret)
+            }
+        }
     }
 
     pub fn prepare_incompatibilities_for_create(
@@ -325,39 +293,82 @@ impl ModJson {
             Some(d) => d,
         };
 
-        if incompat.is_empty() {
-            return Ok(vec![]);
-        }
-        let mut ret: Vec<IncompatibilityCreate> = vec![];
-
-        for i in incompat {
-            if i.version == "*" {
-                ret.push(IncompatibilityCreate {
-                    incompatibility_id: i.id.clone(),
-                    version: "*".to_string(),
-                    compare: ModVersionCompare::MoreEq,
-                    importance: i.importance,
-                });
-                continue;
-            }
-            let (ver, compare) = match split_version_and_compare(i.version.as_str()) {
-                Err(_) => {
-                    return Err(ApiError::BadRequest(format!(
-                        "Invalid semver {}",
-                        i.version
-                    )))
+        match incompat {
+            ModJsonIncompatibilities::Old(vec) => {
+                if vec.is_empty() {
+                    return Ok(vec![]);
                 }
-                Ok((ver, compare)) => (ver, compare),
-            };
-            ret.push(IncompatibilityCreate {
-                incompatibility_id: i.id.clone(),
-                version: ver.to_string(),
-                compare,
-                importance: i.importance,
-            });
-        }
 
-        Ok(ret)
+                let mut ret: Vec<IncompatibilityCreate> = vec![];
+                ret.reserve(vec.len());
+
+                for i in vec {
+                    if i.version == "*" {
+                        ret.push(IncompatibilityCreate {
+                            incompatibility_id: i.id.clone(),
+                            version: "*".to_string(),
+                            compare: ModVersionCompare::MoreEq,
+                            importance: i.importance,
+                        });
+                        continue;
+                    }
+
+                    let (ver, compare) = split_version_and_compare(&(i.version)).map_err(|_| {
+                        ApiError::BadRequest(format!("Invalid semver: {}", i.version))
+                    })?;
+                    ret.push(IncompatibilityCreate {
+                        incompatibility_id: i.id.clone(),
+                        version: ver.to_string(),
+                        compare,
+                        importance: i.importance,
+                    });
+                }
+
+                Ok(ret)
+            }
+            ModJsonIncompatibilities::New(map) => {
+                if map.is_empty() {
+                    return Ok(vec![]);
+                }
+
+                let mut ret: Vec<IncompatibilityCreate> = vec![];
+                ret.reserve(map.len());
+
+                for (id, item) in map {
+                    match item {
+                        ModJsonIncompatibilityType::Version(version) => {
+                            let (ver, compare) =
+                                split_version_and_compare(version).map_err(|_| {
+                                    ApiError::BadRequest(format!("Invalid semver {}", version))
+                                })?;
+                            ret.push(IncompatibilityCreate {
+                                incompatibility_id: id.clone(),
+                                version: ver.to_string(),
+                                compare,
+                                importance: IncompatibilityImportance::default(),
+                            });
+                        }
+                        ModJsonIncompatibilityType::Detailed(detailed) => {
+                            let (ver, compare) = split_version_and_compare(&(detailed.version))
+                                .map_err(|_| {
+                                    ApiError::BadRequest(format!(
+                                        "Invalid semver {}",
+                                        detailed.version
+                                    ))
+                                })?;
+                            ret.push(IncompatibilityCreate {
+                                incompatibility_id: id.clone(),
+                                version: ver.to_string(),
+                                compare,
+                                importance: detailed.importance,
+                            });
+                        }
+                    }
+                }
+
+                Ok(ret)
+            }
+        }
     }
 
     pub fn validate(&self) -> Result<(), ApiError> {
@@ -485,28 +496,6 @@ fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
     }
 }
 
-fn validate_dependency_version_str(ver: &str) -> bool {
-    if ver == "*" {
-        return true;
-    }
-    let mut copy = ver.to_string();
-    if ver.starts_with("<=") {
-        copy = copy.trim_start_matches("<=").to_string();
-    } else if ver.starts_with(">=") {
-        copy = copy.trim_start_matches(">=").to_string();
-    } else if ver.starts_with('=') {
-        copy = copy.trim_start_matches('=').to_string();
-    } else if ver.starts_with('<') {
-        copy = copy.trim_start_matches('<').to_string();
-    } else if ver.starts_with('>') {
-        copy = copy.trim_start_matches('>').to_string();
-    }
-    copy = copy.trim_start_matches('v').to_string();
-
-    let result = semver::Version::parse(&copy);
-    result.is_ok()
-}
-
 pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompare), ()> {
     let mut copy = ver.to_string();
     let mut compare = ModVersionCompare::MoreEq;
@@ -536,4 +525,64 @@ pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompar
 
 fn parse_download_url(url: &str) -> String {
     String::from(url.trim_end_matches("\\/"))
+}
+
+fn check_mac_binary(file: &mut ZipFile) -> Result<(bool, bool), ApiError> {
+    // 12 bytes is all we need
+    let mut bytes: Vec<u8> = vec![0; 12];
+    file.read_exact(&mut bytes).map_err(|e| {
+        log::error!("Failed to read MacOS binary: {}", e);
+        ApiError::BadRequest("Invalid MacOS binary".into())
+    })?;
+
+    // Information taken from: https://www.jviotti.com/2021/07/23/a-deep-dive-on-macos-universal-binaries.html and some simple xxd fuckery
+
+    // Universal
+    // 4 Bytes for magic
+    // 4 Bytes for num of architectures
+    // Can be either ARM & x86 or only one
+    // 0xCA 0xFE 0xBA 0xBE
+    // Non-Universal
+    // 0xCF 0xFA 0xED 0xFE
+
+    let is_fat_arch = bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
+
+    let is_fat_arch_64 =
+        bytes[0] == 0xCA && bytes[1] == 0xFE && bytes[2] == 0xBA && bytes[3] == 0xBE;
+
+    let is_single_platform =
+        bytes[0] == 0xCF && bytes[1] == 0xFA && bytes[2] == 0xED && bytes[3] == 0xFE;
+
+    if is_fat_arch || is_fat_arch_64 {
+        let num_arches = bytes[7];
+        if num_arches == 0x1 {
+            let first = bytes[8];
+            let second = bytes[11];
+            if first == 0x1 && second == 0x7 {
+                // intel - 0x01 0x00 0x00 0x07
+                return Ok((false, true));
+            } else if first == 0x1 && second == 0xC {
+                // arm - 0x01 0x00 0x00 0x0C
+                return Ok((true, false));
+            } else {
+                // probably invalid
+                return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+            }
+        } else if num_arches == 0x2 {
+            return Ok((true, true));
+        } else {
+            return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+        }
+    } else if is_single_platform {
+        let first = bytes[4];
+        let second = bytes[7];
+        if first == 0x7 && second == 0x1 {
+            // intel - 0x07 0x00 0x00 0x01
+            return Ok((false, true));
+        } else if first == 0xC && second == 0x1 {
+            // arm - 0x0C 0x00 0x00 0x01
+            return Ok((true, false));
+        }
+    }
+    Err(ApiError::BadRequest("Invalid MacOS binary".to_string()))
 }
