@@ -585,21 +585,13 @@ impl ModVersion {
         let tags = Tag::get_tag_ids(json_tags, pool).await?;
         Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
         ModGDVersion::create_from_json(json.gd.to_create_payload(json), id, pool).await?;
-        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
-            let dependencies = json.prepare_dependencies_for_create()?;
-            if !dependencies.is_empty() {
-                Dependency::create_for_mod_version(id, dependencies, pool).await?;
-            }
+        let dependencies = json.prepare_dependencies_for_create()?;
+        if !dependencies.is_empty() {
+            Dependency::create_for_mod_version(id, dependencies, pool).await?;
         }
-        if json
-            .incompatibilities
-            .as_ref()
-            .is_some_and(|x| !x.is_empty())
-        {
-            let incompat = json.prepare_incompatibilities_for_create()?;
-            if !incompat.is_empty() {
-                Incompatibility::create_for_mod_version(id, incompat, pool).await?;
-            }
+        let incompat = json.prepare_incompatibilities_for_create()?;
+        if !incompat.is_empty() {
+            Incompatibility::create_for_mod_version(id, incompat, pool).await?;
         }
 
         let status = if make_accepted {
@@ -690,21 +682,14 @@ impl ModVersion {
         Dependency::clear_for_mod_version(version_id, pool).await?;
         Incompatibility::clear_for_mod_version(version_id, pool).await?;
 
-        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
-            let dependencies = json.prepare_dependencies_for_create()?;
-            if !dependencies.is_empty() {
-                Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
-            }
+        let dependencies = json.prepare_dependencies_for_create()?;
+        if !dependencies.is_empty() {
+            Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
         }
-        if json
-            .incompatibilities
-            .as_ref()
-            .is_some_and(|x| !x.is_empty())
-        {
-            let incompat = json.prepare_incompatibilities_for_create()?;
-            if !incompat.is_empty() {
-                Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
-            }
+
+        let incompat = json.prepare_incompatibilities_for_create()?;
+        if !incompat.is_empty() {
+            Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
         }
 
         let status = if make_accepted {
