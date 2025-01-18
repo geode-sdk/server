@@ -20,10 +20,8 @@ pub enum Commands {
 #[derive(Debug, Subcommand)]
 pub enum JobCommand {
     /// Caches download counts for all mods currently stored
-    #[command(subcommand)]
     CacheDownloads,
     /// Runs migrations
-    #[command(subcommand)]
     Migrate,
 }
 
