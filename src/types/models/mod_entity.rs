@@ -1062,52 +1062,6 @@ impl Mod {
         Ok(())
     }
 
-    pub async fn increment_downloads(
-        mod_id: &str,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        sqlx::query!(
-            "UPDATE mods m
-            SET download_count = download_count + 1
-            WHERE m.id = $1",
-            mod_id
-        )
-        .execute(&mut *pool)
-        .await
-        .map_err(|e| {
-            log::error!(
-                "Failed to increment download count for mod {}: {}",
-                mod_id,
-                e
-            );
-            ApiError::DbError
-        })?;
-        Ok(())
-    }
-
-    pub async fn calculate_cached_downloads(
-        mod_id: &str,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        sqlx::query!(
-            "UPDATE mods m SET download_count = (
-                SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
-                INNER JOIN mod_versions mv ON md.mod_version_id = mv.id
-                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                WHERE mv.mod_id = m.id AND mvs.status = 'accepted'
-            ), last_download_cache_refresh = now()
-            WHERE m.id = $1",
-            mod_id
-        )
-        .execute(&mut *pool)
-        .await
-        .map_err(|e| {
-            log::error!("Failed to recalculate downloads for mod {}: {}", mod_id, e);
-            ApiError::DbError
-        })?;
-        Ok(())
-    }
-
     pub async fn assign_owner(
         mod_id: &str,
         dev_id: i32,

@@ -1,2 +1,2 @@
-pub mod download_cache;
+pub mod cleanup_downloads;
 pub mod migrate;
