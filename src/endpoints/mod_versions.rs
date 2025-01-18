@@ -4,6 +4,11 @@ use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responde
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
+use crate::database::repository::developers;
+use crate::events::mod_created::{
+    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
+};
+use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
     types::{
@@ -18,7 +23,6 @@ use crate::{
             mod_version_status::ModVersionStatusEnum,
         },
     },
-    webhook::send_webhook,
     AppData,
 };
 
@@ -300,30 +304,27 @@ pub async fn create_version(
             .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-
-    if dev.verified {
-        send_webhook(
-            json.id.clone(),
-            json.name.clone(),
-            json.version.clone(),
-            true,
-            Developer {
-                id: dev.id,
-                username: dev.username.clone(),
-                display_name: dev.display_name.clone(),
-                is_owner: true,
-            },
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone(),
-        )
-        .await;
-    }
-
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    let approved_count = ModVersion::get_accepted_count(&json.id, &mut pool).await?;
+
+    if dev.verified && approved_count != 0 {
+        let owner = developers::get_owner_for_mod(&json.id, &mut *pool).await?;
+
+        NewModVersionAcceptedEvent {
+            id: json.id.clone(),
+            name: json.name.clone(),
+            version: json.version.clone(),
+            owner,
+            verified: NewModVersionVerification::Admin(dev),
+            base_url: data.app_url.clone(),
+        }
+        .to_discord_webhook()
+        .send(&data.webhook_url);
+    }
     Ok(HttpResponse::NoContent())
 }
 
@@ -391,22 +392,31 @@ pub async fn update_version(
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
-        let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
-            .await?
-            .into_iter()
-            .find(|dev| dev.is_owner);
+        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
 
-        send_webhook(
-            version.mod_id,
-            version.name.clone(),
-            version.version.clone(),
-            is_update,
-            owner.as_ref().unwrap().clone(),
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone(),
-        )
-        .await;
+        if !is_update {
+            NewModAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified_by: dev,
+                base_url: data.app_url.clone(),
+            }
+            .to_discord_webhook()
+            .send(&data.webhook_url);
+        } else {
+            NewModVersionAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified: NewModVersionVerification::Admin(dev),
+                base_url: data.app_url.clone(),
+            }
+            .to_discord_webhook()
+            .send(&data.webhook_url);
+        }
     }
 
     Ok(HttpResponse::NoContent())

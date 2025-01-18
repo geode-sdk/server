@@ -1,19 +1,17 @@
 use actix_cors::Cors;
 use actix_web::{
-    get,
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer, Responder,
+    App, HttpServer
 };
-use clap::Parser;
 
 use crate::types::api;
-use crate::types::api::ApiError;
 
 mod auth;
 mod cli;
 mod database;
 mod endpoints;
+mod events;
 mod extractors;
 mod jobs;
 mod types;
@@ -28,18 +26,6 @@ pub struct AppData {
     webhook_url: String,
     disable_downloads: bool,
     max_download_mb: u32,
-}
-
-#[derive(Debug, Parser)]
-struct Args {
-    /// Name of the script to run
-    #[arg(short, long)]
-    script: Option<String>,
-}
-
-#[get("/")]
-async fn health() -> Result<impl Responder, ApiError> {
-    Ok(web::Json("The Geode Index is running"))
 }
 
 #[tokio::main]
