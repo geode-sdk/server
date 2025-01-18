@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1 \n            AND ($2 = false OR mvs.status = 'accepted')",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,\n                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1\n            AND ($2 = false OR mvs.status = 'accepted')\n            ORDER BY mv.id DESC",
   "describe": {
     "columns": [
       {
@@ -163,5 +163,5 @@
       true
     ]
   },
-  "hash": "bc5f72e0ab8a46b782ff02cd32b0ab66b3b14b841813f95da34ce3f3ff4e0850"
+  "hash": "4fd70d59b4b0ab788f6d2158614cbffe2142f1dc349f380d38bb149177045c15"
 }

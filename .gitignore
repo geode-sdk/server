@@ -2,6 +2,10 @@
 *.db
 .env
 
+/log
+
+/config/*.yaml
+
 .vscode/settings.json
 
 .idea

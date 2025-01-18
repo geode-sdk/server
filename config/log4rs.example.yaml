@@ -1,0 +1,32 @@
+appenders:
+  console:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} {M}:{L} {h({l})} {m}{n}"
+  daily:
+    kind: rolling_file
+    path: "log/index.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} {M}:{L} {h({l})} {m}{n}"
+    policy:
+      trigger:
+        kind: time
+        interval: 1 day
+      roller:
+        kind: fixed_window
+        pattern: "log/index.{}.log"
+        base: 0
+        count: 10
+root:
+  level: info
+
+loggers:
+  geode_index:
+    level: info
+    appenders:
+      - console
+      - daily
+  actix_server:
+    level: info
+    appenders:
+      - console

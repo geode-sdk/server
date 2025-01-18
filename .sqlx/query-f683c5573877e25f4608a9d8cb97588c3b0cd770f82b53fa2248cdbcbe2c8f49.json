@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT \n                id,\n                name,\n                display_name,\n                is_readonly\n            FROM mod_tags",
+  "query": "SELECT\n            id,\n            name,\n            display_name,\n            is_readonly\n        FROM mod_tags",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "e92c7cf124fca38e79e9a7560d188721b618db40e4ad4782f879a901e5c639c9"
+  "hash": "f683c5573877e25f4608a9d8cb97588c3b0cd770f82b53fa2248cdbcbe2c8f49"
 }

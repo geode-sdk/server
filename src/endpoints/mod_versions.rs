@@ -4,8 +4,14 @@ use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responde
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
+use crate::database::repository::developers;
+use crate::events::mod_created::{
+    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
+};
+use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth, types::{
+    extractors::auth::Auth,
+    types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -16,7 +22,8 @@ use crate::{
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
-    }, webhook::send_webhook, AppData
+    },
+    AppData,
 };
 
 #[derive(Deserialize)]
@@ -92,9 +99,8 @@ pub async fn get_version_index(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut result = ModVersion::get_index(
@@ -130,9 +136,8 @@ pub async fn get_one(
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin ||
-            Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
-        _ => false
+        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        _ => false,
     };
 
     let mut version = {
@@ -202,16 +207,18 @@ pub async fn download_version(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if let Ok((downloaded_version, downloaded_mod)) = download::create_download(
-        net, mod_version.id, &mod_version.mod_id, &mut pool
-    ).await {
+    if let Ok((downloaded_version, downloaded_mod)) =
+        download::create_download(net, mod_version.id, &mod_version.mod_id, &mut pool).await
+    {
         let name = mod_version.mod_id.clone();
         let version = mod_version.version.clone();
 
         // only accepted mods can have their download counts incremented
         // we'll just fix this once they're updated anyways
 
-        if (downloaded_version || downloaded_mod) && mod_version.status == ModVersionStatusEnum::Accepted {
+        if (downloaded_version || downloaded_mod)
+            && mod_version.status == ModVersionStatusEnum::Accepted
+        {
             tokio::spawn(async move {
                 if downloaded_version {
                     // we must nest more
@@ -253,7 +260,7 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
 
-    let fetched_mod = Mod::get_one(&path.id, true, &mut pool).await?;
+    let fetched_mod = Mod::get_one(&path.id, false, &mut pool).await?;
 
     if fetched_mod.is_none() {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
@@ -264,15 +271,23 @@ pub async fn create_version(
     }
 
     // remove invalid characters from link - they break the location header on download
-    let download_link: String = payload.download_link.chars()
-        .filter(|c| c.is_ascii() && *c != '\0').collect();
+    let download_link: String = payload
+        .download_link
+        .chars()
+        .filter(|c| c.is_ascii() && *c != '\0')
+        .collect();
 
-    let mut file_path = download_geode_file(&download_link).await?;
-    let json = ModJson::from_zip(&mut file_path, &download_link, dev.verified)
-        .map_err(|err| {
-            log::error!("Failed to parse mod.json: {}", err);
-            ApiError::FilesystemError
-        })?;
+    let mut file_path = download_geode_file(&download_link, data.max_download_mb).await?;
+    let json = ModJson::from_zip(
+        &mut file_path,
+        &download_link,
+        dev.verified,
+        data.max_download_mb,
+    )
+    .map_err(|err| {
+        log::error!("Failed to parse mod.json: {}", err);
+        ApiError::FilesystemError
+    })?;
     if json.id != path.id {
         return Err(ApiError::BadRequest(format!(
             "Request id {} does not match mod.json id {}",
@@ -280,23 +295,9 @@ pub async fn create_version(
         )));
     }
 
-    if dev.verified {
-        send_webhook(
-            json.id.clone(),
-            json.name.clone(),
-            json.version.clone(),
-            true,
-            Developer { id: dev.id, username: dev.username.clone(), display_name: dev.display_name.clone(), is_owner: true },
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone()
-        )
-        .await;
-    }
-
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    if let Err(e) = Mod::new_version(&json, dev, &mut transaction).await {
+    if let Err(e) = Mod::new_version(&json, &dev, &mut transaction).await {
         transaction
             .rollback()
             .await
@@ -307,6 +308,23 @@ pub async fn create_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    let approved_count = ModVersion::get_accepted_count(&json.id, &mut pool).await?;
+
+    if dev.verified && approved_count != 0 {
+        let owner = developers::get_owner_for_mod(&json.id, &mut *pool).await?;
+
+        NewModVersionAcceptedEvent {
+            id: json.id.clone(),
+            name: json.name.clone(),
+            version: json.version.clone(),
+            owner,
+            verified: NewModVersionVerification::Admin(dev),
+            base_url: data.app_url.clone(),
+        }
+        .to_discord_webhook()
+        .send(&data.webhook_url);
+    }
     Ok(HttpResponse::NoContent())
 }
 
@@ -327,8 +345,9 @@ pub async fn update_version(
         path.version.as_str(),
         false,
         false,
-        &mut pool
-    ).await?;
+        &mut pool,
+    )
+    .await?;
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     let id = match sqlx::query!(
@@ -354,6 +373,7 @@ pub async fn update_version(
         payload.status,
         payload.info.clone(),
         dev.id,
+        data.max_download_mb,
         &mut transaction,
     )
     .await
@@ -368,25 +388,35 @@ pub async fn update_version(
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
-    
+
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
-        let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
-            .await?
-            .into_iter()
-            .find(|dev| dev.is_owner);
+        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
 
-        send_webhook(
-            version.mod_id,
-            version.name.clone(),
-            version.version.clone(),
-            is_update,
-            owner.as_ref().unwrap().clone(),
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone()
-        ).await;
+        if !is_update {
+            NewModAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified_by: dev,
+                base_url: data.app_url.clone(),
+            }
+            .to_discord_webhook()
+            .send(&data.webhook_url);
+        } else {
+            NewModVersionAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified: NewModVersionVerification::Admin(dev),
+                base_url: data.app_url.clone(),
+            }
+            .to_discord_webhook()
+            .send(&data.webhook_url);
+        }
     }
 
     Ok(HttpResponse::NoContent())
