@@ -55,3 +55,20 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
         Ok(vec)
     }
 }
+
+pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<(), ApiError> {
+    sqlx::query!(
+        "UPDATE mods
+        SET download_count = download_count + 1
+        WHERE id = $1",
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .map_err(|e| {
+        log::error!("Failed to increment downloads for mod {}: {}", id, e);
+        ApiError::DbError
+    })?;
+
+    Ok(())
+}
