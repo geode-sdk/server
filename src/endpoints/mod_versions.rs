@@ -423,7 +423,7 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified_by: dev,
+                verified_by: dev.clone(),
                 base_url: data.app_url.clone(),
             }
             .to_discord_webhook()
@@ -434,7 +434,7 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified: NewModVersionVerification::Admin(dev),
+                verified: NewModVersionVerification::Admin(dev.clone()),
                 base_url: data.app_url.clone(),
             }
             .to_discord_webhook()
