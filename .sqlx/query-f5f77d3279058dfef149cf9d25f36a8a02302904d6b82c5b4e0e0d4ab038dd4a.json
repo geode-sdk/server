@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, username, display_name, verified, admin\n            FROM developers WHERE github_user_id = $1",
+  "query": "UPDATE developers\n        SET display_name = $1\n        WHERE id = $2\n        RETURNING\n            id,\n            username,\n            display_name,\n            verified,\n            admin",
   "describe": {
     "columns": [
       {
@@ -31,7 +31,8 @@
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Text",
+        "Int4"
       ]
     },
     "nullable": [
@@ -42,5 +43,5 @@
       false
     ]
   },
-  "hash": "f59b683ceb27752b572d694c67760ddcaea1b747eb5fca61776521dc6e6b0600"
+  "hash": "f5f77d3279058dfef149cf9d25f36a8a02302904d6b82c5b4e0e0d4ab038dd4a"
 }

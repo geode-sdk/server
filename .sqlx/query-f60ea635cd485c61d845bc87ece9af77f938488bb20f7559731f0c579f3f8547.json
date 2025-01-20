@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id,\n                username,\n                display_name,\n                verified,\n                admin\n            FROM developers\n            WHERE id = $1\n            ",
+  "query": "UPDATE developers\n        SET admin = $1,\n        verified = $2\n        WHERE id = $3\n        RETURNING\n            id,\n            username,\n            display_name,\n            verified,\n            admin",
   "describe": {
     "columns": [
       {
@@ -31,6 +31,8 @@
     ],
     "parameters": {
       "Left": [
+        "Bool",
+        "Bool",
         "Int4"
       ]
     },
@@ -42,5 +44,5 @@
       false
     ]
   },
-  "hash": "67bed0b399f0c3135f07bb736cabf278492c710f0715096086e499b9ad2636b5"
+  "hash": "f60ea635cd485c61d845bc87ece9af77f938488bb20f7559731f0c579f3f8547"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM auth_tokens WHERE developer_id = $1",
+  "query": "DELETE FROM auth_tokens\n        WHERE developer_id = $1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -10,5 +10,5 @@
     },
     "nullable": []
   },
-  "hash": "0bfcfe6504bf090dc126a2f4a4a63f0241486ff99158cf66b0af7e917117d69b"
+  "hash": "60424f3920265ec5880ef01a8192b7dc1f5bfe04cedabfaf1afc1a6a70d1ecfb"
 }
