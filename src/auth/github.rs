@@ -1,10 +1,11 @@
+use crate::database::repository::github_login_attempts;
+use crate::types::models::github_login_attempt::StoredLoginAttempt;
+use crate::types::api::ApiError;
 use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
 use uuid::Uuid;
-
-use crate::types::{api::ApiError, models::github_login_attempt::GithubLoginAttempt};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GithubStartAuth {
@@ -39,19 +40,13 @@ impl GithubClient {
         &self,
         ip: IpNetwork,
         pool: &mut PgConnection,
-    ) -> Result<GithubLoginAttempt, ApiError> {
-        let found_request = GithubLoginAttempt::get_one_by_ip(ip, &mut *pool).await?;
-        if let Some(r) = found_request {
+    ) -> Result<StoredLoginAttempt, ApiError> {
+        if let Some(r) = github_login_attempts::get_one_by_ip(ip, pool).await? {
             if r.is_expired() {
                 let uuid = Uuid::parse_str(&r.uuid).unwrap();
-                GithubLoginAttempt::remove(uuid, &mut *pool).await?;
+                github_login_attempts::remove(uuid, pool).await?;
             } else {
-                return Ok(GithubLoginAttempt {
-                    uuid: r.uuid.to_string(),
-                    interval: r.interval,
-                    uri: r.uri,
-                    code: r.user_code,
-                });
+                return Ok(r);
             }
         }
 
@@ -84,7 +79,8 @@ impl GithubClient {
             );
             ApiError::InternalError
         })?;
-        let uuid = GithubLoginAttempt::create(
+
+        Ok(github_login_attempts::create(
             ip,
             body.device_code,
             body.interval,
@@ -93,14 +89,7 @@ impl GithubClient {
             &body.user_code,
             &mut *pool,
         )
-        .await?;
-
-        Ok(GithubLoginAttempt {
-            uuid: uuid.to_string(),
-            interval: body.interval,
-            uri: body.verification_uri,
-            code: body.user_code,
-        })
+        .await?)
     }
 
     pub async fn poll_github(&self, device_code: &str) -> Result<String, ApiError> {

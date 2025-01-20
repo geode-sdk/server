@@ -4,12 +4,11 @@ use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
 
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers};
+use crate::database::repository::{auth_tokens, developers, github_login_attempts};
 use crate::{
     auth::github,
     types::{
         api::{ApiError, ApiResponse},
-        models::github_login_attempt::GithubLoginAttempt,
     },
 };
 
@@ -64,12 +63,11 @@ pub async fn poll_github_login(
 
     let uuid = Uuid::parse_str(&json.uuid).or(Err(ApiError::BadRequest("Invalid uuid".into())))?;
 
-    let attempt =
-        GithubLoginAttempt::get_one(uuid, &mut pool)
-            .await?
-            .ok_or(ApiError::BadRequest(
-                "No login attempt has been made for this UUID".into(),
-            ))?;
+    let attempt = github_login_attempts::get_one_by_uuid(uuid, &mut pool)
+        .await?
+        .ok_or(ApiError::BadRequest(
+            "No login attempt has been made for this UUID".into(),
+        ))?;
 
     let net: IpNetwork = connection_info
         .realip_remote_addr()
@@ -92,7 +90,7 @@ pub async fn poll_github_login(
     }
 
     if attempt.is_expired() {
-        GithubLoginAttempt::remove(uuid, &mut pool).await?;
+        github_login_attempts::remove(uuid, &mut pool).await?;
         return Err(ApiError::BadRequest("Login attempt expired".to_string()));
     }
 
@@ -102,9 +100,9 @@ pub async fn poll_github_login(
         data.github().client_id().to_string(),
         data.github().client_secret().to_string(),
     );
-    GithubLoginAttempt::poll(uuid, &mut tx).await;
+    github_login_attempts::poll_now(uuid, &mut tx).await?;
     let token = client.poll_github(&attempt.device_code).await?;
-    GithubLoginAttempt::remove(uuid, &mut tx).await?;
+    github_login_attempts::remove(uuid, &mut tx).await?;
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt
     // It would be invalid for GitHub anyway
@@ -144,7 +142,11 @@ pub async fn github_token_login(
         .await
         .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?;
 
-    let mut pool = data.db().acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let developer = developers::fetch_or_insert_github(user.id, &user.username, &mut tx).await?;
