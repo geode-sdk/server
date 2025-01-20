@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub async fn generate_token(developer_id: i32, conn: &mut PgConnection) -> Result<Uuid, ApiError> {
     let token = Uuid::new_v4();
     let hash = sha256::digest(token.to_string());
-    let expiry = Utc::now().checked_add_days(Days::new(14)).unwrap();
+    let expiry = Utc::now().checked_add_days(Days::new(30)).unwrap();
 
     sqlx::query!(
         "INSERT INTO refresh_tokens (token, developer_id, expires_at)
