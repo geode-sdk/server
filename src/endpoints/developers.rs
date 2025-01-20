@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
 
 use crate::{
-    auth::token,
     extractors::auth::Auth,
     types::{
         api::{ApiError, ApiResponse},
@@ -15,6 +14,7 @@ use crate::{
     },
     AppData,
 };
+use crate::database::repository::auth_tokens;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SimpleDevMod {
@@ -181,23 +181,11 @@ pub async fn delete_token(
     data: web::Data<AppData>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.developer()?;
     let token = auth.token()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    if let Err(e) =
-        token::invalidate_token_for_developer(dev.id, token.to_string(), &mut transaction).await
-    {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(e);
-    }
-    transaction
-        .commit()
-        .await
-        .or(Err(ApiError::TransactionError))?;
+
+    auth_tokens::remove_token(token, &mut pool).await?;
+
     Ok(HttpResponse::NoContent())
 }
 
@@ -208,18 +196,9 @@ pub async fn delete_tokens(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    if let Err(e) = token::invalidate_tokens_for_developer(dev.id, &mut transaction).await {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(e);
-    }
-    transaction
-        .commit()
-        .await
-        .or(Err(ApiError::TransactionError))?;
+
+    auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
+
     Ok(HttpResponse::NoContent())
 }
 
