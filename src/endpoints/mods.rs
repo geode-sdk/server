@@ -5,7 +5,7 @@ use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
-use crate::types::models::developer::Developer;
+use crate::types::models::developer::ModDeveloper;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
@@ -95,7 +95,7 @@ pub async fn get(
         .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &id, &mut pool).await?,
         _ => false,
     };
 

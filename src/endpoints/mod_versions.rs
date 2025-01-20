@@ -16,7 +16,7 @@ use crate::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
-            developer::Developer,
+            developer::ModDeveloper,
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
@@ -102,7 +102,7 @@ pub async fn get_version_index(
         .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
         _ => false,
     };
 
@@ -143,7 +143,7 @@ pub async fn get_one(
         .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
         _ => false,
     };
 
@@ -259,7 +259,7 @@ pub async fn create_version(
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    if !(Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
+    if !(developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
         return Err(ApiError::Forbidden);
     }
 

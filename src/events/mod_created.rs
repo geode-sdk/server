@@ -1,25 +1,25 @@
-use crate::types::models::developer::FetchedDeveloper;
+use crate::types::models::developer::Developer;
 use crate::webhook::discord::{DiscordMessage, DiscordWebhook};
 
 pub struct NewModAcceptedEvent {
     pub id: String,
     pub name: String,
     pub version: String,
-    pub owner: FetchedDeveloper,
-    pub verified_by: FetchedDeveloper,
+    pub owner: Developer,
+    pub verified_by: Developer,
     pub base_url: String,
 }
 
 pub enum NewModVersionVerification {
     VerifiedDev,
-    Admin(FetchedDeveloper),
+    Admin(Developer),
 }
 
 pub struct NewModVersionAcceptedEvent {
     pub id: String,
     pub name: String,
     pub version: String,
-    pub owner: FetchedDeveloper,
+    pub owner: Developer,
     pub verified: NewModVersionVerification,
     pub base_url: String,
 }

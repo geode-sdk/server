@@ -1,14 +1,14 @@
 use std::pin::Pin;
 
 use crate::config::AppData;
-use crate::types::{api::ApiError, models::developer::FetchedDeveloper};
+use crate::types::{api::ApiError, models::developer::Developer};
 use actix_web::http::header::HeaderMap;
 use actix_web::{web, FromRequest, HttpRequest};
 use futures::Future;
 use uuid::Uuid;
 
 pub struct Auth {
-    developer: Option<FetchedDeveloper>,
+    developer: Option<Developer>,
     token: Option<Uuid>,
 }
 
@@ -16,7 +16,7 @@ impl Auth {
     /**
      * Returns Ok(developer) if token was valid in request or returns ApiError::Unauthorized otherwise
      */
-    pub fn developer(&self) -> Result<FetchedDeveloper, ApiError> {
+    pub fn developer(&self) -> Result<Developer, ApiError> {
         match &self.developer {
             None => Err(ApiError::Unauthorized),
             Some(d) => Ok(d.clone()),
@@ -27,6 +27,17 @@ impl Auth {
         match self.token {
             None => Err(ApiError::Unauthorized),
             Some(t) => Ok(t),
+        }
+    }
+
+    pub fn admin(&self) -> Result<(), ApiError> {
+        if self.developer.is_none() {
+            return Err(ApiError::Unauthorized);
+        }
+
+        match self.developer.as_ref().is_some_and(|dev| dev.admin) {
+            false => Err(ApiError::Forbidden),
+            true => Ok(())
         }
     }
 }
@@ -56,7 +67,7 @@ impl FromRequest for Auth {
                 .or(Err(ApiError::DbAcquireError))?;
             let hash = sha256::digest(token.to_string());
             let developer = match sqlx::query_as!(
-                FetchedDeveloper,
+                Developer,
                 "SELECT
                     d.id,
                     d.username,

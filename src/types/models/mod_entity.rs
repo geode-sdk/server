@@ -1,11 +1,12 @@
 use super::{
     dependency::ResponseDependency,
-    developer::{Developer, FetchedDeveloper},
+    developer::{ModDeveloper, Developer},
     incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_link::ModLinks,
     tag::Tag,
 };
+use crate::database::repository::{developers, mods};
 use crate::{
     endpoints::{
         developers::{SimpleDevMod, SimpleDevModVersion},
@@ -31,7 +32,6 @@ use std::{
     io::{Cursor, Read},
     str::FromStr,
 };
-use crate::database::repository::mods;
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -39,7 +39,7 @@ pub struct Mod {
     pub repository: Option<String>,
     pub featured: bool,
     pub download_count: i32,
-    pub developers: Vec<Developer>,
+    pub developers: Vec<ModDeveloper>,
     pub versions: Vec<ModVersion>,
     pub tags: Vec<String>,
     pub about: Option<String>,
@@ -240,7 +240,7 @@ impl Mod {
         }
 
         let developer = match query.developer {
-            Some(d) => match Developer::find_by_username(&d, pool).await? {
+            Some(d) => match developers::get_one_by_username(&d, pool).await? {
                 Some(d) => Some(d),
                 None => {
                     return Ok(PaginatedData {
@@ -420,7 +420,7 @@ impl Mod {
             query.geode.as_ref(),
         )
         .await?;
-        let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let developers = developers::get_all_for_mods(&ids, pool).await?;
         let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
@@ -467,7 +467,7 @@ impl Mod {
     ) -> Result<PaginatedData<Mod>, ApiError> {
         let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_pending_for_mods(&ids, pool).await?;
-        let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let developers = developers::get_all_for_mods(&ids, pool).await?;
         let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
         for (_, mod_version) in versions.iter() {
@@ -579,7 +579,7 @@ impl Mod {
             versions.entry(record.id.clone()).or_default().push(version);
         }
         let ids: Vec<String> = records.iter().map(|x| x.id.clone()).collect();
-        let developers = Developer::fetch_for_mods(&ids, pool).await?;
+        let developers = developers::get_all_for_mods(&ids, pool).await?;
 
         let mut map: HashMap<String, SimpleDevMod> = HashMap::new();
 
@@ -671,7 +671,7 @@ impl Mod {
         let gd: HashMap<i32, DetailedGDVersion> =
             ModGDVersion::get_for_mod_versions(&ids, pool).await?;
         let tags: Vec<String> = Tag::get_tags_for_mod(id, pool).await?;
-        let devs: Vec<Developer> = Developer::fetch_for_mod(id, pool).await?;
+        let devs: Vec<ModDeveloper> = developers::get_all_for_mod(id, pool).await?;
         let links: Option<ModLinks> = ModLinks::fetch(id, pool).await?;
 
         for i in &mut versions {
@@ -702,7 +702,7 @@ impl Mod {
 
     pub async fn from_json(
         json: &ModJson,
-        developer: FetchedDeveloper,
+        developer: Developer,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         if Version::parse(json.version.trim_start_matches('v')).is_err() {
@@ -738,7 +738,7 @@ impl Mod {
 
     pub async fn new_version(
         json: &ModJson,
-        developer: &FetchedDeveloper,
+        developer: &Developer,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let result = sqlx::query!(
@@ -843,7 +843,7 @@ impl Mod {
 
     async fn create(
         json: &ModJson,
-        developer: FetchedDeveloper,
+        developer: Developer,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
         let updated: bool = match Mod::check_for_existing(&json.id, pool).await? {
@@ -860,7 +860,7 @@ impl Mod {
                 )))
             }
             CheckExistingResult::ExistsWithRejected => {
-                if !Developer::has_access_to_mod(developer.id, &json.id, pool).await? {
+                if !developers::has_access_to_mod(developer.id, &json.id, pool).await? {
                     return Err(ApiError::Forbidden);
                 }
                 Mod::update_existing_with_json(json, developer.verified, pool).await?;
