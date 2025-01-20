@@ -41,3 +41,18 @@ pub async fn remove_token(token: Uuid, conn: &mut PgConnection) -> Result<(), Ap
 
     Ok(())
 }
+
+pub async fn cleanup(conn: &mut PgConnection) -> Result<(), ApiError> {
+    sqlx::query!(
+        "DELETE FROM refresh_tokens
+        WHERE expires_at < NOW()"
+    )
+    .execute(conn)
+    .await
+    .map_err(|e| {
+        log::error!("Refresh token cleanup failed: {}", e);
+        ApiError::DbError
+    })?;
+
+    Ok(())
+}

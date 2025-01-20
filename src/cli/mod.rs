@@ -1,6 +1,6 @@
+use crate::config::AppData;
 use crate::jobs;
 use clap::{Parser, Subcommand};
-use crate::config::AppData;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -20,6 +20,8 @@ pub enum Commands {
 pub enum JobCommand {
     /// Cleans up mod_downloads from more than 30 days ago
     CleanupDownloads,
+    /// Cleans up auth and refresh tokens that are expired
+    CleanupTokens,
     /// Runs migrations
     Migrate,
 }
@@ -35,10 +37,16 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
                     jobs::migrate::migrate(&mut conn).await?;
 
                     Ok(true)
-                },
+                }
                 JobCommand::CleanupDownloads => {
                     let mut conn = data.db().acquire().await?;
                     jobs::cleanup_downloads::cleanup_downloads(&mut *conn).await?;
+
+                    Ok(true)
+                }
+                JobCommand::CleanupTokens => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::token_cleanup::token_cleanup(&mut *conn).await?;
 
                     Ok(true)
                 }

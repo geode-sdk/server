@@ -76,3 +76,18 @@ pub async fn remove_developer_tokens(
 
     Ok(())
 }
+
+pub async fn cleanup(conn: &mut PgConnection) -> Result<(), ApiError> {
+    sqlx::query!(
+        "DELETE FROM auth_tokens
+        WHERE expires_at < NOW()"
+    )
+        .execute(conn)
+        .await
+        .map_err(|e| {
+            log::error!("Auth token cleanup failed: {}", e);
+            ApiError::DbError
+        })?;
+
+    Ok(())
+}
