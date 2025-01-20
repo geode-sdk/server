@@ -1,14 +1,11 @@
 use std::pin::Pin;
 
+use crate::config::AppData;
+use crate::types::{api::ApiError, models::developer::FetchedDeveloper};
 use actix_web::http::header::HeaderMap;
 use actix_web::{web, FromRequest, HttpRequest};
 use futures::Future;
 use uuid::Uuid;
-
-use crate::{
-    types::{api::ApiError, models::developer::FetchedDeveloper},
-    AppData,
-};
 
 pub struct Auth {
     developer: Option<FetchedDeveloper>,
@@ -52,7 +49,11 @@ impl FromRequest for Auth {
                 }
             };
 
-            let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+            let mut pool = data
+                .db()
+                .acquire()
+                .await
+                .or(Err(ApiError::DbAcquireError))?;
             let hash = sha256::digest(token.to_string());
             let developer = match sqlx::query_as!(
                 FetchedDeveloper,
@@ -99,7 +100,7 @@ fn parse_token(map: &HeaderMap) -> Option<Uuid> {
             if split.len() != 2 || split[0] != "Bearer" {
                 None
             } else {
-                Some[1]
+                Some(split[1])
             }
         })
         .flatten()

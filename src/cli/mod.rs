@@ -1,5 +1,6 @@
-use crate::{jobs, AppData};
+use crate::jobs;
 use clap::{Parser, Subcommand};
+use crate::config::AppData;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -30,13 +31,13 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
         return match c {
             Commands::Job(job) => match job {
                 JobCommand::Migrate => {
-                    let mut conn = data.db.acquire().await?;
+                    let mut conn = data.db().acquire().await?;
                     jobs::migrate::migrate(&mut conn).await?;
 
                     Ok(true)
                 },
                 JobCommand::CleanupDownloads => {
-                    let mut conn = data.db.acquire().await?;
+                    let mut conn = data.db().acquire().await?;
                     jobs::cleanup_downloads::cleanup_downloads(&mut *conn).await?;
 
                     Ok(true)

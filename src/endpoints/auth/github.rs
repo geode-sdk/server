@@ -3,6 +3,7 @@ use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
 
+use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers};
 use crate::{
     auth::github,
@@ -10,7 +11,6 @@ use crate::{
         api::{ApiError, ApiResponse},
         models::github_login_attempt::GithubLoginAttempt,
     },
-    AppData,
 };
 
 #[derive(Deserialize)]
@@ -28,10 +28,14 @@ pub async fn start_github_login(
     data: web::Data<AppData>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let client = github::GithubClient::new(
-        data.github_client_id.to_string(),
-        data.github_client_secret.to_string(),
+        data.github().client_id().to_string(),
+        data.github().client_secret().to_string(),
     );
     let ip = match info.realip_remote_addr() {
         None => return Err(ApiError::InternalError),
@@ -52,14 +56,14 @@ pub async fn poll_github_login(
     data: web::Data<AppData>,
     connection_info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let uuid = match Uuid::parse_str(&json.uuid) {
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest(format!("Invalid uuid {}", json.uuid)));
-        }
-        Ok(u) => u,
-    };
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
+
+    let uuid = Uuid::parse_str(&json.uuid).or(Err(ApiError::BadRequest("Invalid uuid".into())))?;
+
     let attempt =
         GithubLoginAttempt::get_one(uuid, &mut pool)
             .await?
@@ -95,8 +99,8 @@ pub async fn poll_github_login(
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let client = github::GithubClient::new(
-        data.github_client_id.to_string(),
-        data.github_client_secret.to_string(),
+        data.github().client_id().to_string(),
+        data.github().client_secret().to_string(),
     );
     GithubLoginAttempt::poll(uuid, &mut tx).await;
     let token = client.poll_github(&attempt.device_code).await?;
@@ -131,8 +135,8 @@ pub async fn github_token_login(
     data: web::Data<AppData>,
 ) -> Result<impl Responder, ApiError> {
     let client = github::GithubClient::new(
-        data.github_client_id.to_string(),
-        data.github_client_secret.to_string(),
+        data.github().client_id().to_string(),
+        data.github().client_secret().to_string(),
     );
 
     let user = client
@@ -140,7 +144,7 @@ pub async fn github_token_login(
         .await
         .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?;
 
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let developer = developers::fetch_or_insert_github(user.id, &user.username, &mut tx).await?;

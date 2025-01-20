@@ -2,6 +2,8 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
 
+use crate::config::AppData;
+use crate::database::repository::auth_tokens;
 use crate::{
     extractors::auth::Auth,
     types::{
@@ -12,9 +14,7 @@ use crate::{
             mod_version_status::ModVersionStatusEnum,
         },
     },
-    AppData,
 };
-use crate::database::repository::auth_tokens;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SimpleDevMod {
@@ -74,7 +74,11 @@ pub async fn developer_index(
     data: web::Data<AppData>,
     query: web::Query<DeveloperIndexQuery>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let mut page = query.page.unwrap_or(1);
     if page < 1 {
@@ -104,7 +108,11 @@ pub async fn add_developer_to_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
         return Err(ApiError::Forbidden);
@@ -144,7 +152,11 @@ pub async fn remove_dev_from_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if !(Developer::owns_mod(dev.id, &path.id, &mut transaction).await?) {
         return Err(ApiError::Forbidden);
@@ -182,7 +194,11 @@ pub async fn delete_token(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let token = auth.token()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     auth_tokens::remove_token(token, &mut pool).await?;
 
@@ -195,7 +211,11 @@ pub async fn delete_tokens(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
 
@@ -214,7 +234,11 @@ pub async fn update_profile(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
     if let Err(e) = Developer::update_profile(dev.id, &json.display_name, &mut transaction).await {
         transaction
@@ -247,7 +271,11 @@ pub async fn get_own_mods(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, query.status, &mut pool).await?;
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
@@ -280,7 +308,11 @@ pub async fn get_developer(
     data: web::Data<AppData>,
     path: web::Path<GetDeveloperPath>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let result = Developer::get_one(path.id, &mut pool).await?;
 
     if result.is_none() {
@@ -316,7 +348,11 @@ pub async fn update_developer(
         return Ok(HttpResponse::Ok());
     }
 
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     if payload.admin.is_some() && dev.id == path.id {

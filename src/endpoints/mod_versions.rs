@@ -4,6 +4,7 @@ use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responde
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
+use crate::config::AppData;
 use crate::database::repository::{developers, mod_downloads, mod_versions, mods};
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
@@ -22,7 +23,6 @@ use crate::{
             mod_version_status::ModVersionStatusEnum,
         },
     },
-    AppData,
 };
 
 #[derive(Deserialize)]
@@ -95,7 +95,11 @@ pub async fn get_version_index(
 
     let compare = compare.map(|x| x.unwrap());
 
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
         Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
@@ -116,7 +120,7 @@ pub async fn get_version_index(
     )
     .await?;
     for i in &mut result.data {
-        i.modify_metadata(&data.app_url, has_extended_permissions);
+        i.modify_metadata(data.app_url(), has_extended_permissions);
     }
 
     Ok(web::Json(ApiResponse {
@@ -132,7 +136,11 @@ pub async fn get_one(
     query: web::Query<GetOneQuery>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
         Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
@@ -158,7 +166,7 @@ pub async fn get_one(
         }
     };
 
-    version.modify_metadata(&data.app_url, has_extended_permissions);
+    version.modify_metadata(data.app_url(), has_extended_permissions);
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: version,
@@ -180,7 +188,11 @@ pub async fn download_version(
     query: web::Query<DownloadQuery>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mod_version = {
         if path.version == "latest" {
             let platform_str = query.platforms.clone().unwrap_or_default();
@@ -193,7 +205,7 @@ pub async fn download_version(
     };
     let url = mod_version.download_link;
 
-    if data.disable_downloads || mod_version.status != ModVersionStatusEnum::Accepted {
+    if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
         // whatever
         return Ok(HttpResponse::Found()
             .append_header(("Location", url))
@@ -235,7 +247,11 @@ pub async fn create_version(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let fetched_mod = Mod::get_one(&path.id, false, &mut pool).await?;
 
@@ -254,12 +270,12 @@ pub async fn create_version(
         .filter(|c| c.is_ascii() && *c != '\0')
         .collect();
 
-    let mut file_path = download_geode_file(&download_link, data.max_download_mb).await?;
+    let mut file_path = download_geode_file(&download_link, data.max_download_mb()).await?;
     let json = ModJson::from_zip(
         &mut file_path,
         &download_link,
         dev.verified,
-        data.max_download_mb,
+        data.max_download_mb(),
     )
     .map_err(|err| {
         log::error!("Failed to parse mod.json: {}", err);
@@ -297,10 +313,10 @@ pub async fn create_version(
             version: json.version.clone(),
             owner,
             verified: NewModVersionVerification::VerifiedDev,
-            base_url: data.app_url.clone(),
+            base_url: data.app_url().to_string(),
         }
         .to_discord_webhook()
-        .send(&data.webhook_url);
+        .send(&data.webhook_url());
     }
     Ok(HttpResponse::NoContent())
 }
@@ -316,7 +332,11 @@ pub async fn update_version(
     if !dev.admin {
         return Err(ApiError::Forbidden);
     }
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let version = ModVersion::get_one(
         path.id.as_str(),
         path.version.as_str(),
@@ -350,7 +370,7 @@ pub async fn update_version(
         payload.status,
         payload.info.clone(),
         dev.id,
-        data.max_download_mb,
+        data.max_download_mb(),
         &mut transaction,
     )
     .await
@@ -378,10 +398,10 @@ pub async fn update_version(
                 version: version.version.clone(),
                 owner,
                 verified_by: dev,
-                base_url: data.app_url.clone(),
+                base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(&data.webhook_url);
+            .send(&data.webhook_url());
         } else {
             NewModVersionAcceptedEvent {
                 id: version.mod_id,
@@ -389,10 +409,10 @@ pub async fn update_version(
                 version: version.version.clone(),
                 owner,
                 verified: NewModVersionVerification::Admin(dev),
-                base_url: data.app_url.clone(),
+                base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(&data.webhook_url);
+            .send(&data.webhook_url());
         }
     }
 
