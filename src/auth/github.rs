@@ -36,7 +36,7 @@ impl GithubClient {
         }
     }
 
-    pub async fn start_auth(
+    pub async fn start_polling_auth(
         &self,
         ip: IpNetwork,
         pool: &mut PgConnection,

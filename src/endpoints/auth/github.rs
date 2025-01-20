@@ -45,7 +45,7 @@ pub async fn start_github_login(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    let result = client.start_auth(net, &mut pool).await?;
+    let result = client.start_polling_auth(net, &mut pool).await?;
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: result,
