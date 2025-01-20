@@ -1,8 +1,6 @@
-use reqwest::{
-    header::{HeaderMap, HeaderValue},
-    Client, StatusCode,
-};
+use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
 use uuid::Uuid;
 
@@ -22,6 +20,13 @@ pub struct GithubClient {
     client_secret: String,
 }
 
+#[derive(Deserialize)]
+pub struct GitHubFetchedUser {
+    pub id: i64,
+    #[serde(alias = "login")]
+    pub username: String,
+}
+
 impl GithubClient {
     pub fn new(client_id: String, client_secret: String) -> GithubClient {
         GithubClient {
@@ -35,10 +40,6 @@ impl GithubClient {
         ip: IpNetwork,
         pool: &mut PgConnection,
     ) -> Result<GithubLoginAttempt, ApiError> {
-        #[derive(Serialize)]
-        struct GithubStartAuthBody {
-            client_id: String,
-        }
         let found_request = GithubLoginAttempt::get_one_by_ip(ip, &mut *pool).await?;
         if let Some(r) = found_request {
             if r.is_expired() {
@@ -53,50 +54,36 @@ impl GithubClient {
                 });
             }
         }
-        let mut headers = HeaderMap::new();
-        headers.insert("Accept", HeaderValue::from_static("application/json"));
-        let client = match Client::builder().default_headers(headers).build() {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(c) => c,
-        };
-        let body = GithubStartAuthBody {
-            client_id: String::from(&self.client_id),
-        };
-        let json = match serde_json::to_string(&body) {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(j) => j,
-        };
-        let result = match client
+
+        let res = Client::new()
             .post("https://github.com/login/device/code")
+            .header("Accept", HeaderValue::from_static("application/json"))
             .basic_auth(&self.client_id, Some(&self.client_secret))
-            .body(json)
+            .json(&json!({
+                "client_id": &self.client_id
+            }))
             .send()
             .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(r) => r,
-        };
+            .map_err(|e| {
+                log::error!("Failed to start OAuth device flow with GitHub: {}", e);
+                ApiError::InternalError
+            })?;
 
-        if result.status() != StatusCode::OK {
-            log::error!("Couldn't connect to GitHub");
+        if !res.status().is_success() {
+            log::error!(
+                "GitHub OAuth device flow start request failed with code {}",
+                res.status()
+            );
             return Err(ApiError::InternalError);
         }
-        let body = match result.json::<GithubStartAuth>().await {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(b) => b,
-        };
+
+        let body = res.json::<GithubStartAuth>().await.map_err(|e| {
+            log::error!(
+                "Failed to parse OAuth device flow response from GitHub: {}",
+                e
+            );
+            ApiError::InternalError
+        })?;
         let uuid = GithubLoginAttempt::create(
             ip,
             body.device_code,
@@ -117,26 +104,7 @@ impl GithubClient {
     }
 
     pub async fn poll_github(&self, device_code: &str) -> Result<String, ApiError> {
-        #[derive(Serialize, Debug)]
-        struct GithubPollAuthBody {
-            client_id: String,
-            device_code: String,
-            grant_type: String,
-        }
-        let body = GithubPollAuthBody {
-            client_id: String::from(&self.client_id),
-            device_code: String::from(device_code),
-            grant_type: String::from("urn:ietf:params:oauth:grant-type:device_code"),
-        };
-        let json = match serde_json::to_string(&body) {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(j) => j,
-        };
-        let client = Client::new();
-        let resp = client
+        let resp = Client::new()
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header(
@@ -144,54 +112,55 @@ impl GithubClient {
                 HeaderValue::from_str("application/json").unwrap(),
             )
             .basic_auth(&self.client_id, Some(&self.client_secret))
-            .body(json)
+            .json(&json!({
+                "client_id": &self.client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+            }))
             .send()
-            .await;
-        if resp.is_err() {
-            log::info!("{}", resp.err().unwrap());
-            return Err(ApiError::InternalError);
-        }
-        let resp = resp.unwrap();
-        let body = resp.json::<serde_json::Value>().await.unwrap();
-        match body.get("access_token") {
-            None => {
-                log::error!("{:?}", body);
-                Err(ApiError::BadRequest(
-                    "Request not accepted by user".to_string(),
-                ))
-            }
-            Some(t) => Ok(String::from(t.as_str().unwrap())),
-        }
+            .await
+            .map_err(|e| {
+                log::error!("Failed to poll GitHub for developer access token: {}", e);
+                ApiError::InternalError
+            })?;
+
+        Ok(resp
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| {
+                log::error!("Failed to decode GitHub response: {}", e);
+                ApiError::InternalError
+            })?
+            .get("access_token")
+            .ok_or(ApiError::BadRequest("Request not accepted by user".into()))?
+            .as_str()
+            .ok_or_else(|| {
+                log::error!("Invalid access_token received from GitHub");
+                ApiError::InternalError
+            })?
+            .to_string())
     }
 
-    pub async fn get_user(&self, token: &str) -> Result<serde_json::Value, ApiError> {
-        let client = Client::new();
-        let resp = match client
+    pub async fn get_user(&self, token: &str) -> Result<GitHubFetchedUser, ApiError> {
+        let resp = Client::new()
             .get("https://api.github.com/user")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")
             .bearer_auth(token)
             .send()
             .await
-        {
-            Err(e) => {
-                log::info!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(r) => r,
-        };
+            .map_err(|e| {
+                log::error!("Request to https://api.github.com/user failed: {}", e);
+                ApiError::InternalError
+            })?;
 
         if !resp.status().is_success() {
             return Err(ApiError::InternalError);
         }
-        let body = match resp.json::<serde_json::Value>().await {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(b) => b,
-        };
 
-        Ok(body)
+        Ok(resp.json::<GitHubFetchedUser>().await.map_err(|e| {
+            log::error!("Failed to create GitHubFetchedUser: {}", e);
+            ApiError::InternalError
+        })?)
     }
 }

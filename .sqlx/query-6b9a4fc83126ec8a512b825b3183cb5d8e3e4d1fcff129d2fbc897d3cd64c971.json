@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT developer_id FROM mods_developers\n        WHERE developer_id = $1\n        AND mod_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "developer_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6b9a4fc83126ec8a512b825b3183cb5d8e3e4d1fcff129d2fbc897d3cd64c971"
+}

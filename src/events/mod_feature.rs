@@ -1,11 +1,11 @@
-use crate::types::models::developer::FetchedDeveloper;
+use crate::types::models::developer::Developer;
 use crate::webhook::discord::{DiscordMessage, DiscordWebhook};
 
 pub struct ModFeaturedEvent {
     pub id: String,
     pub name: String,
-    pub owner: FetchedDeveloper,
-    pub admin: FetchedDeveloper,
+    pub owner: Developer,
+    pub admin: Developer,
     pub base_url: String,
     pub featured: bool,
 }

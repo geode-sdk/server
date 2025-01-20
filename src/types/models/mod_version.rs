@@ -7,7 +7,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder, Row,
 };
-
+use crate::database::repository::developers;
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
@@ -16,7 +16,7 @@ use crate::types::{
 
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
-    developer::Developer,
+    developer::ModDeveloper,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_version_status::{ModVersionStatus, ModVersionStatusEnum},
@@ -41,7 +41,7 @@ pub struct ModVersion {
     pub status: ModVersionStatusEnum,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
-    pub developers: Option<Vec<Developer>>,
+    pub developers: Option<Vec<ModDeveloper>>,
     pub tags: Option<Vec<String>>,
 
     pub created_at: Option<String>,
@@ -528,7 +528,7 @@ impl ModVersion {
                 .map(|x| x.to_response())
                 .collect(),
         );
-        version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+        version.developers = Some(developers::get_all_for_mod(&version.mod_id, pool).await?);
         version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
         Ok(version)
@@ -753,7 +753,7 @@ impl ModVersion {
             let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
             version.incompatibilities =
                 Some(incompat.into_iter().map(|x| x.to_response()).collect());
-            version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+            version.developers = Some(developers::get_all_for_mod(&version.mod_id, pool).await?);
             version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
         }
 

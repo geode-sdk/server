@@ -1,7 +1,4 @@
-use actix_web::{get, post, put, web, HttpResponse, Responder};
-use serde::Deserialize;
-use sqlx::Acquire;
-
+use crate::config::AppData;
 use crate::database::repository::developers;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
@@ -9,14 +6,15 @@ use crate::extractors::auth::Auth;
 use crate::forum::discord::create_or_update_thread;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
-use crate::types::models::developer::Developer;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
-use crate::AppData;
+use actix_web::{get, post, put, web, HttpResponse, Responder};
+use serde::Deserialize;
+use sqlx::Acquire;
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -58,7 +56,11 @@ pub async fn index(
     query: web::Query<IndexQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     if let Some(s) = query.status {
         if s == ModVersionStatusEnum::Rejected {
@@ -72,7 +74,7 @@ pub async fn index(
     let mut result = Mod::get_index(&mut pool, query.0).await?;
     for i in &mut result.data {
         for j in &mut i.versions {
-            j.modify_metadata(&data.app_url, false);
+            j.modify_metadata(data.app_url(), false);
         }
     }
     Ok(web::Json(ApiResponse {
@@ -87,10 +89,14 @@ pub async fn get(
     id: web::Path<String>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &id, &mut pool).await?,
         _ => false,
     };
 
@@ -98,7 +104,7 @@ pub async fn get(
     match found {
         Some(mut m) => {
             for i in &mut m.versions {
-                i.modify_metadata(&data.app_url, has_extended_permissions);
+                i.modify_metadata(data.app_url(), has_extended_permissions);
             }
             Ok(web::Json(ApiResponse {
                 error: "".into(),
@@ -116,13 +122,17 @@ pub async fn create(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let mut file_path = download_geode_file(&payload.download_link, data.max_download_mb).await?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
+    let mut file_path = download_geode_file(&payload.download_link, data.max_download_mb()).await?;
     let json = ModJson::from_zip(
         &mut file_path,
         &payload.download_link,
         false,
-        data.max_download_mb,
+        data.max_download_mb(),
     )?;
     json.validate()?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
@@ -180,7 +190,11 @@ pub async fn get_mod_updates(
     data: web::Data<AppData>,
     query: web::Query<UpdateQueryParams>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     if query.platform == VerPlatform::Android || query.platform == VerPlatform::Mac {
         return Err(ApiError::BadRequest("Invalid platform. Use android32 / android64 for android and mac-intel / mac-arm for mac".to_string()));
@@ -211,17 +225,17 @@ pub async fn get_mod_updates(
     for i in &mut result {
         if let Some(replacement) = replacements.get(&i.id) {
             let mut clone = replacement.clone();
-            clone.download_link = create_download_link(&data.app_url, &clone.id, &clone.version);
+            clone.download_link = create_download_link(data.app_url(), &clone.id, &clone.version);
             i.replacement = Some(clone);
             replacements.remove_entry(&i.id);
         }
-        i.download_link = create_download_link(&data.app_url, &i.id, &i.version);
+        i.download_link = create_download_link(data.app_url(), &i.id, &i.version);
     }
 
     for i in replacements {
         let mut replacement = i.1.clone();
         replacement.download_link =
-            create_download_link(&data.app_url, &replacement.id, &replacement.version);
+            create_download_link(data.app_url(), &replacement.id, &replacement.version);
         result.push(ModUpdate {
             id: i.0.clone(),
             version: "1.0.0".to_string(),
@@ -245,7 +259,11 @@ pub async fn get_logo(
     path: web::Path<String>,
 ) -> Result<impl Responder, ApiError> {
     use crate::database::repository::*;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
     match image {
@@ -276,7 +294,11 @@ pub async fn update_mod(
     if !dev.admin {
         return Err(ApiError::Forbidden);
     }
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let id = path.into_inner();
     let featured = mods::is_featured(&id, &mut pool).await?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
@@ -303,11 +325,11 @@ pub async fn update_mod(
                     name: ver.name.clone(),
                     owner,
                     admin: dev,
-                    base_url: data.app_url.clone(),
+                    base_url: data.app_url().to_string(),
                     featured: payload.featured,
                 }
                 .to_discord_webhook()
-                .send(&data.webhook_url);
+                .send(data.webhook_url());
             }
         }
     }

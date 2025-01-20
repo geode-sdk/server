@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, username, display_name, verified, admin\n            FROM developers WHERE LOWER(username) = $1",
+  "query": "SELECT\n                    d.id,\n                    d.username,\n                    d.display_name,\n                    d.verified,\n                    d.admin\n                FROM developers d\n                INNER JOIN auth_tokens a ON d.id = a.developer_id\n                WHERE a.token = $1",
   "describe": {
     "columns": [
       {
@@ -42,5 +42,5 @@
       false
     ]
   },
-  "hash": "f5fbe652f94ea6a176ab47c8c82db3e668639fe9f2f48b5d82ca602408be9f9c"
+  "hash": "7ea8305bdc44fda5c8114c0ed3e362d982674ac24c739a66da0cce43a0abe337"
 }

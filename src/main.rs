@@ -2,7 +2,7 @@ use actix_cors::Cors;
 use actix_web::{
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer
+    App, HttpServer,
 };
 use endpoints::mods::{IndexQueryParams, IndexSortType};
 use forum::discord::{create_or_update_thread, get_threads};
@@ -12,6 +12,7 @@ use crate::types::api;
 
 mod auth;
 mod cli;
+mod config;
 mod database;
 mod endpoints;
 mod events;
@@ -21,71 +22,22 @@ mod types;
 mod forum;
 mod webhook;
 
-#[derive(Clone)]
-pub struct AppData {
-    db: sqlx::postgres::PgPool,
-    app_url: String,
-    github_client_id: String,
-    github_client_secret: String,
-    webhook_url: String,
-    bot_token: String,
-    guild_id: u64,
-    channel_id: u64,
-    disable_downloads: bool,
-    max_download_mb: u32,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     log4rs::init_file("config/log4rs.yaml", Default::default())
         .map_err(|e| e.context("Failed to read log4rs config"))?;
 
-    let env_url = dotenvy::var("DATABASE_URL")?;
-
-    let pool = sqlx::postgres::PgPoolOptions::default()
-        .max_connections(10)
-        .connect(&env_url)
-        .await?;
-    let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
-    let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
-    let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
-    let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
-    let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
-    let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let bot_token = dotenvy::var("DISCORD_BOT_TOKEN").unwrap_or("".to_string());
-    let guild_id = dotenvy::var("DISCORD_GUILD_ID").unwrap_or("0".to_string()).parse::<u64>().unwrap_or(0);
-    let channel_id = dotenvy::var("DISCORD_CHANNEL_ID").unwrap_or("0".to_string()).parse::<u64>().unwrap_or(0);
-    let disable_downloads = dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
-    let max_downloadmb = dotenvy::var("MAX_MOD_FILESIZE_MB")
-        .unwrap_or("250".to_string())
-        .parse::<u32>()
-        .unwrap_or(250);
-
-    let app_data = AppData {
-        db: pool.clone(),
-        app_url: app_url.clone(),
-        github_client_id: github_client,
-        github_client_secret: github_secret,
-        webhook_url,
-        bot_token: bot_token.clone(),
-        guild_id,
-        channel_id,
-        disable_downloads,
-        max_download_mb: max_downloadmb,
-    };
+    let app_data = config::build_config().await?;
 
     if cli::maybe_cli(&app_data).await? {
         return Ok(());
     }
 
     log::info!("Running migrations");
-    let migration_res = sqlx::migrate!("./migrations").run(&app_data.db).await;
-    if migration_res.is_err() {
-        log::error!(
-            "Error encountered while running migrations: {}",
-            migration_res.err().unwrap()
-        );
-    }
+    sqlx::migrate!("./migrations").run(app_data.db()).await?;
+
+    let port = app_data.port();
+    let debug = app_data.debug();
 
     log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
