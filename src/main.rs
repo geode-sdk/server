@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         let threads = get_threads(
             app_data.discord().guild_id(),
             app_data.discord().channel_id(),
-            &app_data.discord().bot_token()
+            app_data.discord().bot_token()
         ).await;
         let threads_res = Some(threads);
         let mods = results.unwrap();
@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                 threads_res.clone(),
                 app_data.discord().guild_id(),
                 app_data.discord().channel_id(),
-                &app_data.discord().bot_token(),
+                app_data.discord().bot_token(),
                 m,
                 &version_res.unwrap(),
                 "",

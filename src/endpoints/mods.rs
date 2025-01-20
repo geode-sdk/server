@@ -167,7 +167,7 @@ pub async fn create(
             None,
             data.discord().guild_id(),
             data.discord().channel_id(),
-            &data.discord().bot_token(),
+            data.discord().bot_token(),
             &mod_res.unwrap(),
             &version_res.unwrap(),
             "",
