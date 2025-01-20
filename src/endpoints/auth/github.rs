@@ -1,4 +1,4 @@
-use actix_web::{dev::ConnectionInfo, get, post, web, Responder};
+use actix_web::{dev::ConnectionInfo, post, web, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
@@ -72,7 +72,7 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
         payload: format!(
             "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user&state={}",
             data.github().client_id(),
-            "https://geode-sdk.org",
+            data.front_url(),
             secret.to_string()
         ),
     }))
@@ -103,7 +103,9 @@ pub async fn github_web_callback(
         data.github().client_secret().to_string(),
     );
 
-    let token = client.poll_github(&json.code, false).await?;
+    let token = client
+        .poll_github(&json.code, false, Some(data.front_url()))
+        .await?;
 
     let user = client
         .get_user(&token)
@@ -123,7 +125,7 @@ pub async fn github_web_callback(
         error: "".to_string(),
         payload: TokensResponse {
             access_token: token.to_string(),
-            refresh_token: Some(refresh.to_string())
+            refresh_token: Some(refresh.to_string()),
         },
     }))
 }
@@ -180,7 +182,7 @@ pub async fn poll_github_login(
         data.github().client_secret().to_string(),
     );
     github_login_attempts::poll_now(uuid, &mut tx).await?;
-    let token = client.poll_github(&attempt.device_code, true).await?;
+    let token = client.poll_github(&attempt.device_code, true, None).await?;
     github_login_attempts::remove(uuid, &mut tx).await?;
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt

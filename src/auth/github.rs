@@ -25,7 +25,7 @@ pub struct GithubClient {
 pub struct GitHubDevicePollPayload {
     client_id: String,
     device_code: String,
-    grant_type: String
+    grant_type: String,
 }
 
 #[derive(Serialize)]
@@ -33,7 +33,7 @@ pub struct GitHubWebPollPayload {
     client_id: String,
     client_secret: String,
     code: String,
-    redirect_uri: String
+    redirect_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -107,7 +107,12 @@ impl GithubClient {
         .await?)
     }
 
-    pub async fn poll_github(&self, code: &str, is_device: bool) -> Result<String, ApiError> {
+    pub async fn poll_github(
+        &self,
+        code: &str,
+        is_device: bool,
+        redirect_uri: Option<&str>,
+    ) -> Result<String, ApiError> {
         let json = {
             if is_device {
                 json!({
@@ -116,12 +121,16 @@ impl GithubClient {
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
                 })
             } else {
-                json!({
+                let mut value = json!({
                     "client_id": &self.client_id,
                     "client_secret": &self.client_secret,
                     "code": code,
-                    "redirect_uri": "https://geode-sdk.org"
-                })
+                });
+
+                if let Some(r) = redirect_uri {
+                    value["redirect_uri"] = json!(r);
+                }
+                value
             }
         };
 

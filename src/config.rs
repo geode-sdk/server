@@ -2,6 +2,7 @@
 pub struct AppData {
     db: sqlx::postgres::PgPool,
     app_url: String,
+    front_url: String,
     github: GitHubClientData,
     webhook_url: String,
     disable_downloads: bool,
@@ -26,6 +27,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
     let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
     let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
+    let front_url = dotenvy::var("FRONT_URL").unwrap_or("http://localhost".to_string());
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
@@ -39,6 +41,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     Ok(AppData {
         db: pool,
         app_url,
+        front_url,
         github: GitHubClientData {
             client_id: github_client,
             client_secret: github_secret,
@@ -68,6 +71,10 @@ impl AppData {
 
     pub fn app_url(&self) -> &str {
         &self.app_url
+    }
+
+    pub fn front_url(&self) -> &str {
+        &self.front_url
     }
 
     pub fn github(&self) -> &GitHubClientData {
