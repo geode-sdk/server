@@ -115,11 +115,7 @@ async fn main() -> anyhow::Result<()> {
             return;
         }
 
-        let threads = get_threads(
-            app_data.discord().guild_id(),
-            app_data.discord().channel_id(),
-            app_data.discord().bot_token()
-        ).await;
+        let threads = get_threads(&app_data.discord()).await;
         let threads_res = Some(threads);
         let mods = results.unwrap();
         for i in 0..mods.count as usize {
@@ -137,9 +133,7 @@ async fn main() -> anyhow::Result<()> {
 
             create_or_update_thread(
                 threads_res.clone(),
-                app_data.discord().guild_id(),
-                app_data.discord().channel_id(),
-                app_data.discord().bot_token(),
+                &app_data.discord(),
                 m,
                 &version_res.unwrap(),
                 "",

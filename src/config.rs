@@ -96,8 +96,8 @@ impl DiscordForumData {
         self.channel_id
     }
 
-    pub fn bot_token(&self) -> &str {
-        &self.bot_token
+    pub fn bot_auth(&self) -> String {
+        format!("Bot {}", self.bot_token)
     }
 }
 

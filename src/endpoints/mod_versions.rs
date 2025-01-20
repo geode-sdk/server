@@ -328,9 +328,7 @@ pub async fn create_version(
             }
             create_or_update_thread(
                 None,
-                data.discord().guild_id(),
-                data.discord().channel_id(),
-                data.discord().bot_token(),
+                &data.discord(),
                 &fetched_mod.unwrap(),
                 &version_res.unwrap(),
                 "",
@@ -453,9 +451,7 @@ pub async fn update_version(
             }
             create_or_update_thread(
                 None,
-                data.discord().guild_id(),
-                data.discord().channel_id(),
-                data.discord().bot_token(),
+                &data.discord(),
                 &mod_res.unwrap(),
                 &version_res.unwrap(),
                 &dev.display_name,

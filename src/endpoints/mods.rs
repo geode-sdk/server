@@ -165,9 +165,7 @@ pub async fn create(
         }
         create_or_update_thread(
             None,
-            data.discord().guild_id(),
-            data.discord().channel_id(),
-            data.discord().bot_token(),
+            &data.discord(),
             &mod_res.unwrap(),
             &version_res.unwrap(),
             "",

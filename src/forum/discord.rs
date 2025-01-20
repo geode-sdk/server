@@ -1,5 +1,6 @@
 use serde_json::{json, to_string, Value};
 
+use crate::config::DiscordForumData;
 use crate::types::models::mod_entity::Mod;
 use crate::types::models::mod_gd_version::GDVersionEnum;
 use crate::types::models::mod_version::ModVersion;
@@ -123,14 +124,11 @@ fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
     })
 }
 
-pub async fn get_threads(
-    guild_id: u64, channel_id: u64,
-    token: &str
-) -> Vec<Value> {
+pub async fn get_threads(data: &DiscordForumData) -> Vec<Value> {
     let client = reqwest::Client::new();
     let res = client
-        .get(format!("https://discord.com/api/v10/guilds/{}/threads/active", guild_id))
-        .header("Authorization", format!("Bot {}", token))
+        .get(format!("https://discord.com/api/v10/guilds/{}/threads/active", data.guild_id()))
+        .header("Authorization", data.bot_auth())
         .send()
         .await;
     if res.is_err() {
@@ -149,13 +147,14 @@ pub async fn get_threads(
         return vec![];
     }
 
+    let channel_id = data.channel_id();
     let vec1 = res.as_array().unwrap().clone().into_iter()
         .filter(|t| t["parent_id"].as_str().unwrap_or("").to_string().parse::<u64>().unwrap_or(0) == channel_id)
         .collect::<Vec<Value>>();
 
     let res2 = client
         .get(format!("https://discord.com/api/v10/channels/{}/threads/archived/public", channel_id))
-        .header("Authorization", format!("Bot {}", token))
+        .header("Authorization", data.bot_auth())
         .send()
         .await;
     if res2.is_err() {
@@ -183,14 +182,13 @@ pub async fn get_threads(
 
 pub async fn create_or_update_thread(
     threads: Option<Vec<Value>>,
-    guild_id: u64, channel_id: u64,
-    token: &str,
+    data: &DiscordForumData,
     m: &Mod,
     v: &ModVersion,
     admin: &str,
     base_url: &str
 ) {
-    if guild_id == 0 || channel_id == 0 || token.is_empty() {
+    if !data.is_valid() {
         log::error!("Discord configuration is not set up. Not creating forum threads.");
         return;
     }
@@ -198,7 +196,7 @@ pub async fn create_or_update_thread(
     let thread_vec = if threads.is_some() {
         threads.unwrap()
     } else {
-        get_threads(guild_id, channel_id, token).await
+        get_threads(data).await
     };
 
     let thread = thread_vec.iter().find(|t| {
@@ -212,8 +210,8 @@ pub async fn create_or_update_thread(
         }
 
         let _ = client
-            .post(format!("https://discord.com/api/v10/channels/{}/threads", channel_id))
-            .header("Authorization", format!("Bot {}", token))
+            .post(format!("https://discord.com/api/v10/channels/{}/threads", data.channel_id()))
+            .header("Authorization", data.bot_auth())
             .json(&json!({
                 "name": format!("🕓 {} ({}) {}", v.name, m.id, v.version),
                 "message": {
@@ -264,7 +262,7 @@ pub async fn create_or_update_thread(
 
         let _ = client
             .post(format!("https://discord.com/api/v10/channels/{}/messages", thread_id))
-            .header("Authorization", format!("Bot {}", token))
+            .header("Authorization", data.bot_auth())
             .json(&json!({
                 "content": format!("{}{}{}", match v.status {
                     ModVersionStatusEnum::Accepted => "Accepted",
@@ -289,7 +287,7 @@ pub async fn create_or_update_thread(
 
         let _ = client
             .patch(format!("https://discord.com/api/v10/channels/{}", thread_id))
-            .header("Authorization", format!("Bot {}", token))
+            .header("Authorization", data.bot_auth())
             .json(&json!({
                 "name": match v.status {
                     ModVersionStatusEnum::Accepted => format!("✅ {} ({}) {}", v.name, m.id, v.version),
@@ -307,7 +305,7 @@ pub async fn create_or_update_thread(
 
     let _ = client
         .patch(format!("https://discord.com/api/v10/channels/{}", thread_id))
-        .header("Authorization", format!("Bot {}", token))
+        .header("Authorization", data.bot_auth())
         .json(&json!({
             "name": format!("🕓 {} ({}) {}", v.name, m.id, v.version)
         }))
@@ -316,7 +314,7 @@ pub async fn create_or_update_thread(
 
     let _ = client
         .patch(format!("https://discord.com/api/v10/channels/{}/messages/{}", thread_id, thread_id))
-        .header("Authorization", format!("Bot {}", token))
+        .header("Authorization", data.bot_auth())
         .json(&json!({
             "embeds": [mod_embed(m, v, base_url)]
         }))
