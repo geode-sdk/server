@@ -5,7 +5,7 @@ use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 
-use super::{developer::ModDeveloper, mod_entity::Mod};
+use super::mod_entity::Mod;
 
 #[derive(Deserialize)]
 struct GithubReleaseAsset {

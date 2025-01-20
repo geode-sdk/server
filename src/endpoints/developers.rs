@@ -1,6 +1,5 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
-use sqlx::Acquire;
 
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods};
@@ -9,13 +8,10 @@ use crate::{
     types::{
         api::{ApiError, ApiResponse},
         models::{
-            developer::ModDeveloper,
-            mod_entity::Mod,
-            mod_version_status::ModVersionStatusEnum,
+            developer::ModDeveloper, mod_entity::Mod, mod_version_status::ModVersionStatusEnum,
         },
     },
 };
-use crate::types::models::developer::Developer;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SimpleDevMod {
@@ -104,10 +100,10 @@ pub async fn add_developer_to_mod(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    if (!mods::exists(&path.id, &mut pool).await?) {
+    if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
-    if !(developers::owns_mod(dev.id, &path.id, &mut pool).await?) {
+    if !developers::owns_mod(dev.id, &path.id, &mut pool).await? {
         return Err(ApiError::Forbidden);
     }
 
@@ -136,11 +132,11 @@ pub async fn remove_dev_from_mod(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    if (!mods::exists(&path.id, &mut pool).await) {
+    if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
 
-    if !(developers::owns_mod(dev.id, &path.id, &mut pool).await?) {
+    if !developers::owns_mod(dev.id, &path.id, &mut pool).await? {
         return Err(ApiError::Forbidden);
     }
 
@@ -300,7 +296,7 @@ pub async fn update_developer(
     auth.admin()?;
 
     if payload.admin.is_none() && payload.verified.is_none() {
-        return Ok(HttpResponse::Ok());
+        return Err(ApiError::BadRequest("Specify at least one param to modify".into()))
     }
 
     let mut pool = data
@@ -321,7 +317,7 @@ pub async fn update_developer(
         } else {
             developers::get_one(path.id, &mut pool)
                 .await?
-                .ok_or(ApiError::NotFound("Developer not found".into()))?;
+                .ok_or(ApiError::NotFound("Developer not found".into()))?
         }
     };
 
@@ -334,7 +330,7 @@ pub async fn update_developer(
     .await?;
 
     Ok(web::Json(ApiResponse {
-        error: "".into(),
+        error: "".to_string(),
         payload: result,
     }))
 }

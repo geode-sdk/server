@@ -1,8 +1,6 @@
 use crate::types::api::{ApiError, PaginatedData};
-use crate::types::models::developer::{ModDeveloper, Developer};
-use futures::TryFutureExt;
-use sqlx::{PgConnection, Postgres, QueryBuilder};
-use std::collections::hash_map::Entry;
+use crate::types::models::developer::{Developer, ModDeveloper};
+use sqlx::PgConnection;
 use std::collections::HashMap;
 
 pub async fn index(
@@ -129,10 +127,7 @@ async fn insert_github(
     })?)
 }
 
-pub async fn get_one(
-    id: i32,
-    conn: &mut PgConnection,
-) -> Result<Option<Developer>, ApiError> {
+pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
     Ok(sqlx::query_as!(
         Developer,
         "SELECT
@@ -237,7 +232,7 @@ pub async fn get_all_for_mods(
         ApiError::DbError
     })?;
 
-    let mut ret = HashMap::new();
+    let mut ret: HashMap<String, Vec<ModDeveloper>> = HashMap::new();
 
     for result_item in result {
         ret.entry(result_item.mod_id)
@@ -361,6 +356,7 @@ pub async fn update_status(
         dev_id
     )
     .fetch_one(&mut *conn)
+    .await
     .map_err(|e| {
         log::error!("Failed to update developer {}: {}", dev_id, e);
         ApiError::DbError
@@ -387,6 +383,7 @@ pub async fn update_profile(
         dev_id
     )
     .fetch_one(&mut *conn)
+    .await
     .map_err(|e| {
         log::error!("Failed to update profile for {}: {}", dev_id, e);
         ApiError::DbError
