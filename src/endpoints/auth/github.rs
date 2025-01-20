@@ -4,23 +4,26 @@ use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
 
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers, github_login_attempts};
+use crate::database::repository::{auth_tokens, developers, github_login_attempts, refresh_tokens};
 use crate::{
     auth::github,
     types::{
         api::{ApiError, ApiResponse},
     },
 };
+use crate::endpoints::auth::TokensResponse;
 
 #[derive(Deserialize)]
 struct PollParams {
     uuid: String,
+    expiry: Option<bool>
 }
 
 #[derive(Deserialize)]
 struct TokenLoginParams {
     token: String,
 }
+
 
 #[post("v1/login/github")]
 pub async fn start_github_login(
@@ -117,13 +120,26 @@ pub async fn poll_github_login(
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let developer = developers::fetch_or_insert_github(user.id, &user.username, &mut tx).await?;
-    let token = auth_tokens::generate_token(developer.id, &mut tx).await?;
+
+    let expiry = json.expiry.is_some_and(|e| e);
+
+    let token = auth_tokens::generate_token(developer.id, expiry, &mut tx).await?;
+    let refresh = {
+        if expiry {
+            Some(refresh_tokens::generate_token(developer.id, &mut tx).await?)
+        } else {
+            None
+        }
+    };
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
-        payload: token.to_string(),
+        payload: TokensResponse {
+            access_token: token.to_string(),
+            refresh_token: refresh.map(|r| r.to_string())
+        },
     }))
 }
 
@@ -150,7 +166,7 @@ pub async fn github_token_login(
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let developer = developers::fetch_or_insert_github(user.id, &user.username, &mut tx).await?;
-    let token = auth_tokens::generate_token(developer.id, &mut tx).await?;
+    let token = auth_tokens::generate_token(developer.id, true, &mut tx).await?;
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
 

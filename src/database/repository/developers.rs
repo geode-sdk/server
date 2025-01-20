@@ -2,6 +2,7 @@ use crate::types::api::{ApiError, PaginatedData};
 use crate::types::models::developer::{Developer, ModDeveloper};
 use sqlx::PgConnection;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 pub async fn index(
     query: Option<&String>,
@@ -386,6 +387,33 @@ pub async fn update_profile(
     .await
     .map_err(|e| {
         log::error!("Failed to update profile for {}: {}", dev_id, e);
+        ApiError::DbError
+    })?)
+}
+
+pub async fn find_by_refresh_token(
+    uuid: Uuid,
+    conn: &mut PgConnection,
+) -> Result<Option<Developer>, ApiError> {
+    let hash = sha256::digest(uuid.to_string());
+    Ok(sqlx::query_as!(
+        Developer,
+        "SELECT
+            d.id,
+            d.username,
+            d.display_name,
+            d.admin,
+            d.verified
+        FROM developers d
+        INNER JOIN refresh_tokens rt ON d.id = rt.developer_id
+        WHERE rt.token = $1
+        AND rt.expires_at > NOW()",
+        hash
+    )
+    .fetch_optional(conn)
+    .await
+    .map_err(|e| {
+        log::error!("Failed to search for developer by refresh token: {}", e);
         ApiError::DbError
     })?)
 }
