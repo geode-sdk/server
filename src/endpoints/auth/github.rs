@@ -1,22 +1,22 @@
-use actix_web::{dev::ConnectionInfo, post, web, Responder};
+use actix_web::{dev::ConnectionInfo, get, post, web, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
 
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers, github_login_attempts, refresh_tokens};
-use crate::{
-    auth::github,
-    types::{
-        api::{ApiError, ApiResponse},
-    },
+use crate::database::repository::{
+    auth_tokens, developers, github_login_attempts, github_web_logins, refresh_tokens,
 };
 use crate::endpoints::auth::TokensResponse;
+use crate::{
+    auth::github,
+    types::api::{ApiError, ApiResponse},
+};
 
 #[derive(Deserialize)]
 struct PollParams {
     uuid: String,
-    expiry: Option<bool>
+    expiry: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -24,6 +24,11 @@ struct TokenLoginParams {
     token: String,
 }
 
+#[derive(Deserialize)]
+struct CallbackParams {
+    code: String,
+    state: String,
+}
 
 #[post("v1/login/github")]
 pub async fn start_github_login(
@@ -49,6 +54,77 @@ pub async fn start_github_login(
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: result,
+    }))
+}
+
+#[post("v1/login/github/web")]
+pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
+
+    let secret = github_web_logins::create_unique(&mut pool).await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: format!(
+            "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user&state={}",
+            data.github().client_id(),
+            "https://geode-sdk.org",
+            secret.to_string()
+        ),
+    }))
+}
+
+#[post("v1/login/github/callback")]
+pub async fn github_web_callback(
+    json: web::Json<CallbackParams>,
+    data: web::Data<AppData>,
+) -> Result<impl Responder, ApiError> {
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
+
+    let parsed =
+        Uuid::parse_str(&json.state).or(Err(ApiError::BadRequest("Invalid secret".into())))?;
+
+    if !github_web_logins::exists(parsed, &mut pool).await? {
+        return Err(ApiError::NotFound("Invalid secret".into()));
+    }
+
+    github_web_logins::remove(parsed, &mut pool).await?;
+
+    let client = github::GithubClient::new(
+        data.github().client_id().to_string(),
+        data.github().client_secret().to_string(),
+    );
+
+    let token = client.poll_github(&json.code, false).await?;
+
+    let user = client
+        .get_user(&token)
+        .await
+        .map_err(|_| ApiError::InternalError)?;
+
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+
+    let developer = developers::fetch_or_insert_github(user.id, &user.username, &mut tx).await?;
+
+    let token = auth_tokens::generate_token(developer.id, true, &mut tx).await?;
+    let refresh = refresh_tokens::generate_token(developer.id, &mut tx).await?;
+
+    tx.commit().await.or(Err(ApiError::TransactionError))?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: TokensResponse {
+            access_token: token.to_string(),
+            refresh_token: Some(refresh.to_string())
+        },
     }))
 }
 
@@ -104,7 +180,7 @@ pub async fn poll_github_login(
         data.github().client_secret().to_string(),
     );
     github_login_attempts::poll_now(uuid, &mut tx).await?;
-    let token = client.poll_github(&attempt.device_code).await?;
+    let token = client.poll_github(&attempt.device_code, true).await?;
     github_login_attempts::remove(uuid, &mut tx).await?;
 
     // Create a new transaction after this point, because we need to commit the removal of the login attempt
@@ -138,7 +214,7 @@ pub async fn poll_github_login(
         error: "".to_string(),
         payload: TokensResponse {
             access_token: token.to_string(),
-            refresh_token: refresh.map(|r| r.to_string())
+            refresh_token: refresh.map(|r| r.to_string()),
         },
     }))
 }

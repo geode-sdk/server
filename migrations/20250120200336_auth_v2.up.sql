@@ -10,3 +10,8 @@ CREATE TABLE refresh_tokens (
     PRIMARY KEY(token),
     FOREIGN KEY(developer_id) REFERENCES developers(id)
 );
+
+CREATE TABLE github_web_logins (
+    state UUID NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);

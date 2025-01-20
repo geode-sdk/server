@@ -1,6 +1,6 @@
 use crate::database::repository::github_login_attempts;
-use crate::types::models::github_login_attempt::StoredLoginAttempt;
 use crate::types::api::ApiError;
+use crate::types::models::github_login_attempt::StoredLoginAttempt;
 use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -19,6 +19,21 @@ pub struct GithubStartAuth {
 pub struct GithubClient {
     client_id: String,
     client_secret: String,
+}
+
+#[derive(Serialize)]
+pub struct GitHubDevicePollPayload {
+    client_id: String,
+    device_code: String,
+    grant_type: String
+}
+
+#[derive(Serialize)]
+pub struct GitHubWebPollPayload {
+    client_id: String,
+    client_secret: String,
+    code: String,
+    redirect_uri: String
 }
 
 #[derive(Deserialize)]
@@ -92,7 +107,24 @@ impl GithubClient {
         .await?)
     }
 
-    pub async fn poll_github(&self, device_code: &str) -> Result<String, ApiError> {
+    pub async fn poll_github(&self, code: &str, is_device: bool) -> Result<String, ApiError> {
+        let json = {
+            if is_device {
+                json!({
+                    "client_id": &self.client_id,
+                    "device_code": code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+                })
+            } else {
+                json!({
+                    "client_id": &self.client_id,
+                    "client_secret": &self.client_secret,
+                    "code": code,
+                    "redirect_uri": "https://geode-sdk.org"
+                })
+            }
+        };
+
         let resp = Client::new()
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
@@ -101,11 +133,7 @@ impl GithubClient {
                 HeaderValue::from_str("application/json").unwrap(),
             )
             .basic_auth(&self.client_id, Some(&self.client_secret))
-            .json(&json!({
-                "client_id": &self.client_id,
-                "device_code": device_code,
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
-            }))
+            .json(&json)
             .send()
             .await
             .map_err(|e| {
