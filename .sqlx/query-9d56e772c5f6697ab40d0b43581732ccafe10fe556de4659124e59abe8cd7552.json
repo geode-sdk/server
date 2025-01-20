@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO github_login_attempts\n        (ip, device_code, interval, expires_in, challenge_uri, user_code) VALUES\n        ($1, $2, $3, $4, $5, $6)\n        RETURNING\n            uid as uuid,\n            ip,\n            device_code,\n            challenge_uri as uri,\n            user_code,\n            interval,\n            expires_in,\n            created_at,\n            last_poll",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "ip",
+        "type_info": "Inet"
+      },
+      {
+        "ordinal": 2,
+        "name": "device_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "uri",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "user_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "interval",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_in",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "last_poll",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Text",
+        "Int4",
+        "Int4",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9d56e772c5f6697ab40d0b43581732ccafe10fe556de4659124e59abe8cd7552"
+}

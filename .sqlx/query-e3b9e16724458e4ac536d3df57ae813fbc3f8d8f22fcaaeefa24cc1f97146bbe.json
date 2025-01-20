@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT uid as uuid, ip, device_code, interval, expires_in, created_at, last_poll, challenge_uri as uri, user_code\n            FROM github_login_attempts\n            WHERE ip = $1",
+  "query": "SELECT\n            uid as uuid,\n            ip,\n            interval,\n            expires_in,\n            created_at,\n            last_poll,\n            challenge_uri as uri,\n            device_code,\n            user_code\n        FROM github_login_attempts\n        WHERE uid = $1",
   "describe": {
     "columns": [
       {
@@ -15,32 +15,32 @@
       },
       {
         "ordinal": 2,
-        "name": "device_code",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 3,
         "name": "interval",
         "type_info": "Int4"
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "expires_in",
         "type_info": "Int4"
       },
       {
-        "ordinal": 5,
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 5,
         "name": "last_poll",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "uri",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "device_code",
         "type_info": "Text"
       },
       {
@@ -51,7 +51,7 @@
     ],
     "parameters": {
       "Left": [
-        "Inet"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -66,5 +66,5 @@
       false
     ]
   },
-  "hash": "2fd39f20004726269bea6f08403777c8f810747054b90a272e74529cdda0b14e"
+  "hash": "e3b9e16724458e4ac536d3df57ae813fbc3f8d8f22fcaaeefa24cc1f97146bbe"
 }
