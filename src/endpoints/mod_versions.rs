@@ -334,7 +334,7 @@ pub async fn create_version(
                 &fetched_mod.unwrap(),
                 &version_res.unwrap(),
                 "",
-                &data.app_url(),
+                &data.app_url()
             ).await;
         });
     }
@@ -438,7 +438,7 @@ pub async fn update_version(
 
     if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
         tokio::spawn(async move {
-            if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+            if !data.discord().is_valid() {
                 log::error!("Discord configuration is not set up. Not creating forum threads.");
                 return;
             }
@@ -453,13 +453,13 @@ pub async fn update_version(
             }
             create_or_update_thread(
                 None,
-                data.guild_id,
-                data.channel_id,
-                &data.bot_token,
+                data.discord().guild_id(),
+                data.discord().channel_id(),
+                &data.discord().bot_token(),
                 &mod_res.unwrap(),
                 &version_res.unwrap(),
                 &dev.display_name,
-                &data.app_url,
+                &data.app_url()
             ).await;
         });
     }

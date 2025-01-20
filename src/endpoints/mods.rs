@@ -150,7 +150,7 @@ pub async fn create(
         .or(Err(ApiError::TransactionError))?;
 
     tokio::spawn(async move {
-        if data.guild_id == 0 || data.channel_id == 0 || data.bot_token.is_empty() {
+        if !data.discord().is_valid() {
             log::error!("Discord configuration is not set up. Not creating forum threads.");
             return;
         }
@@ -165,13 +165,13 @@ pub async fn create(
         }
         create_or_update_thread(
             None,
-            data.guild_id,
-            data.channel_id,
-            &data.bot_token,
+            data.discord().guild_id(),
+            data.discord().channel_id(),
+            &data.discord().bot_token(),
             &mod_res.unwrap(),
             &version_res.unwrap(),
             "",
-            &data.app_url,
+            &data.app_url()
         ).await;
     });
 

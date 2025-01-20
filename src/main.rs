@@ -38,11 +38,12 @@ async fn main() -> anyhow::Result<()> {
 
     let port = app_data.port();
     let debug = app_data.debug();
+    let data = app_data.clone();
 
     log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(app_data.clone()))
+            .app_data(web::Data::new(data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(
                 Cors::default()
@@ -85,13 +86,13 @@ async fn main() -> anyhow::Result<()> {
     .bind(("0.0.0.0", port))?;
 
     tokio::spawn(async move {
-        if guild_id == 0 || channel_id == 0 || bot_token.is_empty() {
+        if !app_data.discord().is_valid() {
             log::error!("Discord configuration is not set up. Not creating forum threads.");
             return;
         }
 
         log::info!("Starting forum thread creation job");
-        let pool_res = pool.clone().acquire().await;
+        let pool_res = app_data.db().acquire().await;
         if pool_res.is_err() {
             return;
         }
@@ -114,7 +115,11 @@ async fn main() -> anyhow::Result<()> {
             return;
         }
 
-        let threads = get_threads(guild_id, channel_id, &bot_token).await;
+        let threads = get_threads(
+            app_data.discord().guild_id(),
+            app_data.discord().channel_id(),
+            &app_data.discord().bot_token()
+        ).await;
         let threads_res = Some(threads);
         let mods = results.unwrap();
         for i in 0..mods.count as usize {
@@ -132,13 +137,13 @@ async fn main() -> anyhow::Result<()> {
 
             create_or_update_thread(
                 threads_res.clone(),
-                guild_id,
-                channel_id,
-                &bot_token,
+                app_data.discord().guild_id(),
+                app_data.discord().channel_id(),
+                &app_data.discord().bot_token(),
                 m,
                 &version_res.unwrap(),
                 "",
-                &app_url
+                &app_data.app_url()
             ).await;
         }
     });
