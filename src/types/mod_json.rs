@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Seek};
 
 use actix_web::web::Bytes;
@@ -12,7 +12,7 @@ use semver::Version;
 use serde::Deserialize;
 use std::io::BufReader;
 use zip::read::ZipFile;
-
+use crate::types::models::mod_gd_version::{GDVersionEnum, ModGDVersionCreate, VerPlatform};
 use super::{
     api::ApiError,
     models::{

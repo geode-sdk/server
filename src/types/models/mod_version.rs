@@ -539,7 +539,7 @@ impl ModVersion {
         make_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
+        if let Err(e) = sqlx::query!("SET CONSTRAINTS public.mod_versions.mod_versions_status_id_fkey DEFERRED")
             .execute(&mut *pool)
             .await
         {
@@ -615,7 +615,7 @@ impl ModVersion {
         }
 
         // Revert deferred constraints
-        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey IMMEDIATE")
+        if let Err(e) = sqlx::query!("SET CONSTRAINTS public.mod_versions.mod_versions_status_id_fkey IMMEDIATE")
             .execute(&mut *pool)
             .await
         {
