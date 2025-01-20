@@ -128,7 +128,7 @@ impl GithubClient {
                 });
 
                 if let Some(r) = redirect_uri {
-                    value["redirect_uri"] = json!(r);
+                    value["redirect_uri"] = json!(format!("{}/login/github/callback", r));
                 }
                 value
             }

@@ -72,7 +72,7 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
         payload: format!(
             "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user&state={}",
             data.github().client_id(),
-            data.front_url(),
+            format!("{}/login/github/callback", data.front_url()),
             secret.to_string()
         ),
     }))
