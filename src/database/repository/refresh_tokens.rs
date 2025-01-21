@@ -42,6 +42,25 @@ pub async fn remove_token(token: Uuid, conn: &mut PgConnection) -> Result<(), Ap
     Ok(())
 }
 
+pub async fn remove_developer_tokens(
+    developer_id: i32,
+    conn: &mut PgConnection,
+) -> Result<(), ApiError> {
+    sqlx::query!(
+        "DELETE FROM refresh_tokens
+        WHERE developer_id = $1",
+        developer_id
+    )
+    .execute(conn)
+    .await
+    .map_err(|e| {
+        log::error!("Failed to remove refresh tokens: {}", e);
+        ApiError::DbError
+    })?;
+
+    Ok(())
+}
+
 pub async fn cleanup(conn: &mut PgConnection) -> Result<(), ApiError> {
     sqlx::query!(
         "DELETE FROM refresh_tokens

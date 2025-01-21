@@ -70,7 +70,7 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
     Ok(web::Json(ApiResponse {
         error: "".into(),
         payload: format!(
-            "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user&state={}",
+            "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=read:user&state={}",
             data.github().client_id(),
             format!("{}/login/github/callback", data.front_url()),
             secret.to_string()

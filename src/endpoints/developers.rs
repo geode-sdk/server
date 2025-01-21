@@ -2,7 +2,7 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers, mods};
+use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
 use crate::{
     extractors::auth::Auth,
     types::{
@@ -182,6 +182,7 @@ pub async fn delete_tokens(
         .or(Err(ApiError::DbAcquireError))?;
 
     auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
+    refresh_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
 
     Ok(HttpResponse::NoContent())
 }
