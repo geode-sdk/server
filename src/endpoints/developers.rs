@@ -299,7 +299,9 @@ pub async fn update_developer(
     auth.admin()?;
 
     if payload.admin.is_none() && payload.verified.is_none() {
-        return Err(ApiError::BadRequest("Specify at least one param to modify".into()))
+        return Err(ApiError::BadRequest(
+            "Specify at least one param to modify".into(),
+        ));
     }
 
     let mut pool = data

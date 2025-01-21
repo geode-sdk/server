@@ -28,7 +28,8 @@ pub async fn index(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE (
             ($1 = '' OR username = $1)
@@ -98,7 +99,8 @@ pub async fn fetch_or_insert_github(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE github_user_id = $1",
         github_id
@@ -128,7 +130,8 @@ async fn insert_github(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         username,
         github_id
     )
@@ -148,7 +151,8 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE id = $1",
         id
@@ -172,7 +176,8 @@ pub async fn get_one_by_username(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE username = $1",
         username
@@ -325,7 +330,8 @@ pub async fn get_owner_for_mod(
             dev.username,
             dev.display_name,
             dev.verified,
-            dev.admin
+            dev.admin,
+            github_user_id as github_id
         FROM developers dev
         INNER JOIN mods_developers md ON md.developer_id = dev.id
         WHERE md.mod_id = $1
@@ -363,7 +369,8 @@ pub async fn update_status(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         admin,
         verified,
         dev_id
@@ -391,7 +398,8 @@ pub async fn update_profile(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         display_name,
         dev_id
     )
@@ -415,7 +423,8 @@ pub async fn find_by_refresh_token(
             d.username,
             d.display_name,
             d.admin,
-            d.verified
+            d.verified,
+            d.github_user_id as github_id
         FROM developers d
         INNER JOIN refresh_tokens rt ON d.id = rt.developer_id
         WHERE rt.token = $1
