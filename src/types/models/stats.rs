@@ -34,7 +34,7 @@ impl Stats {
         Ok(Stats {
             total_mod_count: mod_stats.total_count,
             total_mod_downloads: mod_stats.total_downloads,
-            total_registered_developers: developers::index_count(None, &mut *pool).await?,
+            total_registered_developers: developers::index_count("", &mut *pool).await?,
             total_geode_downloads: Self::get_latest_github_release_download_count(&mut *pool)
                 .await?,
         })

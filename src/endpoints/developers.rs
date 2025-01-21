@@ -80,9 +80,11 @@ pub async fn developer_index(
     let page: i64 = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 100);
 
+    let query = query.query.clone().unwrap_or_default();
+
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: developers::index(query.query.as_ref(), page, per_page, &mut pool).await?,
+        payload: developers::index(&query, page, per_page, &mut pool).await?,
     }))
 }
 

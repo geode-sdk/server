@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 pub async fn index(
-    query: Option<&String>,
+    query: &str,
     page: i64,
     per_page: i64,
     conn: &mut PgConnection,
@@ -13,7 +13,13 @@ pub async fn index(
     let limit = per_page;
     let offset = (page - 1) * per_page;
 
-    let display_name_query = query.map(|str| format!("%{}%", str));
+    let display_name_query = {
+        if query.is_empty() {
+            "".into()
+        } else {
+            format!("%{}%", query)
+        }
+    };
 
     let result = sqlx::query_as!(
         Developer,
@@ -32,7 +38,7 @@ pub async fn index(
         LIMIT $3
         OFFSET $4",
         query,
-        display_name_query,
+        &display_name_query,
         limit,
         offset
     )
@@ -51,8 +57,14 @@ pub async fn index(
     })
 }
 
-pub async fn index_count(query: Option<&String>, conn: &mut PgConnection) -> Result<i64, ApiError> {
-    let display_name_query = query.map(|str| format!("%{}%", str));
+pub async fn index_count(query: &str, conn: &mut PgConnection) -> Result<i64, ApiError> {
+    let display_name_query = {
+        if query.is_empty() {
+            "".into()
+        } else {
+            format!("%{}%", query)
+        }
+    };
 
     Ok(sqlx::query!(
         "SELECT COUNT(id)
