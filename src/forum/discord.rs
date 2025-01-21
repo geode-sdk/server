@@ -2,25 +2,8 @@ use serde_json::{json, to_string, Value};
 
 use crate::config::DiscordForumData;
 use crate::types::models::mod_entity::Mod;
-use crate::types::models::mod_gd_version::GDVersionEnum;
 use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
-
-fn gd_to_string(gd: Option<GDVersionEnum>) -> String {
-    gd.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace("\"", "")
-}
-
-fn map_or_none<T, F>(x: Option<Vec<T>>, f: F, sep: &str) -> String
-    where
-    F: Fn(T) -> String
-{
-    let ret = x.map(|x| x.into_iter().map(f).collect::<Vec<String>>().join(sep)).unwrap_or("None".to_string());
-    if ret.is_empty() {
-        "None".to_string()
-    } else {
-        ret
-    }
-}
 
 fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
     json!({
@@ -73,26 +56,49 @@ fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
             },
             {
                 "name": "Geometry Dash",
-                "value": format!("Windows: {}\nAndroid (32-bit): {}\nAndroid (64-bit): {}\nmacOS (Intel): {}\nmacOS (ARM): {}",
-                    gd_to_string(v.gd.win), gd_to_string(v.gd.android32), gd_to_string(v.gd.android64),
-                    gd_to_string(v.gd.mac_intel), gd_to_string(v.gd.mac_arm)),
+                "value": format!(
+                    "Windows: {}\nAndroid (64-bit): {}\nAndroid (32-bit): {}\nmacOS (ARM): {}\nmacOS (Intel): {}\niOS: {}",
+                    v.gd.win.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', ""),
+                    v.gd.android64.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', ""),
+                    v.gd.android32.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', ""),
+                    v.gd.mac_arm.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', ""),
+                    v.gd.mac_intel.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', ""),
+                    v.gd.ios.map(|x| to_string(&x).ok()).flatten().unwrap_or("N/A".to_string()).replace('"', "")
+                ),
                 "inline": false
             },
             {
                 "name": "Dependencies",
-                "value": map_or_none(v.dependencies.clone(), |d| format!("`{} {} ({})`", d.mod_id, d.version,
-                    to_string(&d.importance).unwrap_or("unknown".to_string()).replace("\"", "")), "\n"),
+                "value": v.dependencies.clone().map(|x| {
+                    if !x.is_empty() {
+                        x.into_iter().map(|d| {
+                            format!("`{} {} ({})`", d.mod_id, d.version, to_string(&d.importance)
+                                .unwrap_or("unknown".to_string()).replace('"', ""))
+                        }).collect::<Vec<String>>().join("\n")
+                    } else {
+                        "None".to_string()
+                    }
+                }).unwrap_or("None".to_string()),
                 "inline": false
             },
             {
                 "name": "Incompatibilities",
-                "value": map_or_none(v.incompatibilities.clone(), |i| format!("`{} {} ({})`", i.mod_id, i.version,
-                    to_string(&i.importance).unwrap_or("unknown".to_string()).replace("\"", "")), "\n"),
+                "value": v.incompatibilities.clone().map(|x| {
+                    if !x.is_empty() {
+                        x.into_iter().map(|i| {
+                            format!("`{} {} ({})`", i.mod_id, i.version, to_string(&i.importance)
+                                .unwrap_or("unknown".to_string()).replace('"', ""))
+                        }).collect::<Vec<String>>().join("\n")
+                    } else {
+                        "None".to_string()
+                    }
+                }).unwrap_or("None".to_string()),
                 "inline": false
             },
             {
                 "name": "Source",
-                "value": m.links.clone().map(|l| l.source).flatten().unwrap_or(m.repository.clone().unwrap_or("N/A".to_string())),
+                "value": m.links.clone().map(|l| l.source).flatten()
+                    .unwrap_or(m.repository.clone().unwrap_or("N/A".to_string())),
                 "inline": true
             },
             {
@@ -117,7 +123,13 @@ fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
             },
             {
                 "name": "Tags",
-                "value": map_or_none(v.tags.clone(), |t| format!("`{}`", t), ", "),
+                "value": v.tags.clone().map(|x| {
+                    if !x.is_empty() {
+                        x.into_iter().map(|t| format!("`{}`", t)).collect::<Vec<String>>().join(", ")
+                    } else {
+                        "None".to_string()
+                    }
+                }).unwrap_or("None".to_string()),
                 "inline": true
             }
         ]
