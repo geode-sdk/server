@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            d.id,\n            d.username,\n            d.display_name,\n            d.admin,\n            d.verified\n        FROM developers d\n        INNER JOIN refresh_tokens rt ON d.id = rt.developer_id\n        WHERE rt.token = $1\n        AND rt.expires_at > NOW()",
+  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE username = $1",
   "describe": {
     "columns": [
       {
@@ -20,13 +20,18 @@
       },
       {
         "ordinal": 3,
-        "name": "admin",
+        "name": "verified",
         "type_info": "Bool"
       },
       {
         "ordinal": 4,
-        "name": "verified",
+        "name": "admin",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -39,8 +44,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "7d9f3ea011b26cfebf134ff6d30f1f153678d58de59fdcd2c53be2f3785150a8"
+  "hash": "72d3b589bef82cbde1b5f1fdc837781c6c811e36194d78e8d21e7f8debafbaef"
 }
