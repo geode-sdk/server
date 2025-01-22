@@ -4,24 +4,29 @@ use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
-pub struct Args {
+struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Commands {
+enum Commands {
     /// Run an internal job
     #[command(subcommand)]
     Job(JobCommand),
 }
 
 #[derive(Debug, Subcommand)]
-pub enum JobCommand {
+enum JobCommand {
     /// Cleans up mod_downloads from more than 30 days ago
     CleanupDownloads,
     /// Cleans up auth and refresh tokens that are expired
     CleanupTokens,
+    /// Emergency logout for a developer
+    LogoutDeveloper {
+        /// Username of the developer
+        username: String,
+    },
     /// Runs migrations
     Migrate,
 }
@@ -41,6 +46,12 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
                 JobCommand::CleanupDownloads => {
                     let mut conn = data.db().acquire().await?;
                     jobs::cleanup_downloads::cleanup_downloads(&mut *conn).await?;
+
+                    Ok(true)
+                }
+                JobCommand::LogoutDeveloper { username } => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::logout_user::logout_user(&username, &mut *conn).await?;
 
                     Ok(true)
                 }
