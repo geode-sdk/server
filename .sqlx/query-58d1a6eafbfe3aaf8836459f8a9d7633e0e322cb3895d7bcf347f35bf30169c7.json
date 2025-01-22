@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin\n        FROM developers\n        WHERE github_user_id = $1",
+  "query": "UPDATE developers\n        SET admin = $1,\n        verified = $2\n        WHERE id = $3\n        RETURNING\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id",
   "describe": {
     "columns": [
       {
@@ -27,11 +27,18 @@
         "ordinal": 4,
         "name": "admin",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Bool",
+        "Bool",
+        "Int4"
       ]
     },
     "nullable": [
@@ -39,8 +46,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "0545c14cacbef3d49efc7d593b9307f05a3634cd1432f492a38c5f82d38196b2"
+  "hash": "58d1a6eafbfe3aaf8836459f8a9d7633e0e322cb3895d7bcf347f35bf30169c7"
 }

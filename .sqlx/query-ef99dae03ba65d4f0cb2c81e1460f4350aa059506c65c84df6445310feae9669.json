@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO developers(username, display_name, github_user_id)\n        VALUES ($1, $1, $2)\n        RETURNING\n            id,\n            username,\n            display_name,\n            verified,\n            admin",
+  "query": "INSERT INTO developers(username, display_name, github_user_id)\n        VALUES ($1, $1, $2)\n        RETURNING\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,11 @@
         "ordinal": 4,
         "name": "admin",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -40,8 +45,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "489ff02d96fa92fba1ba6179d8f1efa06299401c4b9282128b4adb05f75fe417"
+  "hash": "ef99dae03ba65d4f0cb2c81e1460f4350aa059506c65c84df6445310feae9669"
 }

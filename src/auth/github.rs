@@ -1,10 +1,11 @@
+use crate::database::repository::github_login_attempts;
+use crate::types::api::ApiError;
+use crate::types::models::github_login_attempt::StoredLoginAttempt;
 use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
 use uuid::Uuid;
-
-use crate::types::{api::ApiError, models::github_login_attempt::GithubLoginAttempt};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GithubStartAuth {
@@ -18,6 +19,21 @@ pub struct GithubStartAuth {
 pub struct GithubClient {
     client_id: String,
     client_secret: String,
+}
+
+#[derive(Serialize)]
+pub struct GitHubDevicePollPayload {
+    client_id: String,
+    device_code: String,
+    grant_type: String,
+}
+
+#[derive(Serialize)]
+pub struct GitHubWebPollPayload {
+    client_id: String,
+    client_secret: String,
+    code: String,
+    redirect_uri: String,
 }
 
 #[derive(Deserialize)]
@@ -35,23 +51,17 @@ impl GithubClient {
         }
     }
 
-    pub async fn start_auth(
+    pub async fn start_polling_auth(
         &self,
         ip: IpNetwork,
         pool: &mut PgConnection,
-    ) -> Result<GithubLoginAttempt, ApiError> {
-        let found_request = GithubLoginAttempt::get_one_by_ip(ip, &mut *pool).await?;
-        if let Some(r) = found_request {
+    ) -> Result<StoredLoginAttempt, ApiError> {
+        if let Some(r) = github_login_attempts::get_one_by_ip(ip, pool).await? {
             if r.is_expired() {
                 let uuid = Uuid::parse_str(&r.uuid).unwrap();
-                GithubLoginAttempt::remove(uuid, &mut *pool).await?;
+                github_login_attempts::remove(uuid, pool).await?;
             } else {
-                return Ok(GithubLoginAttempt {
-                    uuid: r.uuid.to_string(),
-                    interval: r.interval,
-                    uri: r.uri,
-                    code: r.user_code,
-                });
+                return Ok(r);
             }
         }
 
@@ -84,7 +94,8 @@ impl GithubClient {
             );
             ApiError::InternalError
         })?;
-        let uuid = GithubLoginAttempt::create(
+
+        Ok(github_login_attempts::create(
             ip,
             body.device_code,
             body.interval,
@@ -93,17 +104,36 @@ impl GithubClient {
             &body.user_code,
             &mut *pool,
         )
-        .await?;
-
-        Ok(GithubLoginAttempt {
-            uuid: uuid.to_string(),
-            interval: body.interval,
-            uri: body.verification_uri,
-            code: body.user_code,
-        })
+        .await?)
     }
 
-    pub async fn poll_github(&self, device_code: &str) -> Result<String, ApiError> {
+    pub async fn poll_github(
+        &self,
+        code: &str,
+        is_device: bool,
+        redirect_uri: Option<&str>,
+    ) -> Result<String, ApiError> {
+        let json = {
+            if is_device {
+                json!({
+                    "client_id": &self.client_id,
+                    "device_code": code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+                })
+            } else {
+                let mut value = json!({
+                    "client_id": &self.client_id,
+                    "client_secret": &self.client_secret,
+                    "code": code,
+                });
+
+                if let Some(r) = redirect_uri {
+                    value["redirect_uri"] = json!(format!("{}/login/github/callback", r));
+                }
+                value
+            }
+        };
+
         let resp = Client::new()
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
@@ -112,11 +142,7 @@ impl GithubClient {
                 HeaderValue::from_str("application/json").unwrap(),
             )
             .basic_auth(&self.client_id, Some(&self.client_secret))
-            .json(&json!({
-                "client_id": &self.client_id,
-                "device_code": device_code,
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
-            }))
+            .json(&json)
             .send()
             .await
             .map_err(|e| {

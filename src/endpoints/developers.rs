@@ -2,7 +2,7 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers, mods};
+use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
 use crate::{
     extractors::auth::Auth,
     types::{
@@ -80,9 +80,11 @@ pub async fn developer_index(
     let page: i64 = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 100);
 
+    let query = query.query.clone().unwrap_or_default();
+
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: developers::index(query.query.as_ref(), page, per_page, &mut pool).await?,
+        payload: developers::index(&query, page, per_page, &mut pool).await?,
     }))
 }
 
@@ -182,6 +184,7 @@ pub async fn delete_tokens(
         .or(Err(ApiError::DbAcquireError))?;
 
     auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
+    refresh_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
 
     Ok(HttpResponse::NoContent())
 }
@@ -204,7 +207,7 @@ pub async fn update_profile(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    if json.display_name.chars().all(char::is_alphanumeric) {
+    if !json.display_name.chars().all(char::is_alphanumeric) {
         return Err(ApiError::BadRequest(
             "Display name must contain only alphanumeric characters".into(),
         ));
@@ -296,7 +299,9 @@ pub async fn update_developer(
     auth.admin()?;
 
     if payload.admin.is_none() && payload.verified.is_none() {
-        return Err(ApiError::BadRequest("Specify at least one param to modify".into()))
+        return Err(ApiError::BadRequest(
+            "Specify at least one param to modify".into(),
+        ));
     }
 
     let mut pool = data
