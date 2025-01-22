@@ -199,8 +199,13 @@ pub async fn github_token_login(
         data.github_client_secret.to_string(),
     );
 
-    let user = client.get_user(&json.token).await
-        .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?;
+    let user = match client.get_user(&json.token).await {
+        Err(_) => client.get_installation(&json.token).await.map_err(|_|
+            ApiError::BadRequest(format!("Invalid access token: {}", json.token))
+        )?,
+
+        Ok(u) => u
+    };
 
     let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
     let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;

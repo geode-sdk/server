@@ -194,4 +194,47 @@ impl GithubClient {
 
         Ok(body)
     }
+
+    pub async fn get_installation(&self, token: &str) -> Result<serde_json::Value, ApiError> {
+        let client = Client::new();
+        let resp = match client
+            .get("https://api.github.com/installation/repositories")
+            .header("Accept", HeaderValue::from_str("application/json").unwrap())
+            .header("User-Agent", "geode_index")
+            .bearer_auth(token)
+            .send()
+            .await
+        {
+            Err(e) => {
+                log::info!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(r) => r,
+        };
+
+        if !resp.status().is_success() {
+            return Err(ApiError::InternalError);
+        }
+
+        let body = match resp.json::<serde_json::Value>().await {
+            Err(e) => {
+                log::error!("{}", e);
+                return Err(ApiError::InternalError);
+            }
+            Ok(b) => b,
+        };
+
+        let repos = match body.get("repositories").and_then(|r| r.as_array()) {
+            None => {
+                return Err(ApiError::InternalError);
+            },
+            Some(r) => r,
+        };
+
+        if repos.len() != 1 {
+            return Err(ApiError::InternalError);
+        }
+
+        repos[0].get("owner").ok_or(ApiError::InternalError).cloned()
+    }
 }
