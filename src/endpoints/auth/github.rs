@@ -1,4 +1,5 @@
-use actix_web::{dev::ConnectionInfo, post, web, Responder};
+use actix_web::http::StatusCode;
+use actix_web::{dev::ConnectionInfo, post, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
@@ -125,7 +126,7 @@ pub async fn github_web_callback(
         error: "".to_string(),
         payload: TokensResponse {
             access_token: token.to_string(),
-            refresh_token: Some(refresh.to_string()),
+            refresh_token: refresh.to_string(),
         },
     }))
 }
@@ -212,13 +213,20 @@ pub async fn poll_github_login(
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
 
-    Ok(web::Json(ApiResponse {
-        error: "".to_string(),
-        payload: TokensResponse {
-            access_token: token.to_string(),
-            refresh_token: refresh.map(|r| r.to_string()),
-        },
-    }))
+    if expiry {
+        Ok(HttpResponse::build(StatusCode::OK).json(ApiResponse {
+            error: "".to_string(),
+            payload: TokensResponse {
+                access_token: token.to_string(),
+                refresh_token: refresh.unwrap().to_string(),
+            },
+        }))
+    } else {
+        Ok(HttpResponse::build(StatusCode::OK).json(ApiResponse {
+            error: "".to_string(),
+            payload: token.to_string(),
+        }))
+    }
 }
 
 #[post("v1/login/github/token")]
@@ -232,11 +240,12 @@ pub async fn github_token_login(
     );
 
     let user = match client.get_user(&json.token).await {
-        Err(_) => client.get_installation(&json.token).await.map_err(|_|
-            ApiError::BadRequest(format!("Invalid access token: {}", json.token))
-        )?,
+        Err(_) => client
+            .get_installation(&json.token)
+            .await
+            .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?,
 
-        Ok(u) => u
+        Ok(u) => u,
     };
 
     let mut pool = data

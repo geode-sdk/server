@@ -12,8 +12,7 @@ pub mod github;
 #[derive(Serialize)]
 struct TokensResponse {
     access_token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    refresh_token: Option<String>,
+    refresh_token: String,
 }
 
 #[derive(Deserialize)]
@@ -60,7 +59,7 @@ pub async fn refresh_token(
         error: "".into(),
         payload: TokensResponse {
             access_token: new_auth.to_string(),
-            refresh_token: Some(new_refresh.to_string()),
+            refresh_token: new_refresh.to_string(),
         },
     }))
 }

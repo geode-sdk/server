@@ -14,7 +14,7 @@ pub struct StoredLoginAttempt {
     #[serde(skip_serializing)]
     pub device_code: String,
     pub uri: String,
-    #[serde(skip_serializing, alias = "code")]
+    #[serde(rename = "code")]
     pub user_code: String,
     pub interval: i32,
     #[serde(skip_serializing)]
