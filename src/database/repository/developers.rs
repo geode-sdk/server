@@ -2,9 +2,10 @@ use crate::types::api::{ApiError, PaginatedData};
 use crate::types::models::developer::{Developer, ModDeveloper};
 use sqlx::PgConnection;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 pub async fn index(
-    query: Option<&String>,
+    query: &str,
     page: i64,
     per_page: i64,
     conn: &mut PgConnection,
@@ -12,7 +13,13 @@ pub async fn index(
     let limit = per_page;
     let offset = (page - 1) * per_page;
 
-    let display_name_query = query.map(|str| format!("%{}%", str));
+    let display_name_query = {
+        if query.is_empty() {
+            "".into()
+        } else {
+            format!("%{}%", query)
+        }
+    };
 
     let result = sqlx::query_as!(
         Developer,
@@ -21,7 +28,8 @@ pub async fn index(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE (
             ($1 = '' OR username = $1)
@@ -31,7 +39,7 @@ pub async fn index(
         LIMIT $3
         OFFSET $4",
         query,
-        display_name_query,
+        &display_name_query,
         limit,
         offset
     )
@@ -50,8 +58,14 @@ pub async fn index(
     })
 }
 
-pub async fn index_count(query: Option<&String>, conn: &mut PgConnection) -> Result<i64, ApiError> {
-    let display_name_query = query.map(|str| format!("%{}%", str));
+pub async fn index_count(query: &str, conn: &mut PgConnection) -> Result<i64, ApiError> {
+    let display_name_query = {
+        if query.is_empty() {
+            "".into()
+        } else {
+            format!("%{}%", query)
+        }
+    };
 
     Ok(sqlx::query!(
         "SELECT COUNT(id)
@@ -85,7 +99,8 @@ pub async fn fetch_or_insert_github(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE github_user_id = $1",
         github_id
@@ -115,7 +130,8 @@ async fn insert_github(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         username,
         github_id
     )
@@ -135,7 +151,8 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE id = $1",
         id
@@ -159,7 +176,8 @@ pub async fn get_one_by_username(
             username,
             display_name,
             verified,
-            admin
+            admin,
+            github_user_id as github_id
         FROM developers
         WHERE username = $1",
         username
@@ -312,7 +330,8 @@ pub async fn get_owner_for_mod(
             dev.username,
             dev.display_name,
             dev.verified,
-            dev.admin
+            dev.admin,
+            github_user_id as github_id
         FROM developers dev
         INNER JOIN mods_developers md ON md.developer_id = dev.id
         WHERE md.mod_id = $1
@@ -350,7 +369,8 @@ pub async fn update_status(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         admin,
         verified,
         dev_id
@@ -378,7 +398,8 @@ pub async fn update_profile(
             username,
             display_name,
             verified,
-            admin",
+            admin,
+            github_user_id as github_id",
         display_name,
         dev_id
     )
@@ -386,6 +407,34 @@ pub async fn update_profile(
     .await
     .map_err(|e| {
         log::error!("Failed to update profile for {}: {}", dev_id, e);
+        ApiError::DbError
+    })?)
+}
+
+pub async fn find_by_refresh_token(
+    uuid: Uuid,
+    conn: &mut PgConnection,
+) -> Result<Option<Developer>, ApiError> {
+    let hash = sha256::digest(uuid.to_string());
+    Ok(sqlx::query_as!(
+        Developer,
+        "SELECT
+            d.id,
+            d.username,
+            d.display_name,
+            d.admin,
+            d.verified,
+            d.github_user_id as github_id
+        FROM developers d
+        INNER JOIN refresh_tokens rt ON d.id = rt.developer_id
+        WHERE rt.token = $1
+        AND rt.expires_at > NOW()",
+        hash
+    )
+    .fetch_optional(conn)
+    .await
+    .map_err(|e| {
+        log::error!("Failed to search for developer by refresh token: {}", e);
         ApiError::DbError
     })?)
 }

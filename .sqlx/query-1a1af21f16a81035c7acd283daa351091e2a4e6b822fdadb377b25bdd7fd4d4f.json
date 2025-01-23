@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE github_login_attempts SET last_poll = $1 WHERE uid = $2",
+  "query": "UPDATE github_login_attempts\n        SET last_poll = $1\n        WHERE uid = $2",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "12d29fa3087ef95a089e5bc806c98776e26770bd312ed0a2202f2aab31eb2daa"
+  "hash": "1a1af21f16a81035c7acd283daa351091e2a4e6b822fdadb377b25bdd7fd4d4f"
 }

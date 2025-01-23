@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin\n        FROM developers\n        WHERE (\n            ($1 = '' OR username = $1)\n            OR ($2 = '' OR display_name ILIKE $2)\n        )\n        GROUP BY id\n        LIMIT $3\n        OFFSET $4",
+  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE (\n            ($1 = '' OR username = $1)\n            OR ($2 = '' OR display_name ILIKE $2)\n        )\n        GROUP BY id\n        LIMIT $3\n        OFFSET $4",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,11 @@
         "ordinal": 4,
         "name": "admin",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -42,8 +47,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "cce189b728e980b0d90133636e8b3a7c526374face18f423fd56cb0a1c5a1e82"
+  "hash": "f10845904d7f6db087feb5065d7282e398248fd4bce5c31cdfe19168ce19376f"
 }

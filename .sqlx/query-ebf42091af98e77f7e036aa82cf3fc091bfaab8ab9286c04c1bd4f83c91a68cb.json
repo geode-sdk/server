@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin\n        FROM developers\n        WHERE id = $1",
+  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE github_user_id = $1",
   "describe": {
     "columns": [
       {
@@ -27,11 +27,16 @@
         "ordinal": 4,
         "name": "admin",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
-        "Int4"
+        "Int8"
       ]
     },
     "nullable": [
@@ -39,8 +44,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "e1265cac478803eb64285168cf13c7783a7a1e45373ded8cd0dcbf9ce46044d2"
+  "hash": "ebf42091af98e77f7e036aa82cf3fc091bfaab8ab9286c04c1bd4f83c91a68cb"
 }

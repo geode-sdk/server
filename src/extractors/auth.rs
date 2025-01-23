@@ -73,7 +73,8 @@ impl FromRequest for Auth {
                     d.username,
                     d.display_name,
                     d.verified,
-                    d.admin
+                    d.admin,
+                    d.github_user_id as github_id
                 FROM developers d
                 INNER JOIN auth_tokens a ON d.id = a.developer_id
                 WHERE a.token = $1",

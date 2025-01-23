@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT uid as uuid, ip, interval, expires_in, created_at, last_poll, challenge_uri as uri, device_code, user_code\n            FROM github_login_attempts\n            WHERE uid = $1",
+  "query": "SELECT\n                uid as uuid,\n                ip,\n                interval,\n                expires_in,\n                created_at,\n                last_poll,\n                challenge_uri as uri,\n                device_code,\n                user_code\n            FROM github_login_attempts\n            WHERE ip = $1",
   "describe": {
     "columns": [
       {
@@ -51,7 +51,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Inet"
       ]
     },
     "nullable": [
@@ -66,5 +66,5 @@
       false
     ]
   },
-  "hash": "0a82d7353541cf5f6f2275fc89324ca7b1b724bf76e85da46c646b071103a0ba"
+  "hash": "4a624bdb7a8320e4cb18a9e955bfd7ab3f67d6d97529d862ba75dd01e6544f81"
 }

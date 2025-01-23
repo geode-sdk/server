@@ -15,4 +15,5 @@ pub struct Developer {
     pub display_name: String,
     pub verified: bool,
     pub admin: bool,
+    pub github_id: i64
 }
