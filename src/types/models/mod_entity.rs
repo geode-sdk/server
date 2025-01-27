@@ -1438,10 +1438,8 @@ pub async fn download_geode_file(url: &str, limit_mb: u32) -> Result<Cursor<Byte
 }
 
 async fn get_download_size(url: &str) -> Result<u64, ApiError> {
-    let client = Client::new();
-
-    let res = client.head(url).send().await.map_err(|err| {
-        log::error!("Failed to send HEAD request for .geode filesize: {}", err);
+    let res = Client::new().head(url).send().await.map_err(|err| {
+        log::error!("Failed to send HEAD request for .geode filesize: {:?}", err);
         ApiError::BadRequest("Failed to query filesize for given URL".into())
     })?;
 
