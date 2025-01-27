@@ -120,19 +120,23 @@ async fn main() -> anyhow::Result<()> {
 
         let threads = get_threads(&app_data.discord()).await;
         let threads_res = Some(threads);
-        let mods = results.unwrap();
-        for i in 0..mods.count as usize {
-            let m = &mods.data[i];
+        let mut mods = results.unwrap().data;
+        mods.sort_by(|a, b| {
+            let a = &a.versions[0];
+            let b = &b.versions[0];
+            a.created_at.cmp(&b.created_at)
+        });
+        for i in 0..mods.len() {
+            let m = &mods[i];
             let version_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
             if version_res.is_err() {
                 continue;
             }
 
             if i != 0 && i % 10 == 0 {
+                log::info!("Created {i} threads, sleeping for 10 seconds");
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
-
-            log::info!("Creating thread for mod {}", m.id);
 
             create_or_update_thread(
                 threads_res.clone(),
@@ -143,6 +147,8 @@ async fn main() -> anyhow::Result<()> {
                 &app_data.app_url()
             ).await;
         }
+
+        log::info!("Finished creating forum threads");
     });
 
     if debug {
