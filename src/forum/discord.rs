@@ -240,7 +240,7 @@ pub async fn create_or_update_thread(
                                         "id": Value::Null,
                                         "name": "✅"
                                     },
-                                    "custom_id": "index/admin/accept:forum"
+                                    "custom_id": "index/accept"
                                 },
                                 {
                                     "type": 2,
@@ -250,7 +250,7 @@ pub async fn create_or_update_thread(
                                         "id": Value::Null,
                                         "name": "❌"
                                     },
-                                    "custom_id": "index-admin/reject:forum"
+                                    "custom_id": "index/reject"
                                 }
                             ]
                         }
