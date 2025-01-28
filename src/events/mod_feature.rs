@@ -13,8 +13,8 @@ pub struct ModFeaturedEvent {
 impl DiscordWebhook for ModFeaturedEvent {
     fn to_discord_webhook(&self) -> DiscordMessage {
         let title = match self.featured {
-            true => format!("⭐ Mod featured: {}", self.name),
-            false => format!("😢 Mod unfeatured: {}", self.name),
+            true => format!("🔥 Mod featured: {}", self.name),
+            false => format!("💔 Mod unfeatured: {}", self.name),
         };
 
         DiscordMessage::new().embed(
