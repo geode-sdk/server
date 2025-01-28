@@ -304,7 +304,7 @@ pub async fn create_version(
     let approved_count = ModVersion::get_accepted_count(&json.id, &mut pool).await?;
 
     if dev.verified && approved_count != 0 {
-        let owner = developers::get_owner_for_mod(&json.id, &mut *pool).await?;
+        let owner = developers::get_owner_for_mod(&json.id, &mut pool).await?;
 
         NewModVersionAcceptedEvent {
             id: json.id.clone(),
@@ -315,7 +315,7 @@ pub async fn create_version(
             base_url: data.app_url().to_string(),
         }
         .to_discord_webhook()
-        .send(&data.webhook_url());
+        .send(data.webhook_url());
     }
     Ok(HttpResponse::NoContent())
 }
@@ -400,7 +400,7 @@ pub async fn update_version(
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(&data.webhook_url());
+            .send(data.webhook_url());
         } else {
             NewModVersionAcceptedEvent {
                 id: version.mod_id,
@@ -411,7 +411,7 @@ pub async fn update_version(
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(&data.webhook_url());
+            .send(data.webhook_url());
         }
     }
 

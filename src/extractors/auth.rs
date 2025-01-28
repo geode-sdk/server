@@ -37,7 +37,7 @@ impl Auth {
 
         match self.developer.as_ref().is_some_and(|dev| dev.admin) {
             false => Err(ApiError::Forbidden),
-            true => Ok(())
+            true => Ok(()),
         }
     }
 }
@@ -105,9 +105,8 @@ impl FromRequest for Auth {
 
 fn parse_token(map: &HeaderMap) -> Option<Uuid> {
     map.get("Authorization")
-        .map(|header| header.to_str().ok())
-        .flatten()
-        .map(|str| -> Option<&str> {
+        .and_then(|header| header.to_str().ok())
+        .and_then(|str| -> Option<&str> {
             let split = str.split(' ').collect::<Vec<&str>>();
             if split.len() != 2 || split[0] != "Bearer" {
                 None
@@ -115,7 +114,5 @@ fn parse_token(map: &HeaderMap) -> Option<Uuid> {
                 Some(split[1])
             }
         })
-        .flatten()
-        .map(|str| Uuid::try_parse(str).ok())
-        .flatten()
+        .and_then(|str| Uuid::try_parse(str).ok())
 }

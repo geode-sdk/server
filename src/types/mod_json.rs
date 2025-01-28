@@ -32,9 +32,7 @@ pub struct ModJson {
     pub developers: Option<Vec<String>>,
     pub description: Option<String>,
     pub repository: Option<String>,
-    pub issues: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
-    pub settings: Option<serde_json::Value>,
     #[serde(default, skip_deserializing)]
     pub windows: bool,
     #[serde(default, skip_deserializing)]
@@ -98,8 +96,6 @@ pub struct OldModJsonDependency {
     pub version: String,
     #[serde(default)]
     pub importance: DependencyImportance,
-    // This should throw a deprecated error
-    pub required: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -215,8 +211,7 @@ impl ModJson {
                     return Ok(vec![]);
                 }
 
-                let mut ret: Vec<DependencyCreate> = vec![];
-                ret.reserve(deps.len());
+                let mut ret: Vec<DependencyCreate> = Vec::with_capacity(deps.len());
 
                 for i in deps {
                     if i.version == "*" {
@@ -246,8 +241,7 @@ impl ModJson {
                     return Ok(vec![]);
                 }
 
-                let mut ret: Vec<DependencyCreate> = vec![];
-                ret.reserve(deps.len());
+                let mut ret: Vec<DependencyCreate> = Vec::with_capacity(deps.len());
 
                 for (id, dep) in deps {
                     match dep {
@@ -299,8 +293,7 @@ impl ModJson {
                     return Ok(vec![]);
                 }
 
-                let mut ret: Vec<IncompatibilityCreate> = vec![];
-                ret.reserve(vec.len());
+                let mut ret: Vec<IncompatibilityCreate> = Vec::with_capacity(vec.len());
 
                 for i in vec {
                     if i.version == "*" {
@@ -331,8 +324,7 @@ impl ModJson {
                     return Ok(vec![]);
                 }
 
-                let mut ret: Vec<IncompatibilityCreate> = vec![];
-                ret.reserve(map.len());
+                let mut ret: Vec<IncompatibilityCreate> = Vec::with_capacity(map.len());
 
                 for (id, item) in map {
                     match item {

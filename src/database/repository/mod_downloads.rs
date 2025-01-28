@@ -23,7 +23,7 @@ pub async fn create(
             mod_version_id,
             e
         );
-        return ApiError::DbError;
+        ApiError::DbError
     })?;
 
     Ok(result.rows_affected() > 0)

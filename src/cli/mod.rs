@@ -45,19 +45,19 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
                 }
                 JobCommand::CleanupDownloads => {
                     let mut conn = data.db().acquire().await?;
-                    jobs::cleanup_downloads::cleanup_downloads(&mut *conn).await?;
+                    jobs::cleanup_downloads::cleanup_downloads(&mut conn).await?;
 
                     Ok(true)
                 }
                 JobCommand::LogoutDeveloper { username } => {
                     let mut conn = data.db().acquire().await?;
-                    jobs::logout_user::logout_user(&username, &mut *conn).await?;
+                    jobs::logout_user::logout_user(&username, &mut conn).await?;
 
                     Ok(true)
                 }
                 JobCommand::CleanupTokens => {
                     let mut conn = data.db().acquire().await?;
-                    jobs::token_cleanup::token_cleanup(&mut *conn).await?;
+                    jobs::token_cleanup::token_cleanup(&mut conn).await?;
 
                     Ok(true)
                 }

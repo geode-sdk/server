@@ -45,8 +45,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
         log::error!("Failed to fetch mod logo for {}: {}", id, e);
         ApiError::DbError
     })?
-    .map(|optional| optional.image)
-    .flatten();
+    .and_then(|optional| optional.image);
 
     // Empty vec is basically no image
     if vec.as_ref().is_some_and(|v| v.is_empty()) {

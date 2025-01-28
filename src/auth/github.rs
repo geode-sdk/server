@@ -95,7 +95,7 @@ impl GithubClient {
             ApiError::InternalError
         })?;
 
-        Ok(github_login_attempts::create(
+        github_login_attempts::create(
             ip,
             body.device_code,
             body.interval,
@@ -104,7 +104,7 @@ impl GithubClient {
             &body.user_code,
             &mut *pool,
         )
-        .await?)
+        .await
     }
 
     pub async fn poll_github(
@@ -184,10 +184,10 @@ impl GithubClient {
             return Err(ApiError::InternalError);
         }
 
-        Ok(resp.json::<GitHubFetchedUser>().await.map_err(|e| {
+        resp.json::<GitHubFetchedUser>().await.map_err(|e| {
             log::error!("Failed to create GitHubFetchedUser: {}", e);
             ApiError::InternalError
-        })?)
+        })
     }
 
     pub async fn get_installation(&self, token: &str) -> Result<GitHubFetchedUser, ApiError> {
@@ -222,7 +222,7 @@ impl GithubClient {
         let repos = match body.get("repositories").and_then(|r| r.as_array()) {
             None => {
                 return Err(ApiError::InternalError);
-            },
+            }
             Some(r) => r,
         };
 
@@ -230,7 +230,10 @@ impl GithubClient {
             return Err(ApiError::InternalError);
         }
 
-        let owner = repos[0].get("owner").ok_or(ApiError::InternalError)?.clone();
+        let owner = repos[0]
+            .get("owner")
+            .ok_or(ApiError::InternalError)?
+            .clone();
 
         serde_json::from_value(owner).map_err(|e| {
             log::error!("Failed to create GitHubFetchedUser: {}", e);

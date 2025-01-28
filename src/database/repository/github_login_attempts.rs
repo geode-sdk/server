@@ -9,7 +9,7 @@ pub async fn get_one_by_ip(
     ip: IpNetwork,
     conn: &mut PgConnection,
 ) -> Result<Option<StoredLoginAttempt>, ApiError> {
-    Ok(sqlx::query_as!(
+    sqlx::query_as!(
         StoredLoginAttempt,
         "SELECT
                 uid as uuid,
@@ -30,14 +30,14 @@ pub async fn get_one_by_ip(
     .map_err(|e| {
         log::error!("Failed to fetch existing login attempt: {}", e);
         ApiError::DbError
-    })?)
+    })
 }
 
 pub async fn get_one_by_uuid(
     uuid: Uuid,
     pool: &mut PgConnection,
 ) -> Result<Option<StoredLoginAttempt>, ApiError> {
-    Ok(sqlx::query_as!(
+    sqlx::query_as!(
         StoredLoginAttempt,
         "SELECT
             uid as uuid,
@@ -58,7 +58,7 @@ pub async fn get_one_by_uuid(
     .map_err(|e| {
         log::error!("Failed to fetch GitHub login attempt: {}", e);
         ApiError::DbError
-    })?)
+    })
 }
 
 pub async fn create(
@@ -70,7 +70,7 @@ pub async fn create(
     user_code: &str,
     pool: &mut PgConnection,
 ) -> Result<StoredLoginAttempt, ApiError> {
-    Ok(sqlx::query_as!(
+    sqlx::query_as!(
         StoredLoginAttempt,
         "INSERT INTO github_login_attempts
         (ip, device_code, interval, expires_in, challenge_uri, user_code) VALUES
@@ -97,7 +97,7 @@ pub async fn create(
     .map_err(|e| {
         log::error!("Failed to insert new GitHub login attempt: {}", e);
         ApiError::DbError
-    })?)
+    })
 }
 
 pub async fn poll_now(uuid: Uuid, conn: &mut PgConnection) -> Result<(), ApiError> {

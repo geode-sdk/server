@@ -1,6 +1,6 @@
 use super::{
     dependency::ResponseDependency,
-    developer::{ModDeveloper, Developer},
+    developer::{Developer, ModDeveloper},
     incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_link::ModLinks,
@@ -1205,8 +1205,7 @@ impl Mod {
         .map_err(|err| {
             log::error!("Failed to fetch existing developers: {}", err);
             ApiError::DbError
-        })
-        .unwrap()
+        })?
         .ok_or(ApiError::NotFound(
             "Developer is not assigned to mod".into(),
         ))?;
@@ -1443,8 +1442,7 @@ async fn get_download_size(url: &str) -> Result<u64, ApiError> {
         ApiError::BadRequest("Failed to query filesize for given URL".into())
     })?;
 
-    Ok(res
-        .headers()
+    res.headers()
         .get("content-length")
         .ok_or(ApiError::BadRequest(
             "Couldn't extract download size from URL".into(),
@@ -1452,5 +1450,5 @@ async fn get_download_size(url: &str) -> Result<u64, ApiError> {
         .to_str()
         .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))?
         .parse::<u64>()
-        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))?)
+        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))
 }
