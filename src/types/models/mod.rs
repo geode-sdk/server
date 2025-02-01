@@ -9,3 +9,5 @@ pub mod mod_version;
 pub mod mod_version_status;
 pub mod stats;
 pub mod tag;
+pub mod loader_version;
+pub mod gd_version_alias;
