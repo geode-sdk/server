@@ -63,6 +63,20 @@ pub struct ResponseIncompatibility {
 }
 
 impl FetchedIncompatibility {
+    pub fn into_response(self) -> ResponseIncompatibility {
+        ResponseIncompatibility {
+            mod_id: self.incompatibility_id,
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
+
     pub fn to_response(&self) -> ResponseIncompatibility {
         ResponseIncompatibility {
             mod_id: self.incompatibility_id.clone(),
@@ -110,25 +124,23 @@ impl Incompatibility {
         Ok(())
     }
 
-    pub async fn clear_for_mod_version(
-        id: i32,
-        pool: &mut PgConnection
-    ) -> Result<(), ApiError> {
+    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         sqlx::query!(
             "DELETE FROM incompatibilities
             WHERE mod_id = $1",
             id
         )
-            .execute(&mut *pool)
-            .await
-            .map(|_| ())
-            .map_err(|err| {
-                log::error!(
-                    "Failed to remove incompatibilities for mod version {}: {}",
-                    id, err
-                );
-                ApiError::DbError
-            })
+        .execute(&mut *pool)
+        .await
+        .map(|_| ())
+        .map_err(|err| {
+            log::error!(
+                "Failed to remove incompatibilities for mod version {}: {}",
+                id,
+                err
+            );
+            ApiError::DbError
+        })
     }
 
     pub async fn get_for_mod_version(

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{
+    postgres::{PgHasArrayType, PgTypeInfo},
+    PgConnection, Postgres, QueryBuilder,
+};
 
 use crate::types::api::ApiError;
 
@@ -39,6 +42,19 @@ pub struct FetchedDependency {
 }
 
 impl FetchedDependency {
+    pub fn into_response(self) -> ResponseDependency {
+        ResponseDependency {
+            mod_id: self.dependency_id,
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
     pub fn to_response(&self) -> ResponseDependency {
         ResponseDependency {
             mod_id: self.dependency_id.clone(),
@@ -128,25 +144,23 @@ impl Dependency {
         Ok(())
     }
 
-    pub async fn clear_for_mod_version(
-        id: i32,
-        pool: &mut PgConnection
-    ) -> Result<(), ApiError> {
+    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         sqlx::query!(
             "DELETE FROM dependencies
             WHERE dependent_id = $1",
             id
         )
-            .execute(&mut *pool)
-            .await
-            .map(|_| ())
-            .map_err(|err| {
-                log::error!(
-                    "Failed to remove dependencies for mod version {}: {}",
-                    id, err
-                );
-                ApiError::DbError
-            })
+        .execute(&mut *pool)
+        .await
+        .map(|_| ())
+        .map_err(|err| {
+            log::error!(
+                "Failed to remove dependencies for mod version {}: {}",
+                id,
+                err
+            );
+            ApiError::DbError
+        })
     }
 
     pub async fn get_for_mod_versions(

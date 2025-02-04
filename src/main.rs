@@ -15,6 +15,7 @@ mod endpoints;
 mod events;
 mod extractors;
 mod jobs;
+mod mod_zip;
 mod types;
 mod webhook;
 

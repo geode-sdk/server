@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 
+use crate::database::repository::developers;
+use crate::types::{
+    api::{create_download_link, ApiError, PaginatedData},
+    mod_json::ModJson,
+};
 use chrono::SecondsFormat;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder, Row,
-};
-use crate::database::repository::developers;
-use crate::types::{
-    api::{create_download_link, ApiError, PaginatedData},
-    mod_json::ModJson,
-    models::mod_entity::Mod,
 };
 
 use super::{
@@ -39,9 +38,13 @@ pub struct ModVersion {
     pub mod_id: String,
     pub gd: DetailedGDVersion,
     pub status: ModVersionStatusEnum,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Vec<ResponseDependency>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub developers: Option<Vec<ModDeveloper>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 
     pub created_at: Option<String>,
@@ -626,82 +629,6 @@ impl ModVersion {
         Ok(())
     }
 
-    pub async fn update_pending_version(
-        version_id: i32,
-        json: &ModJson,
-        make_accepted: bool,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        sqlx::query!(
-            "UPDATE mod_versions mv
-                SET name = $1,
-                version = $2,
-                download_link = $3,
-                hash = $4,
-                geode = $5,
-                early_load = $6,
-                api = $7,
-                description = $8,
-                updated_at = NOW()
-            FROM mod_version_statuses mvs
-            WHERE mv.status_id = mvs.id
-            AND mvs.status = 'pending'
-            AND mv.id = $9",
-            &json.name,
-            &json.version,
-            &json.download_url,
-            &json.hash,
-            &json.geode,
-            &json.early_load,
-            &json.api.is_some(),
-            json.description.clone().unwrap_or_default(),
-            version_id
-        )
-        .execute(&mut *pool)
-        .await
-        .map_err(|err| {
-            log::error!(
-                "Failed to update pending version {}-{}: {}",
-                json.id,
-                json.version,
-                err
-            );
-            ApiError::DbError
-        })?;
-
-        let json_tags = json.tags.clone().unwrap_or_default();
-        let tags = Tag::get_tag_ids(json_tags, pool).await?;
-        Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
-        ModGDVersion::clear_for_mod_version(version_id, pool)
-            .await
-            .map_err(|err| {
-                log::error!("{}", err);
-                ApiError::DbError
-            })?;
-        ModGDVersion::create_from_json(json.gd.to_create_payload(json), version_id, pool).await?;
-        Dependency::clear_for_mod_version(version_id, pool).await?;
-        Incompatibility::clear_for_mod_version(version_id, pool).await?;
-
-        let dependencies = json.prepare_dependencies_for_create()?;
-        if !dependencies.is_empty() {
-            Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
-        }
-
-        let incompat = json.prepare_incompatibilities_for_create()?;
-        if !incompat.is_empty() {
-            Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
-        }
-
-        let status = if make_accepted {
-            ModVersionStatusEnum::Accepted
-        } else {
-            ModVersionStatusEnum::Pending
-        };
-
-        ModVersionStatus::update_for_mod_version(version_id, status, None, None, pool).await?;
-        Ok(())
-    }
-
     pub async fn get_one(
         id: &str,
         version: &str,
@@ -758,133 +685,6 @@ impl ModVersion {
         }
 
         Ok(version)
-    }
-
-    pub async fn update_version(
-        id: i32,
-        new_status: ModVersionStatusEnum,
-        info: Option<String>,
-        admin_id: i32,
-        limit_geode_mb: u32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        struct CurrentStatusRes {
-            status: ModVersionStatusEnum,
-        }
-        let current_status = match sqlx::query_as!(
-            CurrentStatusRes,
-            r#"select status as "status: _" from mod_version_statuses
-            where mod_version_id = $1"#,
-            id
-        )
-        .fetch_one(&mut *pool)
-        .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(s) => s,
-        };
-
-        if current_status.status == new_status {
-            return Ok(());
-        }
-
-        if current_status.status == ModVersionStatusEnum::Accepted
-            && new_status == ModVersionStatusEnum::Pending
-        {
-            return Err(ApiError::BadRequest(
-                "Cannot turn an accepted mod back into pending".to_string(),
-            ));
-        }
-
-        let mut query_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("UPDATE mod_version_statuses SET ");
-
-        query_builder.push("status = ");
-        query_builder.push_bind(new_status);
-        query_builder.push(", admin_id = ");
-        query_builder.push_bind(admin_id);
-        if let Some(i) = info {
-            query_builder.push(", info = ");
-            query_builder.push_bind(i);
-        }
-
-        query_builder.push(" WHERE mod_version_id = ");
-        query_builder.push_bind(id);
-
-        if let Err(e) = query_builder.build().execute(&mut *pool).await {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-
-        if current_status.status == ModVersionStatusEnum::Pending
-            && new_status == ModVersionStatusEnum::Accepted
-        {
-            // Time to download that image
-            let info = match sqlx::query!(
-                "SELECT download_link, hash, mod_id FROM mod_versions WHERE id = $1",
-                id
-            )
-            .fetch_one(&mut *pool)
-            .await
-            {
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                }
-                Ok(r) => r,
-            };
-            Mod::update_mod_image(
-                &info.mod_id,
-                &info.hash,
-                &info.download_link,
-                limit_geode_mb,
-                pool,
-            )
-            .await?;
-        }
-
-        if new_status == ModVersionStatusEnum::Accepted {
-            match sqlx::query!(
-                "UPDATE mods m
-            SET updated_at = $1
-            WHERE m.id = (select mv.mod_id from mod_versions mv where mv.id = $2)",
-                Utc::now(),
-                id
-            )
-            .execute(&mut *pool)
-            .await
-            {
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                }
-                Ok(r) => {
-                    if r.rows_affected() == 0 {
-                        log::error!("No mods affected by updated_at update.");
-                    }
-                }
-            };
-        }
-
-        match sqlx::query!(
-            "UPDATE mod_versions SET updated_at=$1 WHERE id=$2",
-            Utc::now(),
-            id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
-
-        Ok(())
     }
 
     pub async fn get_accepted_count(

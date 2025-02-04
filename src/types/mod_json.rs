@@ -1,17 +1,14 @@
 use std::collections::HashMap;
-use std::io::{Cursor, Read, Seek};
+use std::io::Read;
 
 use actix_web::web::Bytes;
-use image::{
-    codecs::png::{PngDecoder, PngEncoder},
-    DynamicImage, GenericImageView, ImageEncoder,
-};
 use regex::Regex;
 use reqwest::Url;
 use semver::Version;
 use serde::Deserialize;
-use std::io::BufReader;
 use zip::read::ZipFile;
+
+use crate::mod_zip;
 
 use super::{
     api::ApiError,
@@ -129,39 +126,22 @@ pub struct OldModJsonIncompatibility {
 
 impl ModJson {
     pub fn from_zip(
-        file: &mut Cursor<Bytes>,
+        file: Bytes,
         download_url: &str,
         store_image: bool,
-        max_size_mb: u32,
     ) -> Result<ModJson, ApiError> {
-        let max_size_bytes = max_size_mb * 1_000_000;
-        let mut bytes: Vec<u8> = vec![];
-        let mut take = file.take(max_size_bytes as u64);
-        match take.read_to_end(&mut bytes) {
-            Err(e) => {
-                log::error!("Failed to read bytes from {}: {}", download_url, e);
-                return Err(ApiError::FilesystemError);
-            }
-            Ok(b) => b,
-        };
-        let hash = sha256::digest(bytes);
-        let reader = BufReader::new(file);
-        let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
-            log::error!("Failed to create ZipArchive of mod: {}", e);
-            ApiError::BadRequest("Failed to unzip .geode file".into())
-        })?;
+        let slice: &[u8] = &file;
+        let hash = sha256::digest(slice);
+        let mut archive = mod_zip::bytes_to_ziparchive(file)?;
+
         let json_file = archive
             .by_name("mod.json")
-            .or(Err(ApiError::BadRequest(String::from(
-                "mod.json not found",
-            ))))?;
-        let mut json = match serde_json::from_reader::<ZipFile, ModJson>(json_file) {
-            Ok(j) => j,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::BadRequest("Invalid mod.json".to_string()));
-            }
-        };
+            .or(Err(ApiError::BadRequest("mod.json not found".into())))?;
+
+        let mut json = serde_json::from_reader::<ZipFile, ModJson>(json_file)
+            .inspect_err(|e| log::error!("Failed to parse mod.json: {}", e))
+            .or(Err(ApiError::BadRequest("Invalid mod.json".into())))?;
+
         json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
         json.download_url = parse_download_url(download_url);
@@ -191,8 +171,11 @@ impl ModJson {
                         ApiError::InternalError
                     })?);
                 } else if file.name() == "logo.png" {
-                    let bytes = validate_mod_logo(&mut file, store_image)?;
-                    json.logo = bytes;
+                    if store_image {
+                        json.logo = mod_zip::extract_mod_logo(&mut file)?;
+                    } else {
+                        mod_zip::validate_mod_logo(&mut file)?;
+                    }
                 }
             }
         }
@@ -412,69 +395,6 @@ impl ModJson {
         }
         Ok(())
     }
-}
-
-pub fn validate_mod_logo(file: &mut ZipFile, return_bytes: bool) -> Result<Vec<u8>, ApiError> {
-    let mut logo: Vec<u8> = vec![];
-    if let Err(e) = file.read_to_end(&mut logo) {
-        log::error!("{}", e);
-        return Err(ApiError::BadRequest("Couldn't read logo.png".to_string()));
-    }
-
-    let mut reader = BufReader::new(Cursor::new(logo));
-
-    let decoder = match PngDecoder::new(&mut reader) {
-        Ok(d) => d,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
-        }
-    };
-    let mut img = match DynamicImage::from_decoder(decoder) {
-        Ok(i) => i,
-        Err(e) => {
-            log::error!("{}", e);
-            return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
-        }
-    };
-
-    let dimensions = img.dimensions();
-
-    if dimensions.0 != dimensions.1 {
-        return Err(ApiError::BadRequest(format!(
-            "Mod logo must have 1:1 aspect ratio. Current size is {}x{}",
-            dimensions.0, dimensions.1
-        )));
-    }
-
-    if (dimensions.0 > 336) || (dimensions.1 > 336) {
-        img = img.resize(336, 336, image::imageops::FilterType::Lanczos3);
-    }
-
-    if !return_bytes {
-        return Ok(vec![]);
-    }
-
-    let mut cursor: Cursor<Vec<u8>> = Cursor::new(vec![]);
-
-    let encoder = PngEncoder::new_with_quality(
-        &mut cursor,
-        image::codecs::png::CompressionType::Best,
-        image::codecs::png::FilterType::NoFilter,
-    );
-
-    let (width, height) = img.dimensions();
-
-    if let Err(e) = encoder.write_image(img.as_bytes(), width, height, img.color().into()) {
-        log::error!("{}", e);
-        return Err(ApiError::BadRequest("Invalid logo.png".to_string()));
-    }
-    cursor.seek(std::io::SeekFrom::Start(0)).unwrap();
-
-    let mut bytes: Vec<u8> = vec![];
-    cursor.read_to_end(&mut bytes).unwrap();
-
-    Ok(bytes)
 }
 
 fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {

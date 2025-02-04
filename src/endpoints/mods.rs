@@ -1,12 +1,16 @@
+use std::thread::ThreadId;
+
 use crate::config::AppData;
 use crate::database::repository::developers;
+use crate::database::repository::mod_tags;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
+use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::incompatibility::Incompatibility;
-use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
+use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
@@ -98,19 +102,34 @@ pub async fn get(
         _ => false,
     };
 
-    let found = Mod::get_one(&id, false, &mut pool).await?;
-    match found {
-        Some(mut m) => {
-            for i in &mut m.versions {
-                i.modify_metadata(data.app_url(), has_extended_permissions);
-            }
-            Ok(web::Json(ApiResponse {
-                error: "".into(),
-                payload: m,
-            }))
-        }
-        None => Err(ApiError::NotFound(format!("Mod '{id}' not found"))),
-    }
+    let mut the_mod = mods::get_one_with_md(&id, &mut pool)
+        .await?
+        .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
+
+    the_mod.tags = mod_tags::get_for_mod(&the_mod.id, &mut pool)
+        .await?
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut pool).await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: the_mod,
+    }))
+    // let found = Mod::get_one(&id, false, &mut pool).await?;
+    // match found {
+    //     Some(mut m) => {
+    //         for i in &mut m.versions {
+    //             i.modify_metadata(data.app_url(), has_extended_permissions);
+    //         }
+    //         Ok(web::Json(ApiResponse {
+    //             error: "".into(),
+    //             payload: m,
+    //         }))
+    //     }
+    //     None => Err(),
+    // }
 }
 
 #[post("/v1/mods")]
@@ -125,27 +144,12 @@ pub async fn create(
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let mut file_path = download_geode_file(&payload.download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(
-        &mut file_path,
-        &payload.download_link,
-        false,
-        data.max_download_mb(),
-    )?;
+    let bytes = mod_zip::download_mod(&payload.download_link, data.max_download_mb()).await?;
+    let json = ModJson::from_zip(bytes, &payload.download_link, false)?;
     json.validate()?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let result = Mod::from_json(&json, dev.clone(), &mut transaction).await;
-    if result.is_err() {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(result.err().unwrap());
-    }
-    transaction
-        .commit()
-        .await
-        .or(Err(ApiError::TransactionError))?;
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    Mod::from_json(&json, dev.clone(), &mut tx).await?;
+    tx.commit().await.or(Err(ApiError::TransactionError))?;
 
     Ok(HttpResponse::NoContent())
 }

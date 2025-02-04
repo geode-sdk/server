@@ -14,24 +14,18 @@ use crate::{
     },
     types::{
         api::{ApiError, PaginatedData},
-        mod_json::{self, ModJson, ModJsonLinks},
+        mod_json::{ModJson, ModJsonLinks},
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
     },
 };
-use actix_web::web::Bytes;
 use chrono::SecondsFormat;
-use reqwest::Client;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
 };
-use std::{
-    collections::HashMap,
-    io::{Cursor, Read},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -736,89 +730,6 @@ impl Mod {
         Ok(())
     }
 
-    pub async fn new_version(
-        json: &ModJson,
-        developer: &Developer,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let result = sqlx::query!(
-            "SELECT DISTINCT m.id FROM mods m
-            INNER JOIN mod_versions mv ON mv.mod_id = m.id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE m.id = $1",
-            json.id
-        )
-        .fetch_optional(&mut *pool)
-        .await
-        .or(Err(ApiError::DbError))?;
-        if result.is_none() {
-            return Err(ApiError::NotFound(format!(
-                "Mod {} doesn't exist",
-                &json.id
-            )));
-        }
-
-        struct ModVersionItem {
-            version: String,
-            id: i32,
-            status: ModVersionStatusEnum,
-        }
-
-        let latest = match sqlx::query_as!(
-            ModVersionItem,
-            r#"SELECT mv.version, mv.id, mvs.status as "status!: ModVersionStatusEnum" FROM mod_versions mv
-            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
-            WHERE mv.mod_id = $1
-            AND (mvs.status = 'pending' OR mvs.status = 'accepted' OR mvs.status = 'rejected')
-            ORDER BY mv.id DESC
-            LIMIT 1"#,
-            &json.id
-        )
-            .fetch_one(&mut *pool)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                log::info!("Failed to fetch latest version for mod. Error: {}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        let version = Version::parse(&latest.version).map_err(|_| {
-            log::error!(
-                "Invalid semver for locally stored version: id {}, version {}",
-                latest.id,
-                latest.version
-            );
-            ApiError::InternalError
-        })?;
-        let new_version = Version::parse(json.version.trim_start_matches('v'))
-            .map_err(|_| ApiError::BadRequest(format!("Invalid semver {}", json.version)))?;
-        if new_version <= version {
-            return Err(ApiError::BadRequest(format!(
-                "mod.json version {} is smaller / equal to latest mod version {}",
-                json.version, version
-            )));
-        }
-
-        let accepted_versions = ModVersion::get_accepted_count(&json.id, &mut *pool).await?;
-
-        let verified = match accepted_versions {
-            0 => false,
-            _ => developer.verified,
-        };
-
-        if latest.status == ModVersionStatusEnum::Pending {
-            ModVersion::update_pending_version(latest.id, json, verified, pool).await?;
-        } else {
-            ModVersion::create_from_json(json, verified, pool).await?;
-        }
-
-        Mod::update_existing_with_json(json, verified, pool).await?;
-
-        Ok(())
-    }
-
     /// At the moment this is only used to set the mod to featured.
     /// Checks if the mod exists.
     pub async fn update_mod(
@@ -1358,97 +1269,4 @@ impl Mod {
 
         Ok(ret)
     }
-
-    pub async fn update_mod_image(
-        id: &str,
-        hash: &str,
-        download_link: &str,
-        limit_mb: u32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let mut cursor = download_geode_file(download_link, limit_mb).await?;
-        let mut bytes: Vec<u8> = vec![];
-        cursor.read_to_end(&mut bytes).map_err(|e| {
-            log::error!("Failed to fetch .geode for updating mod image: {}", e);
-            ApiError::InternalError
-        })?;
-
-        let new_hash = sha256::digest(bytes);
-        if new_hash != hash {
-            return Err(ApiError::BadRequest(format!(
-                "Different hash detected: old: {}, new: {}",
-                hash, new_hash
-            )));
-        }
-
-        let mut archive = zip::ZipArchive::new(cursor).map_err(|e| {
-            log::error!("Failed to create ZipArchive for .geode: {}", e);
-            ApiError::BadRequest("Couldn't unzip .geode file".to_string())
-        })?;
-
-        let image_file = archive.by_name("logo.png").ok();
-        if image_file.is_none() {
-            return Ok(());
-        }
-        let mut image_file = image_file.unwrap();
-
-        let image = mod_json::validate_mod_logo(&mut image_file, true)?;
-
-        sqlx::query!(
-            "UPDATE mods SET image = $1
-            WHERE id = $2",
-            image,
-            id
-        )
-        .execute(&mut *pool)
-        .await
-        .map_err(|e| {
-            log::error!("{}", e);
-            ApiError::DbError
-        })?;
-
-        Ok(())
-    }
-}
-
-pub async fn download_geode_file(url: &str, limit_mb: u32) -> Result<Cursor<Bytes>, ApiError> {
-    let limit_bytes = limit_mb * 1_000_000;
-    let size = get_download_size(url).await?;
-    if size > limit_bytes as u64 {
-        return Err(ApiError::BadRequest(format!(
-            "File size is too large, max {}MB",
-            limit_mb
-        )));
-    }
-    Ok(Cursor::new(
-        reqwest::get(url)
-            .await
-            .map_err(|e| {
-                log::error!("Failed to fetch .geode: {}", e);
-                ApiError::BadRequest("Couldn't download .geode file".into())
-            })?
-            .bytes()
-            .await
-            .map_err(|e| {
-                log::error!("Failed to get bytes from .geode: {}", e);
-                ApiError::InternalError
-            })?,
-    ))
-}
-
-async fn get_download_size(url: &str) -> Result<u64, ApiError> {
-    let res = Client::new().head(url).send().await.map_err(|err| {
-        log::error!("Failed to send HEAD request for .geode filesize: {:?}", err);
-        ApiError::BadRequest("Failed to query filesize for given URL".into())
-    })?;
-
-    res.headers()
-        .get("content-length")
-        .ok_or(ApiError::BadRequest(
-            "Couldn't extract download size from URL".into(),
-        ))?
-        .to_str()
-        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))?
-        .parse::<u64>()
-        .map_err(|_| ApiError::BadRequest("Invalid Content-Length for .geode".into()))
 }
