@@ -72,6 +72,7 @@ pub async fn index(
     let mut result = Mod::get_index(&mut pool, query.0).await?;
     for i in &mut result.data {
         for j in &mut i.versions {
+            j.name = "Soggy Mod".into();
             j.modify_metadata(data.app_url(), false);
         }
     }
@@ -236,7 +237,7 @@ pub async fn get_logo(
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
+    let image: Option<Vec<u8>> = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
     match image {
         Some(i) => {
