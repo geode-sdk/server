@@ -72,7 +72,6 @@ pub async fn index(
     let mut result = Mod::get_index(&mut pool, query.0).await?;
     for i in &mut result.data {
         for j in &mut i.versions {
-            j.name = "Soggy Mod".into();
             j.modify_metadata(data.app_url(), false);
         }
     }

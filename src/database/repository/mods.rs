@@ -37,7 +37,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
         INNER JOIN mod_versions mv ON mv.mod_id = m.id
         INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
         WHERE m.id = $1",
-        "capeling.soggy-mod"
+        id
     )
     .fetch_optional(&mut *conn)
     .await
