@@ -699,7 +699,7 @@ paths:
             $ref: "#/components/schemas/GDVersionString"
         - name: platform
           in: query
-          description: Platform to filter version by [win, android, mac]
+          description: Platform to filter version by [win, android, mac, ios]
           required: false
           schema:
             $ref: "#/components/schemas/Platform"
@@ -777,7 +777,7 @@ paths:
             $ref: "#/components/schemas/GDVersionString"
         - name: platform
           in: query
-          description: Platform to filter version by [win, android, mac]
+          description: Platform to filter version by [win, android, mac, ios]
           required: false
           schema:
             $ref: "#/components/schemas/Platform"

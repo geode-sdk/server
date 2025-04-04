@@ -19,6 +19,7 @@ pub struct LoaderVersionCreate {
 	pub mac: Option<GDVersionEnum>,
 	pub win: Option<GDVersionEnum>,
 	pub android: Option<GDVersionEnum>,
+	pub ios: Option<GDVersionEnum>,
 }
 
 #[derive(Serialize, Debug)]
@@ -40,6 +41,7 @@ pub struct LoaderVersionGetOne {
 	pub mac: Option<GDVersionEnum>,
 	pub win: Option<GDVersionEnum>,
 	pub android: Option<GDVersionEnum>,
+	pub ios: Option<GDVersionEnum>,
 }
 
 pub struct GetVersionsQuery {
@@ -64,7 +66,7 @@ impl LoaderVersionGetOne {
 				android: self.android,
 				android32: self.android,
 				android64: self.android,
-				ios: None,
+				ios: self.ios,
 			}
 		}
 	}
@@ -79,7 +81,7 @@ impl LoaderVersion {
 	) -> Result<LoaderVersion, ApiError> {
 		let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
 			r#"SELECT
-				mac, win, android, tag, commit_hash, created_at, prerelease
+				mac, win, android, ios, tag, commit_hash, created_at, prerelease
 			FROM geode_versions"#
 		);
 
@@ -88,6 +90,7 @@ impl LoaderVersion {
 				match p {
 					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" WHERE android="),
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac="),
+					VerPlatform::Ios => query_builder.push(" WHERE ios="),
 					VerPlatform::Win => query_builder.push(" WHERE win="),
 					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
@@ -105,6 +108,8 @@ impl LoaderVersion {
 				query_builder.push_bind(g);
 				query_builder.push(" or win=");
 				query_builder.push_bind(g);
+				query_builder.push( " or ios=");
+				query_builder.push_bind(g);
 			}
 			(None, None) => {
 			// if gd version isn't specifed, select whatever versions have the latest gd version
@@ -112,7 +117,8 @@ impl LoaderVersion {
 				r#" WHERE
 					android=enum_last(NULL::gd_version) OR
 					win=enum_last(NULL::gd_version) OR
-					mac=enum_last(NULL::gd_version)
+					mac=enum_last(NULL::gd_version) OR
+					ios=enum_last(NULL::gd_version)
 				"#);
 			}
 		}
@@ -130,6 +136,7 @@ impl LoaderVersion {
 					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" android"),
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" mac"),
 					VerPlatform::Win => query_builder.push(" win"),
+					VerPlatform::Ios => query_builder.push(" ios"),
 					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
 				query_builder.push(" DESC, ");
@@ -155,7 +162,7 @@ impl LoaderVersion {
 	pub async fn get_one(tag: &str, pool: &mut PgConnection) -> Result<LoaderVersion, ApiError> {
 		match sqlx::query_as!(LoaderVersionGetOne,
 			r#"SELECT
-				mac as "mac: _", win as "win: _", android as "android: _",
+				mac as "mac: _", win as "win: _", android as "android: _", ios as "ios: _",
 				tag, created_at, commit_hash, prerelease
 			FROM geode_versions
 				WHERE tag = $1"#, tag)
@@ -174,7 +181,7 @@ impl LoaderVersion {
 	pub async fn create_version(version: LoaderVersionCreate, pool: &mut PgConnection) -> Result<(), ApiError> {
 		match sqlx::query(
 			r#"INSERT INTO geode_versions
-				(tag, prerelease, mac, win, android, commit_hash)
+				(tag, prerelease, mac, win, android, ios, commit_hash)
 			VALUES
 				($1, $2, $3, $4, $5, $6)"#)
 			.bind(version.tag)
@@ -182,6 +189,7 @@ impl LoaderVersion {
 			.bind(version.mac)
 			.bind(version.win)
 			.bind(version.android)
+			.bind(version.ios)
 			.bind(version.commit_hash)
 			.execute(&mut *pool)
 			.await
@@ -204,7 +212,7 @@ impl LoaderVersion {
 		let offset = (page - 1) * per_page;
 
 		let mut query_builder = QueryBuilder::new(r#"
-			SELECT mac, win, android, tag, created_at, commit_hash, prerelease FROM geode_versions
+			SELECT mac, win, android, ios, tag, created_at, commit_hash, prerelease FROM geode_versions
 		"#);
 
 		match (query.platform, query.gd) {
@@ -212,6 +220,7 @@ impl LoaderVersion {
 				match p {
 					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" WHERE android="),
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac="),
+					VerPlatform::Ios => query_builder.push(" WHERE ios="),
 					VerPlatform::Win => query_builder.push(" WHERE win="),
 					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
@@ -222,6 +231,7 @@ impl LoaderVersion {
 				match p {
 					VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => query_builder.push(" WHERE android IS NOT NULL"),
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac IS NOT NULL"),
+					VerPlatform::Ios => query_builder.push(" WHERE ios IS NOT NULL"),
 					VerPlatform::Win => query_builder.push(" WHERE win IS NOT NULL"),
 					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
@@ -232,6 +242,8 @@ impl LoaderVersion {
 				query_builder.push(" or mac=");
 				query_builder.push_bind(g);
 				query_builder.push(" or win=");
+				query_builder.push_bind(g);
+				query_builder.push(" or ios=");
 				query_builder.push_bind(g);
 			}
 			_ => {

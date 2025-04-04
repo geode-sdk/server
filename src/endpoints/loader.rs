@@ -98,6 +98,7 @@ pub async fn create_version(
 		win: payload.gd.win.clone(),
 		mac: payload.gd.mac.clone(),
 		android: payload.gd.android.clone(),
+		ios: payload.gd.ios.clone(),
 	}, &mut transaction).await {
 		transaction
 			.rollback()
