@@ -3,7 +3,7 @@ CREATE TABLE geode_versions (
 	mac gd_version,
 	win gd_version,
 	android gd_version,
-	ios gd_version
+	ios gd_version,
 	commit_hash TEXT NOT NULL,
 	prerelease BOOLEAN DEFAULT FALSE NOT NULL,
 	created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL

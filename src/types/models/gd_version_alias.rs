@@ -20,30 +20,8 @@ pub struct GDVersionAlias {
 	pub mac_intel_uuid: Option<String>,
 	pub android_manifest_id: Option<i32>,
 	pub windows_timestamp: Option<i32>,
+	pub ios_bundle_version: Option<String>,
 	pub added_at: String
-}
-
-#[derive(Debug)]
-pub struct GDVersionAliasRecord {
-	pub version_name: GDVersionEnum,
-	pub mac_arm_uuid: Option<Uuid>,
-	pub mac_intel_uuid: Option<Uuid>,
-	pub android_manifest_id: Option<i32>,
-	pub windows_timestamp: Option<i32>,
-	pub added_at: DateTime<Utc>
-}
-
-impl GDVersionAliasRecord {
-	pub fn into_gd_version_alias(self) -> GDVersionAlias {
-		GDVersionAlias {
-			version_name: self.version_name,
-			mac_arm_uuid: self.mac_arm_uuid.map(|u| u.to_string()),
-			mac_intel_uuid: self.mac_intel_uuid.map(|u| u.to_string()),
-			android_manifest_id: self.android_manifest_id,
-			windows_timestamp: self.windows_timestamp,
-			added_at: self.added_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-		}
-	}
 }
 
 impl GDVersionAlias {
@@ -94,7 +72,12 @@ impl GDVersionAlias {
 				query_builder.push(" WHERE windows_timestamp=");
 				query_builder.push_bind(timestamp);
 			},
-			_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+			VerPlatform::Ios => {
+				let bundle_version = identifier.to_string();
+				query_builder.push(" WHERE ios_bundle_version=");
+				query_builder.push_bind(bundle_version);
+			}
+			// _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 		};
 
 		// probably useless?

@@ -13,7 +13,7 @@ INSERT INTO gd_version_aliases
 	-- thanks to @hiimjustin000 for bothering with the mac uuids
 	('2.200', null, '29549F90-F083-35A8-B917-9962262FE112', 37, 1702921605, '2.2.0'),
 	('2.204', null, null, null, 1705041028, null),
-	('2.205', null, null, 38, null, null, '2.2.0.5'),
+	('2.205', null, null, 38, null, '2.2.0.5'),
 	('2.206', '620B0C9B-8F75-3043-BD34-3BB9DD201C3A', 'AE6DFCCC-153A-32AB-BFD5-6F2478BC41B6', 39, 1717243515, '2.2.0.6.0'),
 	('2.207', '48C25B63-0D7C-3F67-B831-DF935524C043', 'D497E431-5C3F-3EB4-9DF7-115B861578EE', null, 1731098609, null),
 	('2.2071', '4933391F-D6C1-3188-99E8-23D64C674B64', '08E24832-EC11-3637-910E-7CB6C0EF8EC0', null, 1731117052, null),

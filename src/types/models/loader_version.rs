@@ -92,7 +92,7 @@ impl LoaderVersion {
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac="),
 					VerPlatform::Ios => query_builder.push(" WHERE ios="),
 					VerPlatform::Win => query_builder.push(" WHERE win="),
-					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+					// _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
 
 				query_builder.push_bind(g);
@@ -137,7 +137,7 @@ impl LoaderVersion {
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" mac"),
 					VerPlatform::Win => query_builder.push(" win"),
 					VerPlatform::Ios => query_builder.push(" ios"),
-					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+					// _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
 				query_builder.push(" DESC, ");
 			}
@@ -222,7 +222,7 @@ impl LoaderVersion {
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac="),
 					VerPlatform::Ios => query_builder.push(" WHERE ios="),
 					VerPlatform::Win => query_builder.push(" WHERE win="),
-					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+					// _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
 
 				query_builder.push_bind(g);
@@ -233,7 +233,7 @@ impl LoaderVersion {
 					VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => query_builder.push(" WHERE mac IS NOT NULL"),
 					VerPlatform::Ios => query_builder.push(" WHERE ios IS NOT NULL"),
 					VerPlatform::Win => query_builder.push(" WHERE win IS NOT NULL"),
-					_ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+					// _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
 				};
 			}
 			(None, Some(g)) => {
