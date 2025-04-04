@@ -1144,7 +1144,7 @@ impl Mod {
             is_owner: bool,
         }
 
-        sqlx::query_as!(
+        let assignment = sqlx::query_as!(
             FetchedRow,
             "SELECT md.developer_id, md.is_owner FROM mods_developers md
             WHERE md.mod_id = $1
@@ -1161,11 +1161,13 @@ impl Mod {
                 e
             );
             ApiError::DbError
-        })?
-        .ok_or(ApiError::BadRequest(format!(
-            "This developer is already assigned on mod {}",
-            mod_id
-        )))?;
+        })?;
+        if assignment.is_some() {
+            return Err(ApiError::BadRequest(format!(
+                "This developer is already assigned on mod {}",
+                mod_id
+            )));
+        }
 
         sqlx::query!(
             "INSERT INTO mods_developers (mod_id, developer_id)
