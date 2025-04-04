@@ -10,7 +10,7 @@ CREATE TABLE gd_version_aliases (
 
 INSERT INTO gd_version_aliases
 	(version_name, mac_arm_uuid, mac_intel_uuid, android_manifest_id, windows_timestamp, ios_bundle_version) VALUES
-	-- thanks to @hiimjustin000 for bothering with the mac uuids
+	-- thanks to @hiimjasmine00 for bothering with the mac uuids
 	('2.200', null, '29549F90-F083-35A8-B917-9962262FE112', 37, 1702921605, '2.2.0'),
 	('2.204', null, null, null, 1705041028, null),
 	('2.205', null, null, 38, null, '2.2.0.5'),
