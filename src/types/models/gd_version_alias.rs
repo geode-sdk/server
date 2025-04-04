@@ -3,14 +3,11 @@ use crate::types::{
 	api::ApiError,
 };
 
-use chrono::SecondsFormat;
 use serde::Serialize;
 
 use sqlx::{
-	types::{
-		chrono::{DateTime, Utc},
-		Uuid
-	}, PgConnection, Postgres, QueryBuilder
+	types::Uuid,
+	PgConnection, Postgres, QueryBuilder
 };
 
 #[derive(Serialize)]
