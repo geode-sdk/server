@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            dev.id,\n            dev.username,\n            dev.display_name,\n            md.is_owner,\n            md.mod_id\n        FROM developers dev\n        INNER JOIN mods_developers md ON dev.id = md.developer_id\n        WHERE md.mod_id = ANY($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_owner",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "mod_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e135a61fc8cd6fb39851cf232ed5ba26571d4abff8f13b07b65707985e78ef82"
+}

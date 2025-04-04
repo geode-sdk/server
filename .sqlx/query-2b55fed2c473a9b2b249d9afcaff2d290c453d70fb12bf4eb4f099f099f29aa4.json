@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            m.image\n        FROM mods m\n        INNER JOIN mod_versions mv ON mv.mod_id = m.id\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE m.id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "image",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "2b55fed2c473a9b2b249d9afcaff2d290c453d70fb12bf4eb4f099f099f29aa4"
+}

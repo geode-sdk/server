@@ -1,16 +1,18 @@
 use actix_web::{get, web, Responder};
 
-use crate::{
-    types::api::{ApiError, ApiResponse},
-    AppData,
-};
+use crate::config::AppData;
+use crate::database::repository::mod_tags;
+use crate::types::api::{ApiError, ApiResponse};
 
 #[get("/v1/tags")]
 pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
-    use crate::database::repository::*;
-
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
-    let tags = mod_tags::get_all(&mut pool).await?
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
+    let tags = mod_tags::get_all(&mut pool)
+        .await?
         .into_iter()
         .map(|tag| tag.name)
         .collect::<Vec<String>>();
@@ -23,8 +25,11 @@ pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError>
 
 #[get("/v1/detailed-tags")]
 pub async fn detailed_index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
-    use crate::database::repository::*;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let tags = mod_tags::get_all(&mut pool).await?;
 

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE github_login_attempts\n        SET last_poll = $1\n        WHERE uid = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1a1af21f16a81035c7acd283daa351091e2a4e6b822fdadb377b25bdd7fd4d4f"
+}

@@ -1,29 +1,33 @@
-use crate::{jobs, AppData};
-use anyhow::anyhow;
+use crate::config::AppData;
+use crate::jobs;
 use clap::{Parser, Subcommand};
-use sqlx::Acquire;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
-pub struct Args {
+struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Commands {
+enum Commands {
     /// Run an internal job
     #[command(subcommand)]
     Job(JobCommand),
 }
 
 #[derive(Debug, Subcommand)]
-pub enum JobCommand {
-    /// Caches download counts for all mods currently stored
-    #[command(subcommand)]
-    CacheDownloads,
+enum JobCommand {
+    /// Cleans up mod_downloads from more than 30 days ago
+    CleanupDownloads,
+    /// Cleans up auth and refresh tokens that are expired
+    CleanupTokens,
+    /// Emergency logout for a developer
+    LogoutDeveloper {
+        /// Username of the developer
+        username: String,
+    },
     /// Runs migrations
-    #[command(subcommand)]
     Migrate,
 }
 
@@ -33,20 +37,27 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
     if let Some(c) = cli.command {
         return match c {
             Commands::Job(job) => match job {
-                JobCommand::CacheDownloads => {
-                    let mut conn = data.db.acquire().await?;
-                    let mut transaction = conn.begin().await?;
+                JobCommand::Migrate => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::migrate::migrate(&mut conn).await?;
 
-                    jobs::download_cache::start(&mut transaction)
-                        .await
-                        .map_err(|e| anyhow!("Failed to update download cache {}", e))?;
-
-                    transaction.commit().await?;
                     Ok(true)
                 }
-                JobCommand::Migrate => {
-                    let mut conn = data.db.acquire().await?;
-                    jobs::migrate::migrate(&mut conn).await?;
+                JobCommand::CleanupDownloads => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::cleanup_downloads::cleanup_downloads(&mut conn).await?;
+
+                    Ok(true)
+                }
+                JobCommand::LogoutDeveloper { username } => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::logout_user::logout_user(&username, &mut conn).await?;
+
+                    Ok(true)
+                }
+                JobCommand::CleanupTokens => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::token_cleanup::token_cleanup(&mut conn).await?;
 
                     Ok(true)
                 }

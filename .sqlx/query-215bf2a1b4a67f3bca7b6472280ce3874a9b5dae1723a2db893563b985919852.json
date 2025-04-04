@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_downloads (mod_version_id, ip)\n        VALUES ($1, $2)\n        ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Inet"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "215bf2a1b4a67f3bca7b6472280ce3874a9b5dae1723a2db893563b985919852"
+}

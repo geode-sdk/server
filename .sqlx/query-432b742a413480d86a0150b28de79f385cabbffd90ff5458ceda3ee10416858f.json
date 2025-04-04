@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT md.developer_id, md.is_owner FROM mods_developers md\n            WHERE md.mod_id = $1\n            AND md.developer_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "developer_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_owner",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "432b742a413480d86a0150b28de79f385cabbffd90ff5458ceda3ee10416858f"
+}

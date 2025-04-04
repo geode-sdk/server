@@ -7,16 +7,16 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder, Row,
 };
-
+use crate::database::repository::developers;
 use crate::types::{
     api::{create_download_link, ApiError, PaginatedData},
     mod_json::ModJson,
-    models::{download, mod_entity::Mod},
+    models::mod_entity::Mod,
 };
 
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
-    developer::Developer,
+    developer::ModDeveloper,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_version_status::{ModVersionStatus, ModVersionStatusEnum},
@@ -41,7 +41,7 @@ pub struct ModVersion {
     pub status: ModVersionStatusEnum,
     pub dependencies: Option<Vec<ResponseDependency>>,
     pub incompatibilities: Option<Vec<ResponseIncompatibility>>,
-    pub developers: Option<Vec<Developer>>,
+    pub developers: Option<Vec<ModDeveloper>>,
     pub tags: Option<Vec<String>>,
 
     pub created_at: Option<String>,
@@ -528,7 +528,7 @@ impl ModVersion {
                 .map(|x| x.to_response())
                 .collect(),
         );
-        version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+        version.developers = Some(developers::get_all_for_mod(&version.mod_id, pool).await?);
         version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
         Ok(version)
@@ -585,21 +585,13 @@ impl ModVersion {
         let tags = Tag::get_tag_ids(json_tags, pool).await?;
         Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
         ModGDVersion::create_from_json(json.gd.to_create_payload(json), id, pool).await?;
-        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
-            let dependencies = json.prepare_dependencies_for_create()?;
-            if !dependencies.is_empty() {
-                Dependency::create_for_mod_version(id, dependencies, pool).await?;
-            }
+        let dependencies = json.prepare_dependencies_for_create()?;
+        if !dependencies.is_empty() {
+            Dependency::create_for_mod_version(id, dependencies, pool).await?;
         }
-        if json
-            .incompatibilities
-            .as_ref()
-            .is_some_and(|x| !x.is_empty())
-        {
-            let incompat = json.prepare_incompatibilities_for_create()?;
-            if !incompat.is_empty() {
-                Incompatibility::create_for_mod_version(id, incompat, pool).await?;
-            }
+        let incompat = json.prepare_incompatibilities_for_create()?;
+        if !incompat.is_empty() {
+            Incompatibility::create_for_mod_version(id, incompat, pool).await?;
         }
 
         let status = if make_accepted {
@@ -690,21 +682,14 @@ impl ModVersion {
         Dependency::clear_for_mod_version(version_id, pool).await?;
         Incompatibility::clear_for_mod_version(version_id, pool).await?;
 
-        if json.dependencies.as_ref().is_some_and(|x| !x.is_empty()) {
-            let dependencies = json.prepare_dependencies_for_create()?;
-            if !dependencies.is_empty() {
-                Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
-            }
+        let dependencies = json.prepare_dependencies_for_create()?;
+        if !dependencies.is_empty() {
+            Dependency::create_for_mod_version(version_id, dependencies, pool).await?;
         }
-        if json
-            .incompatibilities
-            .as_ref()
-            .is_some_and(|x| !x.is_empty())
-        {
-            let incompat = json.prepare_incompatibilities_for_create()?;
-            if !incompat.is_empty() {
-                Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
-            }
+
+        let incompat = json.prepare_incompatibilities_for_create()?;
+        if !incompat.is_empty() {
+            Incompatibility::create_for_mod_version(version_id, incompat, pool).await?;
         }
 
         let status = if make_accepted {
@@ -768,55 +753,11 @@ impl ModVersion {
             let incompat = Incompatibility::get_for_mod_version(version.id, pool).await?;
             version.incompatibilities =
                 Some(incompat.into_iter().map(|x| x.to_response()).collect());
-            version.developers = Some(Developer::fetch_for_mod(&version.mod_id, pool).await?);
+            version.developers = Some(developers::get_all_for_mod(&version.mod_id, pool).await?);
             version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
         }
 
         Ok(version)
-    }
-
-    pub async fn increment_downloads(
-        mod_version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        // we aren't recalculating, so don't reset the timer
-        if let Err(e) = sqlx::query!(
-            "UPDATE mod_versions mv
-            SET download_count = mv.download_count + 1
-            FROM mod_version_statuses mvs
-            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
-            mod_version_id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-        Ok(())
-    }
-
-    pub async fn calculate_cached_downloads(
-        mod_version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!(
-            "UPDATE mod_versions mv 
-            SET download_count = (
-                SELECT COUNT(DISTINCT md.ip) FROM mod_downloads md
-                WHERE md.mod_version_id = mv.id
-            ), last_download_cache_refresh = now()
-            FROM mod_version_statuses mvs
-            WHERE mv.id = $1 AND mvs.mod_version_id = mv.id AND mvs.status = 'accepted'",
-            mod_version_id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-        Ok(())
     }
 
     pub async fn update_version(
@@ -876,27 +817,6 @@ impl ModVersion {
         if let Err(e) = query_builder.build().execute(&mut *pool).await {
             log::error!("{}", e);
             return Err(ApiError::DbError);
-        }
-
-        if download::downloaded_version(id, pool).await? {
-            // performing this operation will change the mod's download count, so recalculate it
-
-            // should probably spawn this, but we do a download in the transaction which is probably
-            // a little worse. idk
-
-            let info = match sqlx::query!("SELECT mod_id FROM mod_versions WHERE id = $1", id)
-                .fetch_one(&mut *pool)
-                .await
-            {
-                Err(e) => {
-                    log::error!("{}", e);
-                    return Err(ApiError::DbError);
-                }
-                Ok(r) => r,
-            };
-
-            ModVersion::calculate_cached_downloads(id, pool).await?;
-            Mod::calculate_cached_downloads(&info.mod_id, pool).await?;
         }
 
         if current_status.status == ModVersionStatusEnum::Pending

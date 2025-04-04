@@ -4,22 +4,24 @@ use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responde
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
+use crate::config::AppData;
+use crate::database::repository::{developers, mod_downloads, mod_versions, mods};
+use crate::events::mod_created::{
+    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
+};
+use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
     types::{
         api::{ApiError, ApiResponse},
         mod_json::{split_version_and_compare, ModJson},
         models::{
-            developer::Developer,
-            download,
             mod_entity::{download_geode_file, Mod},
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
         },
     },
-    webhook::send_webhook,
-    AppData,
 };
 
 #[derive(Deserialize)]
@@ -92,10 +94,14 @@ pub async fn get_version_index(
 
     let compare = compare.map(|x| x.unwrap());
 
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
         _ => false,
     };
 
@@ -113,7 +119,7 @@ pub async fn get_version_index(
     )
     .await?;
     for i in &mut result.data {
-        i.modify_metadata(&data.app_url, has_extended_permissions);
+        i.modify_metadata(data.app_url(), has_extended_permissions);
     }
 
     Ok(web::Json(ApiResponse {
@@ -129,10 +135,14 @@ pub async fn get_one(
     query: web::Query<GetOneQuery>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let has_extended_permissions = match auth.developer() {
-        Ok(dev) => dev.admin || Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
+        Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
         _ => false,
     };
 
@@ -155,7 +165,7 @@ pub async fn get_one(
         }
     };
 
-    version.modify_metadata(&data.app_url, has_extended_permissions);
+    version.modify_metadata(data.app_url(), has_extended_permissions);
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
         payload: version,
@@ -177,7 +187,11 @@ pub async fn download_version(
     query: web::Query<DownloadQuery>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let mod_version = {
         if path.version == "latest" {
             let platform_str = query.platforms.clone().unwrap_or_default();
@@ -190,7 +204,7 @@ pub async fn download_version(
     };
     let url = mod_version.download_link;
 
-    if data.disable_downloads {
+    if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
         // whatever
         return Ok(HttpResponse::Found()
             .append_header(("Location", url))
@@ -203,43 +217,21 @@ pub async fn download_version(
     };
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    if let Ok((downloaded_version, downloaded_mod)) =
-        download::create_download(net, mod_version.id, &mod_version.mod_id, &mut pool).await
-    {
-        let name = mod_version.mod_id.clone();
-        let version = mod_version.version.clone();
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-        // only accepted mods can have their download counts incremented
-        // we'll just fix this once they're updated anyways
+    let downloaded_mod_previously =
+        mod_downloads::has_downloaded_mod(net, &mod_version.mod_id, &mut tx).await?;
+    let inserted = mod_downloads::create(net, mod_version.id, &mut tx).await?;
 
-        if (downloaded_version || downloaded_mod)
-            && mod_version.status == ModVersionStatusEnum::Accepted
-        {
-            tokio::spawn(async move {
-                if downloaded_version {
-                    // we must nest more
-                    if let Err(e) = ModVersion::increment_downloads(mod_version.id, &mut pool).await
-                    {
-                        log::error!(
-                            "Failed to increment downloads for mod version {}. Error: {}",
-                            version,
-                            e
-                        );
-                    }
-                }
+    if inserted {
+        mod_versions::increment_downloads(mod_version.id, &mut tx).await?;
 
-                if downloaded_mod {
-                    if let Err(e) = Mod::increment_downloads(&mod_version.mod_id, &mut pool).await {
-                        log::error!(
-                            "Failed to increment downloads for mod {}. Error: {}",
-                            name,
-                            e
-                        );
-                    }
-                }
-            });
+        if !downloaded_mod_previously {
+            mods::increment_downloads(&mod_version.mod_id, &mut tx).await?;
         }
     }
+
+    let _ = tx.commit().await;
 
     Ok(HttpResponse::Found()
         .append_header(("Location", url))
@@ -254,7 +246,11 @@ pub async fn create_version(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
 
     let fetched_mod = Mod::get_one(&path.id, false, &mut pool).await?;
 
@@ -262,7 +258,7 @@ pub async fn create_version(
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    if !(Developer::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
+    if !(developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?) {
         return Err(ApiError::Forbidden);
     }
 
@@ -273,12 +269,12 @@ pub async fn create_version(
         .filter(|c| c.is_ascii() && *c != '\0')
         .collect();
 
-    let mut file_path = download_geode_file(&download_link, data.max_download_mb).await?;
+    let mut file_path = download_geode_file(&download_link, data.max_download_mb()).await?;
     let json = ModJson::from_zip(
         &mut file_path,
         &download_link,
         dev.verified,
-        data.max_download_mb,
+        data.max_download_mb(),
     )
     .map_err(|err| {
         log::error!("Failed to parse mod.json: {}", err);
@@ -300,30 +296,27 @@ pub async fn create_version(
             .or(Err(ApiError::TransactionError))?;
         return Err(e);
     }
-
-    if dev.verified {
-        send_webhook(
-            json.id.clone(),
-            json.name.clone(),
-            json.version.clone(),
-            true,
-            Developer {
-                id: dev.id,
-                username: dev.username.clone(),
-                display_name: dev.display_name.clone(),
-                is_owner: true,
-            },
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone(),
-        )
-        .await;
-    }
-
     transaction
         .commit()
         .await
         .or(Err(ApiError::TransactionError))?;
+
+    let approved_count = ModVersion::get_accepted_count(&json.id, &mut pool).await?;
+
+    if dev.verified && approved_count != 0 {
+        let owner = developers::get_owner_for_mod(&json.id, &mut pool).await?;
+
+        NewModVersionAcceptedEvent {
+            id: json.id.clone(),
+            name: json.name.clone(),
+            version: json.version.clone(),
+            owner,
+            verified: NewModVersionVerification::VerifiedDev,
+            base_url: data.app_url().to_string(),
+        }
+        .to_discord_webhook()
+        .send(data.webhook_url());
+    }
     Ok(HttpResponse::NoContent())
 }
 
@@ -338,7 +331,11 @@ pub async fn update_version(
     if !dev.admin {
         return Err(ApiError::Forbidden);
     }
-    let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data
+        .db()
+        .acquire()
+        .await
+        .or(Err(ApiError::DbAcquireError))?;
     let version = ModVersion::get_one(
         path.id.as_str(),
         path.version.as_str(),
@@ -372,7 +369,7 @@ pub async fn update_version(
         payload.status,
         payload.info.clone(),
         dev.id,
-        data.max_download_mb,
+        data.max_download_mb(),
         &mut transaction,
     )
     .await
@@ -391,22 +388,31 @@ pub async fn update_version(
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
-        let owner = Developer::fetch_for_mod(version.mod_id.as_str(), &mut pool)
-            .await?
-            .into_iter()
-            .find(|dev| dev.is_owner);
+        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
 
-        send_webhook(
-            version.mod_id,
-            version.name.clone(),
-            version.version.clone(),
-            is_update,
-            owner.as_ref().unwrap().clone(),
-            dev.clone(),
-            data.webhook_url.clone(),
-            data.app_url.clone(),
-        )
-        .await;
+        if !is_update {
+            NewModAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified_by: dev,
+                base_url: data.app_url().to_string(),
+            }
+            .to_discord_webhook()
+            .send(data.webhook_url());
+        } else {
+            NewModVersionAcceptedEvent {
+                id: version.mod_id,
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified: NewModVersionVerification::Admin(dev),
+                base_url: data.app_url().to_string(),
+            }
+            .to_discord_webhook()
+            .send(data.webhook_url());
+        }
     }
 
     Ok(HttpResponse::NoContent())
