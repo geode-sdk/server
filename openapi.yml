@@ -902,7 +902,7 @@ components:
     ModVersionStatus:
       type: string
       enum:
-        - approved
+        - accepted
         - rejected
         - pending
         - unlisted
