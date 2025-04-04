@@ -36,9 +36,18 @@ The first thing that is recommended is setting `APP_DEBUG` to `1` if you are run
 
 The second step is setting our `DATABASE_URL`. It has a specific structure: `postgres://{username}:{password}@{db_host}/{database}`. In our case, after completing it with our data, the URL becomes: `postgres://geode:geode@localhost/geode`.
 
+> [!TIP]
+> You can get away with setting this up by manually adding developers to the database. Just add columns to `developers` and `auth_tokens` manually, while keeping in mind tokens in the database are sha256'd uuid tokens.
+
 Third, we need to setup a local GitHub OAuth app. Since the index doesn't store passwords, and uses GitHub for logins, we need this step to login into the index. Check out this guide for [creating a GitHub OAuth app](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), then fill in the client ID and secret of your app inside the .env file.
 
 Finally, run your migrations from the project directory using `sqlx migrate run`
+
+Next up, set up the log4rs config file found in `config`:
+```bash
+cp config/log4rs.example.yaml config/log4rs.yaml
+```
+Feel free to change the settings, but the default works fine.
 
 After all of this is done, you should be able to run `cargo run` inside the index directory. The migrations will be ran automatically, and the index will start. You can check `http://localhost:8000` (if you haven't changed the app port) to see if it all works.
 
