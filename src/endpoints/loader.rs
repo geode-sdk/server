@@ -20,7 +20,7 @@ use crate::{
 			}
 		}
 	},
-	AppData,
+	config::AppData,
 };
 
 #[derive(Deserialize)]
@@ -42,7 +42,7 @@ pub async fn get_one(
 	data: web::Data<AppData>,
 	query: web::Query<GetOneQuery>
 ) -> Result<impl Responder, ApiError> {
-	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+	let mut pool = data.db().acquire().await.or(Err(ApiError::DbAcquireError))?;
 
 	let version = if path.version == "latest" {
 		let gd = if let Some(i) = &query.gd {
@@ -84,7 +84,7 @@ pub async fn create_version(
 	auth: Auth,
 ) -> Result<impl Responder, ApiError> {
 	let dev = auth.developer()?;
-	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+	let mut pool = data.db().acquire().await.or(Err(ApiError::DbAcquireError))?;
 
 	if !dev.admin {
 		return Err(ApiError::Forbidden);
@@ -129,7 +129,7 @@ pub async fn get_many(
 	data: web::Data<AppData>,
 	query: web::Query<GetManyQuery>,
 ) -> Result<impl Responder, ApiError> {
-	let mut pool = data.db.acquire().await.or(Err(ApiError::DbAcquireError))?;
+	let mut pool = data.db().acquire().await.or(Err(ApiError::DbAcquireError))?;
 
 	let versions = LoaderVersion::get_many(
 		GetVersionsQuery {
