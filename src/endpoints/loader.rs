@@ -95,10 +95,10 @@ pub async fn create_version(
 		tag: payload.tag.trim_start_matches('v').to_string(),
 		prerelease: payload.prerelease,
 		commit_hash: payload.commit_hash.clone(),
-		win: payload.gd.win.clone(),
-		mac: payload.gd.mac.clone(),
-		android: payload.gd.android.clone(),
-		ios: payload.gd.ios.clone(),
+		win: payload.gd.win,
+		mac: payload.gd.mac,
+		android: payload.gd.android,
+		ios: payload.gd.ios,
 	}, &mut transaction).await {
 		transaction
 			.rollback()
