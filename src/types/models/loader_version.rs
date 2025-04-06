@@ -179,18 +179,19 @@ impl LoaderVersion {
 	}
 
 	pub async fn create_version(version: LoaderVersionCreate, pool: &mut PgConnection) -> Result<(), ApiError> {
-		match sqlx::query(
+		match sqlx::query!(
 			r#"INSERT INTO geode_versions
 				(tag, prerelease, mac, win, android, ios, commit_hash)
 			VALUES
-				($1, $2, $3, $4, $5, $6)"#)
-			.bind(version.tag)
-			.bind(version.prerelease)
-			.bind(version.mac)
-			.bind(version.win)
-			.bind(version.android)
-			.bind(version.ios)
-			.bind(version.commit_hash)
+				($1, $2, $3, $4, $5, $6, $7)"#, 
+			version.tag,
+			version.prerelease,
+			version.mac as _,
+			version.win as _,
+			version.android as _,
+			version.ios as _,
+			version.commit_hash
+		)
 			.execute(&mut *pool)
 			.await
 		{
