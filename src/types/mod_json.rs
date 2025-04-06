@@ -159,7 +159,7 @@ impl ModJson {
             Ok(j) => j,
             Err(e) => {
                 log::error!("{}", e);
-                return Err(ApiError::BadRequest("Invalid mod.json".to_string()));
+                return Err(ApiError::BadRequest(format!("Invalid mod.json: {e}")));
             }
         };
         json.version = json.version.trim_start_matches('v').to_string();

@@ -170,7 +170,7 @@ impl LoaderVersion {
 			.await
 		{
 			Ok(Some(r)) => Ok(r.into_loader_version()),
-			Ok(None) => Err(ApiError::NotFound("".to_string())),
+			Ok(None) => Err(ApiError::NotFound(format!("Loader version \"{tag}\" not found"))),
 			Err(e) => {
 					log::error!("{:?}", e);
 					Err(ApiError::DbError)
