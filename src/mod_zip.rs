@@ -112,7 +112,9 @@ pub async fn download_mod_hash_comp(
 pub fn bytes_to_ziparchive(bytes: Bytes) -> Result<ZipArchive<Cursor<Bytes>>, ApiError> {
     ZipArchive::new(Cursor::new(bytes))
         .inspect_err(|e| log::error!("Failed to create ZipArchive: {}", e))
-        .or(Err(ApiError::InternalError))
+        .or(Err(ApiError::BadRequest(
+            "Invalid .geode file, couldn't read archive".into(),
+        )))
 }
 
 async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ApiError> {
@@ -123,7 +125,7 @@ async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ApiError> {
     })?;
 
     let len = response.content_length().ok_or(ApiError::BadRequest(
-        "Couldn't determine ,geode file size".into(),
+        "Couldn't determine .geode file size".into(),
     ))?;
 
     if len > limit_bytes as u64 {
