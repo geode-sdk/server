@@ -240,7 +240,7 @@ pub async fn get_logo(
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
+    let image: Option<Vec<u8>> = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
     match image {
         Some(i) => {

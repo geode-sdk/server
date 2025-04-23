@@ -14,6 +14,9 @@ tags:
   - name: user
     description: User management
 
+  - name: loader
+    description: Loader information
+
 paths:
   /:
     get:
@@ -680,6 +683,153 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /v1/loader/versions:
+    get:
+      tags:
+        - loader
+      summary: Get all loader versions, paginated
+      description: Returns a paginated list of all loader versions. This list is sorted by when the version was added, not by their version number.
+
+      parameters:
+        - name: gd
+          in: query
+          description: Geometry Dash version
+          required: false
+          schema:
+            $ref: "#/components/schemas/GDVersionString"
+        - name: platform
+          in: query
+          description: Platform to filter version by [win, android, mac, ios]
+          required: false
+          schema:
+            $ref: "#/components/schemas/Platform"
+        - name: prerelease
+          in: query
+          description: If prerelease builds should be included in results
+          required: false
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoaderVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags:
+        - loader
+      summary: Create a new loader version (admin only)
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tag:
+                  required: true
+                  type: string
+                  description: "Git tag that references the release"
+                commit_hash:
+                  required: true
+                  type: string
+                prerelease:
+                  required: false
+                  type: boolean
+                gd:
+                  $ref: "#/components/schemas/GDVersionObject"
+
+      responses:
+        "204":
+          description: No Content (Version created)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/loader/versions/latest:
+    get:
+      tags:
+        - loader
+      summary: Gets the latest loader version
+      description: Returns the latest loader version, filtered based on the given parameters
+
+      parameters:
+        - name: gd
+          in: query
+          description: Geometry Dash version
+          required: false
+          schema:
+            $ref: "#/components/schemas/GDVersionString"
+        - name: platform
+          in: query
+          description: Platform to filter version by [win, android, mac, ios]
+          required: false
+          schema:
+            $ref: "#/components/schemas/Platform"
+        - name: prerelease
+          in: query
+          description: If prerelease builds should be accepted
+          required: false
+          schema:
+            type: boolean
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoaderVersion"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/loader/versions/{version}:
+    get:
+      tags:
+        - loader
+      summary: Gets a loader version
+
+      parameters:
+        - name: version
+          description: Geode Version
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ModVersionString"
+
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoaderVersion"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -902,7 +1052,7 @@ components:
     ModVersionStatus:
       type: string
       enum:
-        - approved
+        - accepted
         - rejected
         - pending
         - unlisted
@@ -1016,6 +1166,23 @@ components:
           type: string
           nullable: true
           description: Information given with the version's status (typically a reason)
+
+    LoaderVersion:
+      type: object
+      properties:
+        tag:
+          type: string
+        commit_hash:
+          type: string
+        version:
+          $ref: "#/components/schemas/ModVersionString"
+        prerelease:
+          type: boolean
+        gd:
+          $ref: "#/components/schemas/GDVersionObject"
+        created_at:
+          type: string
+          format: date-time
 
     Platform:
       type: string

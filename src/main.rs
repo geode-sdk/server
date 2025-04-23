@@ -80,6 +80,9 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
+            .service(endpoints::loader::get_one)
+            .service(endpoints::loader::create_version)
+            .service(endpoints::loader::get_many)
             .service(endpoints::health::health)
     })
     .bind(("0.0.0.0", port))?;
