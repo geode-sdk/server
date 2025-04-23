@@ -1,8 +1,7 @@
-use std::thread::ThreadId;
-
 use crate::config::AppData;
 use crate::database::repository::developers;
 use crate::database::repository::mod_tags;
+use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
@@ -102,7 +101,7 @@ pub async fn get(
         _ => false,
     };
 
-    let mut the_mod = mods::get_one_with_md(&id, &mut pool)
+    let mut the_mod: Mod = mods::get_one(&id, true, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
 
@@ -112,24 +111,20 @@ pub async fn get(
         .map(|t| t.name)
         .collect();
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut pool).await?;
+    the_mod.versions = mod_versions::get_for_mod(
+        &the_mod.id,
+        Some(&[ModVersionStatusEnum::Accepted]),
+        &mut pool,
+    )
+    .await?;
+    for i in &mut the_mod.versions {
+        i.modify_metadata(data.app_url(), has_extended_permissions);
+    }
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
         payload: the_mod,
     }))
-    // let found = Mod::get_one(&id, false, &mut pool).await?;
-    // match found {
-    //     Some(mut m) => {
-    //         for i in &mut m.versions {
-    //             i.modify_metadata(data.app_url(), has_extended_permissions);
-    //         }
-    //         Ok(web::Json(ApiResponse {
-    //             error: "".into(),
-    //             payload: m,
-    //         }))
-    //     }
-    //     None => Err(),
-    // }
 }
 
 #[post("/v1/mods")]

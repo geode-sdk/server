@@ -35,39 +35,45 @@ impl ModRecordGetOne {
     }
 }
 
-/// Doesn't fetch about.md or changelog.md since those could be big files
-pub async fn get_one(id: &str, conn: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
-    sqlx::query_as!(
-        ModRecordGetOne,
-        "SELECT
+/// Fetches information for a mod, without versions or other added info.
+///
+/// The second parameter decides if about.md and changelog.md are fetched from the database. Those are pretty big files, so only fetch them if needed.
+pub async fn get_one(
+    id: &str,
+    include_md: bool,
+    conn: &mut PgConnection,
+) -> Result<Option<Mod>, ApiError> {
+    if include_md {
+        sqlx::query_as!(
+            ModRecordGetOne,
+            "SELECT
+                m.id, m.repository, m.about, m.changelog, m.featured,
+                m.download_count, m.created_at, m.updated_at
+            FROM mods m
+            WHERE id = $1",
+            id
+        )
+        .fetch_optional(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
+        .or(Err(ApiError::DbError))
+        .map(|x| x.map(|x| x.into_mod()))
+    } else {
+        sqlx::query_as!(
+            ModRecordGetOne,
+            "SELECT
             m.id, m.repository, NULL as about, NULL as changelog, m.featured,
             m.download_count, m.created_at, m.updated_at
         FROM mods m
         WHERE id = $1",
-        id
-    )
-    .fetch_optional(conn)
-    .await
-    .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
-    .or(Err(ApiError::DbError))
-    .map(|x| x.map(|x| x.into_mod()))
-}
-
-pub async fn get_one_with_md(id: &str, conn: &mut PgConnection) -> Result<Option<Mod>, ApiError> {
-    sqlx::query_as!(
-        ModRecordGetOne,
-        "SELECT
-            m.id, m.repository, m.about, m.changelog, m.featured,
-            m.download_count, m.created_at, m.updated_at
-        FROM mods m
-        WHERE id = $1",
-        id
-    )
-    .fetch_optional(conn)
-    .await
-    .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
-    .or(Err(ApiError::DbError))
-    .map(|x| x.map(|x| x.into_mod()))
+            id
+        )
+        .fetch_optional(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
+        .or(Err(ApiError::DbError))
+        .map(|x| x.map(|x| x.into_mod()))
+    }
 }
 
 pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {

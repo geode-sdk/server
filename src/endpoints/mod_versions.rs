@@ -252,7 +252,7 @@ pub async fn create_version(
 
     let id = path.into_inner();
 
-    let the_mod = mods::get_one(&id, &mut pool)
+    let the_mod = mods::get_one(&id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", &id)))?;
 
@@ -384,7 +384,7 @@ pub async fn update_version(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    let the_mod = mods::get_one(&path.id, &mut pool)
+    let the_mod = mods::get_one(&path.id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", path.id)))?;
 
