@@ -1,5 +1,4 @@
 use crate::types::api::ApiError;
-use crate::types::mod_json::ModJson;
 use crate::types::models::tag::Tag;
 use sqlx::PgConnection;
 

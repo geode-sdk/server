@@ -1,10 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{
-    postgres::{PgHasArrayType, PgTypeInfo},
-    PgConnection, Postgres, QueryBuilder,
-};
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 use crate::types::api::ApiError;
 
