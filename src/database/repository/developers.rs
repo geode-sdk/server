@@ -203,7 +203,8 @@ pub async fn get_all_for_mod(
             md.is_owner
         FROM developers dev
         INNER JOIN mods_developers md ON dev.id = md.developer_id
-        WHERE md.mod_id = $1",
+        WHERE md.mod_id = $1
+        ORDER BY md.is_owner DESC, dev.id ASC",
         mod_id
     )
     .fetch_all(conn)
