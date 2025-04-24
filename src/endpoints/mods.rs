@@ -15,7 +15,6 @@ use crate::types::mod_json::ModJson;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
-use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{get, post, put, web, HttpResponse, Responder};
@@ -145,94 +144,54 @@ pub async fn create(
         .await
         .or(Err(ApiError::DbAcquireError))?;
     let bytes = mod_zip::download_mod(&payload.download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &payload.download_link, true)?;
+    let json = ModJson::from_zip(bytes, &payload.download_link, false)?;
     json.validate()?;
 
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
-    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-    let (mut the_mod, mut version) = if existing.is_none() {
-        // Easy path: mod doesn't exist
+    if let Some(s) = &existing {
+        let versions = mod_versions::get_for_mod(&s.id, None, &mut pool).await?;
 
-        let mut created: Mod = mods::create(&json, &mut tx).await?;
-        mods::assign_owner(&created.id, dev.id, &mut tx).await?;
-        if let Some(tags) = &json.tags {
-            let tag_list = mod_tags::parse_tag_list(tags, &mut tx).await?;
-            mod_tags::update_for_mod(&created.id, &tag_list, &mut tx).await?;
+        if !versions.is_empty() {
+            return Ok(HttpResponse::Conflict().json(ApiResponse {
+                error: format!("Mod {} already exists! Submit a new version.", s.id),
+                payload: "",
+            }));
         }
-        if let Some(l) = json.links.clone() {
-            created.links = Some(
-                mod_links::upsert(&created.id, l.community, l.homepage, l.source, &mut tx).await?,
-            );
-        }
+    }
 
-        // First version is always not accepted, even if the developer is verified
-        let version = mod_versions::create_from_json(&json, false, &mut tx).await?;
-
-        (created, version)
-    } else {
-        // Hard path: mod already exists
-
-        let mut existing = existing.unwrap();
-
-        if !developers::has_access_to_mod(dev.id, &existing.id, &mut tx).await? {
+    if let Some(m) = &existing {
+        if !developers::has_access_to_mod(dev.id, &m.id, &mut pool).await? {
             return Err(ApiError::Forbidden);
         }
+    }
 
-        existing.versions = mod_versions::get_for_mod(&existing.id, None, &mut tx).await?;
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
-        let mut pending: Option<ModVersion> = None;
-        let mut accepted: u32 = 0;
-        let mut unlisted: u32 = 0;
+    let mod_already_exists = existing.is_some();
 
-        for i in &existing.versions {
-            match i.status {
-                ModVersionStatusEnum::Accepted => accepted += 1,
-                ModVersionStatusEnum::Pending => pending = Some(i.clone()),
-                ModVersionStatusEnum::Unlisted => unlisted += 1,
-                _ => {}
-            }
-        }
-
-        let has_accepted_versions = accepted > 0 || unlisted > 0;
-
-        // Allow verified auto-accepted on updates, never on the first version
-        let make_accepted = dev.verified && has_accepted_versions;
-
-        let version = if !has_accepted_versions && pending.is_none() {
-            mod_versions::create_from_json(&json, make_accepted, &mut tx).await?
-        } else if has_accepted_versions && pending.is_none() {
-            mod_versions::create_from_json(&json, dev.verified, &mut tx).await?
-        } else {
-            let pending_ver = pending.unwrap();
-
-            dependencies::clear(pending_ver.id, &mut tx).await?;
-            incompatibilities::clear(pending_ver.id, &mut tx).await?;
-            mod_gd_versions::clear(pending_ver.id, &mut tx).await?;
-            mod_versions::update_pending_version(pending_ver.id, &json, make_accepted, &mut tx)
-                .await?
-        };
-
-        // If the new version gets accepted automatically, update stuff on the mod itself
-        if make_accepted {
-            // This copies 2 possibly very big strings. Cry about it >:)
-            let mut existing = mods::update_with_json(existing, &json, &mut tx).await?;
-            if let Some(tags) = &json.tags {
-                let tag_list = mod_tags::parse_tag_list(tags, &mut tx).await?;
-                mod_tags::update_for_mod(&existing.id, &tag_list, &mut tx).await?;
-            }
-            if let Some(l) = json.links.clone() {
-                existing.links = Some(
-                    mod_links::upsert(&existing.id, l.community, l.homepage, l.source, &mut tx)
-                        .await?,
-                );
-            }
-
-            (existing, version)
-        } else {
-            (existing, version)
-        }
+    // Wacky stuff
+    let mut the_mod = if let Some(m) = existing {
+        m
+    } else {
+        mods::create(&json, &mut tx).await?
     };
+
+    if !mod_already_exists {
+        mods::assign_owner(&the_mod.id, dev.id, &mut tx).await?;
+    }
+
+    if let Some(tags) = &json.tags {
+        let tag_list = mod_tags::parse_tag_list(tags, &mut tx).await?;
+        mod_tags::update_for_mod(&the_mod.id, &tag_list, &mut tx).await?;
+    }
+    if let Some(l) = json.links.clone() {
+        the_mod.links =
+            Some(mod_links::upsert(&the_mod.id, l.community, l.homepage, l.source, &mut tx).await?);
+    }
+
+    // First version is always not accepted, even if the developer is verified
+    let mut version = mod_versions::create_from_json(&json, false, &mut tx).await?;
 
     version.dependencies = Some(
         dependencies::create(version.id, &json, &mut tx)
@@ -250,9 +209,6 @@ pub async fn create(
     );
     version.gd = mod_gd_versions::create(version.id, &json, &mut tx).await?;
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut tx).await?;
-
-    // Remove the version (if we need an update on a pending version) and insert our new version
-    the_mod.versions.retain(|x| x.id != version.id);
     the_mod.versions.insert(0, version);
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
