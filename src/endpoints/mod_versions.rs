@@ -388,7 +388,7 @@ pub async fn update_version(
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", path.id)))?;
 
-    if !dev.admin && !developers::has_access_to_mod(dev.id, &the_mod.id, &mut pool).await? {
+    if !dev.admin {
         return Err(ApiError::Forbidden);
     }
 
