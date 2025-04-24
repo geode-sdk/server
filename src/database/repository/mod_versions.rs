@@ -100,7 +100,7 @@ pub async fn get_for_mod(
             mv.download_link, mv.download_count, mv.hash,
             mv.geode, mv.early_load, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
-            mvs.status as "status: _", mvs.info
+            mvs.status, mvs.info
         FROM mod_versions mv
         INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
         WHERE mv.mod_id = $1
