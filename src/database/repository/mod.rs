@@ -6,6 +6,7 @@ pub mod github_web_logins;
 pub mod incompatibilities;
 pub mod mod_downloads;
 pub mod mod_gd_versions;
+pub mod mod_links;
 pub mod mod_tags;
 pub mod mod_version_statuses;
 pub mod mod_versions;
