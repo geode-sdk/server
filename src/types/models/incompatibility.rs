@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::types::api::ApiError;
 use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{PgConnection, Postgres};
 
 use super::{
     dependency::ResponseDependency,
