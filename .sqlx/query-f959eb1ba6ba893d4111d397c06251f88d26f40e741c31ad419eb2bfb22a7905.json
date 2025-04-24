@@ -1,0 +1,108 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_versions mv\n            SET name = $1,\n            version = $2,\n            download_link = $3,\n            hash = $4,\n            geode = $5,\n            early_load = $6,\n            api = $7,\n            description = $8,\n            updated_at = NOW()\n        FROM mod_version_statuses mvs\n        WHERE mv.status_id = mvs.id\n        AND mvs.status = 'pending'\n        AND mv.id = $9\n        RETURNING mv.id,\n            name,\n            version,\n            download_link,\n            download_count,\n            hash,\n            geode,\n            early_load,\n            api,\n            status_id,\n            description,\n            mod_id,\n            mv.created_at,\n            mv.updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "download_link",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "geode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "early_load",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "status_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f959eb1ba6ba893d4111d397c06251f88d26f40e741c31ad419eb2bfb22a7905"
+}

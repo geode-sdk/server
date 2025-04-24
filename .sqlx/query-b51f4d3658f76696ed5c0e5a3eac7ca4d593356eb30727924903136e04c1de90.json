@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_version_statuses\n            SET status = 'accepted'\n            WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b51f4d3658f76696ed5c0e5a3eac7ca4d593356eb30727924903136e04c1de90"
+}

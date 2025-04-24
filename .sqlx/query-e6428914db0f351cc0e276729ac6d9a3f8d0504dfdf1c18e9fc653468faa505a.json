@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            dev.id,\n            dev.username,\n            dev.display_name,\n            md.is_owner\n        FROM developers dev\n        INNER JOIN mods_developers md ON dev.id = md.developer_id\n        WHERE md.mod_id = $1",
+  "query": "SELECT\n            id,\n            name,\n            display_name,\n            is_readonly\n        FROM mod_tags mt\n        INNER JOIN mods_mod_tags mmt ON mmt.tag_id = mt.id\n        WHERE mmt.mod_id = $1",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "username",
+        "name": "name",
         "type_info": "Text"
       },
       {
@@ -20,7 +20,7 @@
       },
       {
         "ordinal": 3,
-        "name": "is_owner",
+        "name": "is_readonly",
         "type_info": "Bool"
       }
     ],
@@ -32,9 +32,9 @@
     "nullable": [
       false,
       false,
-      false,
+      true,
       false
     ]
   },
-  "hash": "fb247485484cc4387e482a0327bd2516397a2069d65753588f4950e46b847f99"
+  "hash": "e6428914db0f351cc0e276729ac6d9a3f8d0504dfdf1c18e9fc653468faa505a"
 }

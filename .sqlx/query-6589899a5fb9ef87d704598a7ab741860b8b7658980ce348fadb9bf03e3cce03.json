@@ -1,0 +1,114 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO incompatibilities\n        (mod_id, incompatibility_id, version, compare, importance)\n        SELECT * FROM UNNEST(\n            $1::int4[],\n            $2::text[],\n            $3::text[],\n            $4::version_compare[],\n            $5::incompatibility_importance[]\n        )\n        RETURNING \n            mod_id,\n            incompatibility_id,\n            version,\n            compare as \"compare: _\",\n            importance as \"importance: _\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "incompatibility_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "compare: _",
+        "type_info": {
+          "Custom": {
+            "name": "version_compare",
+            "kind": {
+              "Enum": [
+                "=",
+                ">",
+                "<",
+                ">=",
+                "<="
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "importance: _",
+        "type_info": {
+          "Custom": {
+            "name": "incompatibility_importance",
+            "kind": {
+              "Enum": [
+                "breaking",
+                "conflicting",
+                "superseeded",
+                "superseded"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4Array",
+        "TextArray",
+        "TextArray",
+        {
+          "Custom": {
+            "name": "version_compare[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "version_compare",
+                  "kind": {
+                    "Enum": [
+                      "=",
+                      ">",
+                      "<",
+                      ">=",
+                      "<="
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "incompatibility_importance[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "incompatibility_importance",
+                  "kind": {
+                    "Enum": [
+                      "breaking",
+                      "conflicting",
+                      "superseeded",
+                      "superseded"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6589899a5fb9ef87d704598a7ab741860b8b7658980ce348fadb9bf03e3cce03"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "update mod_versions set status_id = $1 where id = $2",
+  "query": "UPDATE mod_versions SET status_id = $1 WHERE id = $2",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "44245c0f58008601a79471b07f9c0838a4153b0f10ad158820dc0b3614acc5f5"
+  "hash": "8974d789744064e303867e9c75725d180da86f00de872c6838263a42c167185b"
 }

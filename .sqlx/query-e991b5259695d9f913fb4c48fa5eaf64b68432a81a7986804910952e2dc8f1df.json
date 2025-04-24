@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_versions\n        (name, version, description, download_link,\n        hash, geode, early_load, api, mod_id, status_id,\n        created_at, updated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0,\n        NOW(), NOW())\n        RETURNING\n            id, name, version, description,\n            download_link, hash, geode,\n            early_load, api, mod_id,\n            created_at, updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "download_link",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "geode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "early_load",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e991b5259695d9f913fb4c48fa5eaf64b68432a81a7986804910952e2dc8f1df"
+}

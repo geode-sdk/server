@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_links\n            (mod_id, community, homepage, source)\n        VALUES\n            ($1, $2, $3, $4)\n        ON CONFLICT (mod_id)\n        DO UPDATE SET\n            community = $2,\n            homepage = $3,\n            source = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "79d60001f83627e502935c621453b21d518310d22b716a4adb1b47a94ec14169"
+}

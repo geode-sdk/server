@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mods_mod_tags\n            WHERE mod_id = $1\n            AND tag_id = ANY($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4ce3ea4c0b01fa04ad592c313c4af5caf420110561cfe27637a98c66c258699"
+}

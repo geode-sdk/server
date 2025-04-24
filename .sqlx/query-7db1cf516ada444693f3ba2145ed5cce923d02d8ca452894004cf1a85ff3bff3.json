@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mods\n        SET repository = $1,\n        about = $2,\n        changelog = $3,\n        image = $4,\n        updated_at = NOW()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7db1cf516ada444693f3ba2145ed5cce923d02d8ca452894004cf1a85ff3bff3"
+}
