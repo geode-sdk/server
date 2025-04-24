@@ -6,8 +6,8 @@ use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 
 use crate::config::AppData;
 use crate::database::repository::{
-    dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_tags,
-    mod_versions, mods,
+    dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
+    mod_tags, mod_versions, mods,
 };
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
@@ -340,6 +340,16 @@ pub async fn create_version(
     incompatibilities::create(version.id, &json, &mut tx).await?;
 
     if verified || accepted_versions == 0 {
+        if let Some(links) = json.links.clone() {
+            mod_links::upsert(
+                &the_mod.id,
+                links.community,
+                links.homepage,
+                links.source,
+                &mut tx,
+            )
+            .await?;
+        }
         if let Some(tags) = &json.tags {
             if !tags.is_empty() {
                 let tags = mod_tags::parse_tag_list(tags, &mut tx).await?;
