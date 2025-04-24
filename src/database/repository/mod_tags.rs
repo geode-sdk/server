@@ -122,26 +122,24 @@ pub async fn update_for_mod(
         .or(Err(ApiError::DbError))?;
     }
 
-    if insertable.is_empty() {
-        return Ok(());
+    if !insertable.is_empty() {
+        let mod_id = vec![id.into(); insertable.len()];
+
+        sqlx::query!(
+            "INSERT INTO mods_mod_tags
+                (mod_id, tag_id)
+            SELECT * FROM UNNEST(
+                $1::text[],
+                $2::int4[]
+            )",
+            &mod_id,
+            &insertable
+        )
+        .execute(&mut *conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to insert tags: {}", e))
+        .or(Err(ApiError::DbError))?;
     }
-
-    let mod_id = vec![id.into(); insertable.len()];
-
-    sqlx::query!(
-        "INSERT INTO mods_mod_tags
-        (mod_id, tag_id)
-        SELECT * FROM UNNEST(
-            $1::text[],
-            $2::int4[]
-        )",
-        &mod_id,
-        &insertable
-    )
-    .execute(&mut *conn)
-    .await
-    .inspect_err(|e| log::error!("Failed to insert tags: {}", e))
-    .or(Err(ApiError::DbError))?;
 
     Ok(())
 }
