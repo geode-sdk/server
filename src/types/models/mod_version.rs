@@ -1,16 +1,13 @@
 use std::collections::HashMap;
 
 use crate::database::repository::developers;
-use crate::types::{
-    api::{create_download_link, ApiError, PaginatedData},
-    mod_json::ModJson,
-};
+use crate::types::api::{create_download_link, ApiError, PaginatedData};
 use chrono::SecondsFormat;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder, Row,
+    PgConnection, Postgres, QueryBuilder,
 };
 
 use super::{
@@ -18,7 +15,7 @@ use super::{
     developer::ModDeveloper,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
-    mod_version_status::{ModVersionStatus, ModVersionStatusEnum},
+    mod_version_status::ModVersionStatusEnum,
     tag::Tag,
 };
 
@@ -535,98 +532,6 @@ impl ModVersion {
         version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
         Ok(version)
-    }
-
-    pub async fn create_from_json(
-        json: &ModJson,
-        make_accepted: bool,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
-            .execute(&mut *pool)
-            .await
-        {
-            log::error!(
-                "Error while updating constraints for mod_version_statuses: {}",
-                e
-            );
-            return Err(ApiError::DbError);
-        };
-
-        // If someone finds a way to use macros with optional parameters you can impl it here
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
-        if json.description.is_some() {
-            builder.push("description, ");
-        }
-        builder
-            .push("name, version, download_link, hash, geode, early_load, api, mod_id, status_id) VALUES (");
-        let mut separated = builder.separated(", ");
-        if json.description.is_some() {
-            separated.push_bind(&json.description);
-        }
-        separated.push_bind(&json.name);
-        separated.push_bind(&json.version);
-        separated.push_bind(&json.download_url);
-        separated.push_bind(&json.hash);
-        separated.push_bind(&json.geode);
-        separated.push_bind(json.early_load);
-        separated.push_bind(json.api.is_some());
-        separated.push_bind(&json.id);
-        // set status_id = 0, will be checked by foreign key at the end of the transaction
-        separated.push_bind(0);
-        separated.push_unseparated(") RETURNING id");
-        let result = builder.build().fetch_one(&mut *pool).await;
-        let result = match result {
-            Err(e) => {
-                log::error!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(row) => row,
-        };
-        let id = result.get::<i32, &str>("id");
-        let json_tags = json.tags.clone().unwrap_or_default();
-        let tags = Tag::get_tag_ids(json_tags, pool).await?;
-        Tag::update_mod_tags(&json.id, tags.into_iter().map(|x| x.id).collect(), pool).await?;
-        ModGDVersion::create_from_json(json.gd.to_create_payload(json), id, pool).await?;
-        let dependencies = json.prepare_dependencies_for_create()?;
-        if !dependencies.is_empty() {
-            Dependency::create_for_mod_version(id, dependencies, pool).await?;
-        }
-        let incompat = json.prepare_incompatibilities_for_create()?;
-        if !incompat.is_empty() {
-            Incompatibility::create_for_mod_version(id, incompat, pool).await?;
-        }
-
-        let status = if make_accepted {
-            ModVersionStatusEnum::Accepted
-        } else {
-            ModVersionStatusEnum::Pending
-        };
-
-        let status_id =
-            ModVersionStatus::create_for_mod_version(id, status, None, None, pool).await?;
-        if let Err(e) = sqlx::query!(
-            "update mod_versions set status_id = $1 where id = $2",
-            status_id,
-            id
-        )
-        .execute(&mut *pool)
-        .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        }
-
-        // Revert deferred constraints
-        if let Err(e) = sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey IMMEDIATE")
-            .execute(&mut *pool)
-            .await
-        {
-            log::error!("{}", e);
-            return Err(ApiError::DbError);
-        };
-
-        Ok(())
     }
 
     pub async fn get_one(
