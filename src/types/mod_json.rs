@@ -355,6 +355,20 @@ impl ModJson {
             )));
         }
 
+        if Version::parse(self.version.trim_start_matches('v')).is_err() {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid mod.json mod version: {}",
+                self.version
+            )));
+        };
+
+        if Version::parse(self.geode.trim_start_matches('v')).is_err() {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid mod.json geode version: {}",
+                self.geode
+            )));
+        };
+
         if self.developer.is_none() && self.developers.is_none() {
             return Err(ApiError::BadRequest(
                 "No developer specified on mod.json".to_string(),
