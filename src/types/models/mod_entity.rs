@@ -1279,7 +1279,7 @@ impl Mod {
         }
 
         let geode_pre = geode.pre.to_string();
-        let geode_pre = (!geode_pre.is_empty()).then(|| geode_pre);
+        let geode_pre = (!geode_pre.is_empty()).then_some(geode_pre);
 
         let result = sqlx::query_as!(
             QueryResult,
@@ -1299,7 +1299,7 @@ impl Mod {
                 INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
                 WHERE mvs.status = 'accepted'
                 AND mgv.platform = $1
-                AND (mgv.gd = '*' OR mgv.gd = $2)
+                AND (mgv.gd = ANY($2))
                 AND m.id = ANY($3)
                 AND $4 = mv.geode_major
                 AND $5 >= mv.geode_minor
@@ -1321,7 +1321,7 @@ impl Mod {
             ) q
             WHERE q.rn = 1",
             platforms as VerPlatform,
-            gd as GDVersionEnum,
+            &[GDVersionEnum::All, gd] as &[GDVersionEnum],
             ids,
             i32::try_from(geode.major).unwrap_or_default(),
             i32::try_from(geode.minor).unwrap_or_default(),

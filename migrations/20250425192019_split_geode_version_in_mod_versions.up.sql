@@ -6,7 +6,7 @@ ADD COLUMN geode_minor INTEGER;
 ALTER TABLE mod_versions
 ADD COLUMN geode_patch INTEGER;
 ALTER TABLE mod_versions
-ADD COLUMN geode_meta TEXT;
+ADD COLUMN geode_meta TEXT COLLATE en_natural;
 
 UPDATE mod_versions mv
 SET geode_major = TRIM('v' FROM SPLIT_PART(mv.geode, '.', 1))::INTEGER,
@@ -29,7 +29,8 @@ SET NOT NULL;
 
 ALTER TABLE mod_versions DROP COLUMN geode;
 
-CREATE INDEX idx_mod_versions_geode_major_minor ON mod_versions(geode_major, geode_minor);
+CREATE INDEX idx_mod_versions_geode_major ON mod_versions(geode_major);
+CREATE INDEX idx_mod_versions_geode_minor ON mod_versions(geode_major);
 CREATE INDEX idx_mod_versions_geode_patch ON mod_versions(geode_patch);
 CREATE INDEX idx_mod_versions_geode_meta ON mod_versions(geode_meta);
 

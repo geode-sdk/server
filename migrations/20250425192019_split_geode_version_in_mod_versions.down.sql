@@ -3,7 +3,8 @@
 ALTER TABLE mod_versions
 ADD COLUMN geode TEXT;
 
-DROP INDEX idx_mod_versions_geode_major_minor;
+DROP INDEX idx_mod_versions_geode_major;
+DROP INDEX idx_mod_versions_geode_minor;
 DROP INDEX idx_mod_versions_geode_patch;
 DROP INDEX idx_mod_versions_geode_meta;
 
