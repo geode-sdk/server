@@ -128,25 +128,23 @@ impl Dependency {
         Ok(())
     }
 
-    pub async fn clear_for_mod_version(
-        id: i32,
-        pool: &mut PgConnection
-    ) -> Result<(), ApiError> {
+    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
         sqlx::query!(
             "DELETE FROM dependencies
             WHERE dependent_id = $1",
             id
         )
-            .execute(&mut *pool)
-            .await
-            .map(|_| ())
-            .map_err(|err| {
-                log::error!(
-                    "Failed to remove dependencies for mod version {}: {}",
-                    id, err
-                );
-                ApiError::DbError
-            })
+        .execute(&mut *pool)
+        .await
+        .map(|_| ())
+        .map_err(|err| {
+            log::error!(
+                "Failed to remove dependencies for mod version {}: {}",
+                id,
+                err
+            );
+            ApiError::DbError
+        })
     }
 
     pub async fn get_for_mod_versions(
@@ -157,6 +155,8 @@ impl Dependency {
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
         // Fellow developer, I am sorry for what you're about to see :)
+        // I present to you the ugly monster of the Geode index
+        // The *GigaQuery™*
 
         #[derive(sqlx::FromRow)]
         struct QueryResult {
@@ -166,6 +166,11 @@ impl Dependency {
             dependency: String,
             importance: DependencyImportance,
         }
+
+        let geode_pre = geode.and_then(|x| {
+            let pre = x.pre.to_string();
+            (!pre.is_empty()).then_some(pre)
+        });
 
         let q = sqlx::query_as::<Postgres, QueryResult>(
             r#"
@@ -199,18 +204,23 @@ impl Dependency {
                     AND mv.id = ANY($1)
                     AND ($2 IS NULL OR dpcy_mgv.gd = $2 OR dpcy_mgv.gd = '*')
                     AND ($3 IS NULL OR dpcy_mgv.platform = $3)
-                    AND ($4 IS NULL OR (
-                        CASE
-                            WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version.geode
-                            ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(dpcy_version.geode, '.', 1)
-                                AND SPLIT_PART(dpcy_version.geode, '-', 2) NOT LIKE 'alpha%'
-                                AND SPLIT_PART(dpcy_version.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
-                                AND (
-                                    SPLIT_PART(dpcy_version.geode, '-', 2) = '' 
-                                    OR SPLIT_PART(dpcy_version.geode, '-', 2) <= SPLIT_PART($4, '-', 2)
-                                )
-                        END
-                    ))
+                    AND ($4 IS NULL OR $4 = dpcy_version.geode_major)
+                    AND ($5 IS NULL OR $5 >= dpcy_version.geode_minor)
+                    AND (
+                        ($7 IS NULL AND dpcy_version.geode_meta NOT ILIKE 'alpha%')
+                        OR (
+                            $7 ILIKE 'alpha%'
+                            AND $5 = dpcy_version.geode_minor
+                            AND $6 = dpcy_version.geode_patch
+                            AND $7 = dpcy_version.geode_meta
+                        )
+                        OR (
+                            dpcy_version.geode_meta IS NULL
+                            OR $5 > dpcy_version.geode_minor
+                            OR $6 > dpcy_version.geode_patch
+                            OR (dpcy_version.geode_meta NOT ILIKE 'alpha%' AND $7 >= dpcy_version.geode_meta)
+                        )
+                    )
                     AND SPLIT_PART(dpcy_version.version, '.', 1) = SPLIT_PART(dp.version, '.', 1)
                     AND CASE
                         WHEN dp.version = '*' THEN true
@@ -253,18 +263,23 @@ impl Dependency {
                     WHERE dpcy_status2.status = 'accepted'
                     AND ($2 IS NULL OR dpcy_mgv2.gd = $2 OR dpcy_mgv2.gd = '*')
                     AND ($3 IS NULL OR dpcy_mgv2.platform = $3)
-                    AND ($4 IS NULL OR (
-                        CASE
-                            WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = dpcy_version2.geode
-                            ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(dpcy_version2.geode, '.', 1) 
-                                AND SPLIT_PART(dpcy_version2.geode, '-', 2) NOT LIKE 'alpha%'
-                                AND SPLIT_PART(dpcy_version2.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
-                                AND (
-                                    SPLIT_PART(dpcy_version2.geode, '-', 2) = '' 
-                                    OR SPLIT_PART(dpcy_version2.geode, '-', 2) <= SPLIT_PART($4, '-', 2)
-                                )
-                        END
-                    ))
+                    AND ($4 IS NULL OR $4 = dpcy_version2.geode_major)
+                    AND ($5 IS NULL OR $5 >= dpcy_version2.geode_minor)
+                    AND (
+                        ($7 IS NULL AND dpcy_version2.geode_meta NOT ILIKE 'alpha%')
+                        OR (
+                            $7 ILIKE 'alpha%'
+                            AND $5 = dpcy_version2.geode_minor
+                            AND $6 = dpcy_version2.geode_patch
+                            AND $7 = dpcy_version2.geode_meta
+                        )
+                        OR (
+                            dpcy_version2.geode_meta IS NULL
+                            OR $5 > dpcy_version2.geode_minor
+                            OR $6 > dpcy_version2.geode_patch
+                            OR (dpcy_version2.geode_meta NOT ILIKE 'alpha%' AND $7 >= dpcy_version2.geode_meta)
+                        )
+                    )
                     AND SPLIT_PART(dpcy_version2.version, '.', 1) = SPLIT_PART(dp2.version, '.', 1)
                     AND CASE
                         WHEN dp2.version = '*' THEN true
@@ -283,7 +298,10 @@ impl Dependency {
         ).bind(ids)
         .bind(gd)
         .bind(platform)
-        .bind(geode.map(|x| x.to_string()));
+        .bind(geode.map(|x| i32::try_from(x.major).unwrap_or_default()))
+        .bind(geode.map(|x| i32::try_from(x.minor).unwrap_or_default()))
+        .bind(geode.map(|x| i32::try_from(x.patch).unwrap_or_default()))
+        .bind(geode_pre);
 
         let result = match q.fetch_all(&mut *pool).await {
             Ok(d) => d,

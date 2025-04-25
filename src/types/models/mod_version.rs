@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
+use crate::database::repository::developers;
+use crate::types::{
+    api::{create_download_link, ApiError, PaginatedData},
+    mod_json::ModJson,
+    models::mod_entity::Mod,
+};
 use chrono::SecondsFormat;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder, Row,
-};
-use crate::database::repository::developers;
-use crate::types::{
-    api::{create_download_link, ApiError, PaginatedData},
-    mod_json::ModJson,
-    models::mod_entity::Mod,
 };
 
 use super::{
@@ -152,7 +152,8 @@ impl ModVersion {
         let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"
             SELECT mv.id, mv.name, mv.description, mv.version,
-            mv.download_link, mv.download_count, mv.hash, mv.geode,
+            mv.download_link, mv.download_count, mv.hash,
+            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
             mv.early_load, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -314,7 +315,9 @@ impl ModVersion {
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.hash, q.geode, q.download_count,
                 q.early_load, q.api, q.mod_id, q.status, q.created_at, q.updated_at FROM (
                     SELECT
-                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count, mvs.status,
+                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                    format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
+                    mv.download_count, mvs.status,
                     mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at, row_number() over (partition by m.id order by mv.id desc) rn FROM mods m 
                     INNER JOIN mod_versions mv ON m.id = mv.mod_id
                     INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -333,30 +336,47 @@ impl ModVersion {
         if let Some(geode) = geode {
             let geode = geode.trim_start_matches('v').to_string();
             if let Ok(parsed) = Version::parse(&geode) {
+                let major = i32::try_from(parsed.major).unwrap_or_default();
+                let minor = i32::try_from(parsed.minor).unwrap_or_default();
+                let patch = i32::try_from(parsed.patch).unwrap_or_default();
+                let meta = parsed.pre.to_string();
+                let meta = (!meta.is_empty()).then_some(meta);
+
+                // Always match major version
+                let sql = " AND mv.geode_major = ";
+                builder.push(sql);
+                builder.push_bind(major);
+
                 // If alpha, match exactly that version
                 if parsed.pre.contains("alpha") {
-                    let sql = " AND mv.geode = ";
+                    let sql = " AND mv.geode_minor = ";
                     builder.push(sql);
-                    builder.push_bind(parsed.to_string());
+                    builder.push_bind(minor);
+                    let sql = " AND mv.geode_patch = ";
+                    builder.push(sql);
+                    builder.push_bind(patch);
+                    let sql = " AND mv.geode_meta = ";
+                    builder.push(sql);
+                    builder.push_bind(meta.clone());
                 } else {
-                    let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
+                    let sql = " AND mv.geode_minor <= ";
                     builder.push(sql);
-                    builder.push_bind(parsed.major.to_string());
+                    builder.push_bind(minor);
 
-                    let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
+                    let sql = " AND (mv.geode_meta IS NULL OR mv.geode_minor < ";
                     builder.push(sql);
-                    builder.push_bind(parsed.minor.to_string());
+                    builder.push_bind(minor);
 
-                    // Match only higher betas (or no beta)
-                    if parsed.pre.contains("beta") {
-                        let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
-                            OR SPLIT_PART(mv.geode, '-', 2) <=";
-                        builder.push(sql);
-                        builder.push_bind(parsed.pre.to_string());
-                        builder.push(")");
-                    }
+                    let sql = " OR mv.geode_patch < ";
+                    builder.push(sql);
+                    builder.push_bind(patch);
 
-                    builder.push(")");
+                    let sql = " OR (mv.geode_meta NOT ILIKE 'alpha%' AND mv.geode_meta <= ";
+                    builder.push(sql);
+                    builder.push_bind(meta.clone());
+
+                    let sql = "))";
+                    builder.push(sql);
                 }
             }
         }
@@ -411,7 +431,9 @@ impl ModVersion {
 
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT DISTINCT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash, mv.geode, mv.download_count,
+            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
+            mv.download_count,
             mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at, mvs.status FROM mod_versions mv 
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE mvs.status = 'pending' AND mv.mod_id IN ("#,
@@ -459,7 +481,9 @@ impl ModVersion {
                 q.created_at, q.updated_at
             FROM (
                 SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link, 
-                    mv.hash, mv.geode, mv.download_count, mvs.status,
+                    mv.hash,
+                    format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
+                    mv.download_count, mvs.status,
                     mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                     row_number() over (partition by m.id order by mv.id desc) rn 
                 FROM mods m 
@@ -550,13 +574,20 @@ impl ModVersion {
             return Err(ApiError::DbError);
         };
 
+        let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
+            "Invalid geode version in mod.json".into(),
+        )))?;
+
+        let geode_pre = geode.pre.to_string();
+        let geode_pre = (!geode_pre.is_empty()).then_some(geode_pre);
+
         // If someone finds a way to use macros with optional parameters you can impl it here
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("INSERT INTO mod_versions (");
         if json.description.is_some() {
             builder.push("description, ");
         }
         builder
-            .push("name, version, download_link, hash, geode, early_load, api, mod_id, status_id) VALUES (");
+            .push("name, version, download_link, hash, geode_major, geode_minor, geode_patch, geode_meta, early_load, api, mod_id, status_id) VALUES (");
         let mut separated = builder.separated(", ");
         if json.description.is_some() {
             separated.push_bind(&json.description);
@@ -565,7 +596,10 @@ impl ModVersion {
         separated.push_bind(&json.version);
         separated.push_bind(&json.download_url);
         separated.push_bind(&json.hash);
-        separated.push_bind(&json.geode);
+        separated.push_bind(i32::try_from(geode.major).unwrap_or_default());
+        separated.push_bind(i32::try_from(geode.minor).unwrap_or_default());
+        separated.push_bind(i32::try_from(geode.patch).unwrap_or_default());
+        separated.push_bind(geode_pre);
         separated.push_bind(json.early_load);
         separated.push_bind(json.api.is_some());
         separated.push_bind(&json.id);
@@ -632,26 +666,39 @@ impl ModVersion {
         make_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<(), ApiError> {
+        let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
+            "Invalid geode version in mod.json".into(),
+        )))?;
+
+        let geode_pre = geode.pre.to_string();
+        let geode_pre = (!geode_pre.is_empty()).then_some(geode_pre);
+
         sqlx::query!(
             "UPDATE mod_versions mv
                 SET name = $1,
                 version = $2,
                 download_link = $3,
                 hash = $4,
-                geode = $5,
-                early_load = $6,
-                api = $7,
-                description = $8,
+                geode_major = $5,
+                geode_minor = $6,
+                geode_patch = $7,
+                geode_meta = $8,
+                early_load = $9,
+                api = $10,
+                description = $11,
                 updated_at = NOW()
             FROM mod_version_statuses mvs
             WHERE mv.status_id = mvs.id
             AND mvs.status = 'pending'
-            AND mv.id = $9",
+            AND mv.id = $12",
             &json.name,
             &json.version,
             &json.download_url,
             &json.hash,
-            &json.geode,
+            i32::try_from(geode.major).unwrap_or_default(),
+            i32::try_from(geode.minor).unwrap_or_default(),
+            i32::try_from(geode.patch).unwrap_or_default(),
+            geode_pre,
             &json.early_load,
             &json.api.is_some(),
             json.description.clone().unwrap_or_default(),
@@ -713,7 +760,9 @@ impl ModVersion {
             ModVersionGetOne,
             r#"SELECT mv.id, mv.name, mv.description, mv.version, 
                 mv.download_link, mv.download_count,
-                mv.hash, mv.geode, mv.early_load, mv.api,
+                mv.hash,
+                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+                mv.early_load, mv.api,
                 mv.created_at, mv.updated_at,
                 mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mod_versions mv
