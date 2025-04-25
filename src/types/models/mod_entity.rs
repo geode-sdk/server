@@ -282,40 +282,64 @@ impl Mod {
         if let Some(ref geode) = query.geode {
             let geode = geode.trim_start_matches('v').to_string();
             if let Ok(parsed) = Version::parse(&geode) {
+                let major = i32::try_from(parsed.major).unwrap_or_default();
+                let minor = i32::try_from(parsed.minor).unwrap_or_default();
+                let patch = i32::try_from(parsed.patch).unwrap_or_default();
+                let meta = parsed.pre.to_string();
+                let meta = (!meta.is_empty()).then_some(meta);
+
+                // Always match major version
+                let sql = " AND mv.geode_major = ";
+                builder.push(sql);
+                counter_builder.push(sql);
+                builder.push_bind(major);
+                counter_builder.push_bind(major);
+
                 // If alpha, match exactly that version
                 if parsed.pre.contains("alpha") {
-                    let sql = " AND mv.geode = ";
+                    let sql = " AND mv.geode_minor = ";
                     builder.push(sql);
                     counter_builder.push(sql);
-                    builder.push_bind(parsed.to_string());
-                    counter_builder.push_bind(parsed.to_string());
+                    builder.push_bind(minor);
+                    counter_builder.push_bind(minor);
+                    let sql = " AND mv.geode_patch = ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(patch);
+                    counter_builder.push_bind(patch);
+                    let sql = " AND mv.geode_meta = ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(meta.clone());
+                    counter_builder.push_bind(meta.clone());
                 } else {
-                    let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
+                    let sql = " AND mv.geode_minor <= ";
                     builder.push(sql);
                     counter_builder.push(sql);
-                    builder.push_bind(parsed.major.to_string());
-                    counter_builder.push_bind(parsed.major.to_string());
+                    builder.push_bind(minor);
+                    counter_builder.push_bind(minor);
 
-                    let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
+                    let sql = " AND (mv.geode_meta IS NULL OR mv.geode_minor < ";
                     builder.push(sql);
                     counter_builder.push(sql);
-                    builder.push_bind(parsed.minor.to_string());
-                    counter_builder.push_bind(parsed.minor.to_string());
+                    builder.push_bind(minor);
+                    counter_builder.push_bind(minor);
 
-                    // Match only higher betas (or no beta)
-                    if parsed.pre.contains("beta") {
-                        let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
-                            OR SPLIT_PART(mv.geode, '-', 2) <=";
-                        builder.push(sql);
-                        counter_builder.push(sql);
-                        builder.push_bind(parsed.pre.to_string());
-                        counter_builder.push_bind(parsed.pre.to_string());
-                        builder.push(")");
-                        counter_builder.push(")");
-                    }
+                    let sql = " OR mv.geode_patch < ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(patch);
+                    counter_builder.push_bind(patch);
 
-                    builder.push(")");
-                    counter_builder.push(")");
+                    let sql = " OR (mv.geode_meta NOT ILIKE 'alpha%' AND mv.geode_meta <= ";
+                    builder.push(sql);
+                    counter_builder.push(sql);
+                    builder.push_bind(meta.clone());
+                    counter_builder.push_bind(meta.clone());
+
+                    let sql = "))";
+                    builder.push(sql);
+                    counter_builder.push(sql);
                 }
             }
         }
@@ -606,22 +630,23 @@ impl Mod {
         only_accepted: bool,
         pool: &mut PgConnection,
     ) -> Result<Option<Mod>, ApiError> {
-        let records: Vec<ModRecordGetOne> = sqlx::query_as!(
-            ModRecordGetOne,
+        let records: Vec<ModRecordGetOne> = sqlx::query_as(
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
-                mv.hash, mv.geode, mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
+                mv.hash,
+                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
+                mv.early_load, mv.api, mv.mod_id, mvs.status, mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE m.id = $1
             AND ($2 = false OR mvs.status = 'accepted')
             ORDER BY mv.id DESC"#,
-            id,
-            only_accepted
         )
+            .bind(id)
+            .bind(only_accepted)
             .fetch_all(&mut *pool)
             .await
             .or(Err(ApiError::DbError))?;
@@ -1246,58 +1271,6 @@ impl Mod {
         gd: GDVersionEnum,
         pool: &mut PgConnection,
     ) -> Result<Vec<ModUpdate>, ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT
-                q.id,
-                q.inner_version as version,
-                q.mod_version_id
-            FROM (
-                SELECT m.id,
-                    mv.id as mod_version_id,
-                    mv.version as inner_version,
-                    row_number() over (partition by m.id order by mv.id desc) rn
-                FROM mods m
-                INNER JOIN mod_versions mv ON mv.mod_id = m.id
-                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-                INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
-                WHERE mvs.status = 'accepted'
-                    AND mgv.platform = "#,
-        );
-        builder.push_bind(platforms);
-        builder.push(" AND (mgv.gd = ");
-        builder.push_bind(gd);
-        builder.push(" OR mgv.gd = '*')");
-
-        builder.push(" AND m.id = ANY(");
-        builder.push_bind(ids);
-        builder.push(") ");
-
-        if geode.pre.contains("alpha") {
-            builder.push(" AND mv.geode = ");
-            builder.push_bind(geode.to_string());
-        } else {
-            let sql = " AND (SPLIT_PART(mv.geode, '.', 1) = ";
-            builder.push(sql);
-            builder.push_bind(geode.major.to_string());
-
-            let sql = " AND SPLIT_PART(mv.geode, '-', 2) NOT LIKE 'alpha%' AND SPLIT_PART(mv.geode, '.', 2) <= ";
-            builder.push(sql);
-            builder.push_bind(geode.minor.to_string());
-
-            // Match only higher betas (or no beta)
-            if geode.pre.contains("beta") {
-                let sql = " AND (SPLIT_PART(mv.geode, '-', 2) = ''
-                    OR SPLIT_PART(mv.geode, '-', 2) <=";
-                builder.push(sql);
-                builder.push_bind(geode.pre.to_string());
-                builder.push(")");
-            }
-
-            builder.push(")");
-        }
-
-        builder.push(") q where q.rn = 1");
-
         #[derive(sqlx::FromRow)]
         struct QueryResult {
             id: String,
@@ -1305,17 +1278,60 @@ impl Mod {
             mod_version_id: i32,
         }
 
-        let result = match builder
-            .build_query_as::<QueryResult>()
-            .fetch_all(&mut *pool)
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+        let geode_pre = geode.pre.to_string();
+        let geode_pre = (!geode_pre.is_empty()).then_some(geode_pre);
+
+        let result = sqlx::query_as!(
+            QueryResult,
+            "SELECT
+                q.id,
+                q.inner_version as version,
+                q.mod_version_id
+            FROM (
+                SELECT
+                    m.id,
+                    mv.id as mod_version_id,
+                    mv.version as inner_version,
+                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
+                FROM mods m
+                INNER JOIN mod_versions mv ON mv.mod_id = m.id
+                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
+                WHERE mvs.status = 'accepted'
+                AND mgv.platform = $1
+                AND (mgv.gd = ANY($2))
+                AND m.id = ANY($3)
+                AND $4 = mv.geode_major
+                AND $5 >= mv.geode_minor
+                AND (
+                    ($7::text IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')
+                    OR (
+                        $7 ILIKE 'alpha%'
+                        AND $5 = mv.geode_minor
+                        AND $6 = mv.geode_patch
+                        AND $7 = mv.geode_meta
+                    )
+                    OR (
+                        mv.geode_meta IS NULL
+                        OR $5 > mv.geode_minor
+                        OR $6 > mv.geode_patch
+                        OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)
+                    )
+                )
+            ) q
+            WHERE q.rn = 1",
+            platforms as VerPlatform,
+            &[GDVersionEnum::All, gd] as &[GDVersionEnum],
+            ids,
+            i32::try_from(geode.major).unwrap_or_default(),
+            i32::try_from(geode.minor).unwrap_or_default(),
+            i32::try_from(geode.patch).unwrap_or_default(),
+            geode_pre
+        )
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|x| log::error!("Failed to fetch mod updates: {}", x))
+        .or(Err(ApiError::DbError))?;
 
         if result.is_empty() {
             return Ok(vec![]);

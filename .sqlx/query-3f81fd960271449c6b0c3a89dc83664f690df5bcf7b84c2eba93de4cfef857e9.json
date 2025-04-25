@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_versions mv\n                SET name = $1,\n                version = $2,\n                download_link = $3,\n                hash = $4,\n                geode_major = $5,\n                geode_minor = $6,\n                geode_patch = $7,\n                geode_meta = $8,\n                early_load = $9,\n                api = $10,\n                description = $11,\n                updated_at = NOW()\n            FROM mod_version_statuses mvs\n            WHERE mv.status_id = mvs.id\n            AND mvs.status = 'pending'\n            AND mv.id = $12",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Text",
+        "Bool",
+        "Bool",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3f81fd960271449c6b0c3a89dc83664f690df5bcf7b84c2eba93de4cfef857e9"
+}
