@@ -242,6 +242,17 @@ impl Mod {
 
         let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
+        /* 
+         * VERY IMPORTANT MESSAGE BELOW. 
+         * This beautiful chunk of code below uses format!() to reuse the same joins / where clauses
+         * in 2 queries. This uses prepared statements, the parameters are bound in the queries at the end.
+         * 
+         * DO NOT, I repeat, DO NOT enter any user input inside the format!().
+         * I will find you personally if you do so.
+         * 
+         * - Flame
+         */
+
         let joins_filters = r#"
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
