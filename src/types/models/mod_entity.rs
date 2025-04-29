@@ -158,86 +158,43 @@ impl Mod {
         query: IndexQueryParams,
     ) -> Result<PaginatedData<Mod>, ApiError> {
         let tags = match query.tags {
-            Some(t) => Tag::parse_tags(&t, pool).await?,
-            None => vec![],
+            Some(t) => Some(Tag::parse_tags(&t, pool).await?),
+            None => None,
         };
         let page: i64 = query.page.unwrap_or(1).max(1);
         let per_page = query.per_page.unwrap_or(10).clamp(1, 100);
 
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let mut platforms: Vec<VerPlatform> = vec![];
-        if query.platforms.is_some() {
-            for i in query.platforms.unwrap().split(',') {
-                let trimmed = i.trim();
-                let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(
-                    format!("Invalid platform {}", trimmed),
-                )))?;
-                match platform {
-                    VerPlatform::Android => {
-                        platforms.push(VerPlatform::Android32);
-                        platforms.push(VerPlatform::Android64);
+        let platforms: Option<Vec<VerPlatform>> = query
+            .platforms
+            .map(|p| {
+                let split: Vec<&str> = p.split(',').collect();
+                let mut ret: Vec<VerPlatform> = Vec::with_capacity(split.len());
+
+                for i in split {
+                    let trimmed = i.trim();
+                    let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(
+                        format!("Invalid platform: {}", i),
+                    )))?;
+                    match platform {
+                        VerPlatform::Android => {
+                            ret.push(VerPlatform::Android32);
+                            ret.push(VerPlatform::Android64);
+                        }
+                        VerPlatform::Mac => {
+                            ret.push(VerPlatform::MacArm);
+                            ret.push(VerPlatform::MacIntel);
+                        }
+                        _ => ret.push(platform),
                     }
-                    VerPlatform::Mac => {
-                        platforms.push(VerPlatform::MacArm);
-                        platforms.push(VerPlatform::MacIntel);
-                    }
-                    _ => platforms.push(platform),
                 }
-            }
-        }
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.id, q.repository, q.about, q.changelog, q.download_count, q.featured, q.created_at, q.updated_at, q.status
-            FROM (SELECT m.id, m.repository, m.about, m.changelog, m.download_count, m.featured, m.created_at, m.updated_at, mvs.status,
-            row_number() over (partition by m.id order by mv.id desc) rn FROM mods m
-            INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id "#,
-        );
-        let mut counter_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT COUNT(DISTINCT m.id) FROM mods m
-            INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id ",
-        );
 
-        if !tags.is_empty() {
-            let sql = "INNER JOIN mods_mod_tags mmt ON mmt.mod_id = m.id ";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
+                Ok(ret)
+            })
+            .transpose()?;
 
-        if query.developer.is_some() {
-            let sql = "INNER JOIN mods_developers md ON md.mod_id = m.id ";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
-
-        builder.push("WHERE ");
-        counter_builder.push("WHERE ");
-
-        if !tags.is_empty() {
-            let sql = "mmt.tag_id = ANY(";
-            builder.push(sql);
-            counter_builder.push(sql);
-
-            builder.push_bind(&tags);
-            counter_builder.push_bind(&tags);
-            let sql = ") AND ";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
-
-        if let Some(f) = query.featured {
-            let sql = "m.featured = ";
-            builder.push(sql);
-            counter_builder.push(sql);
-            builder.push_bind(f);
-            counter_builder.push_bind(f);
-            let sql = " AND ";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
+        let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
 
         let developer = match query.developer {
             Some(d) => match developers::get_one_by_username(&d, pool).await? {
@@ -252,177 +209,132 @@ impl Mod {
             None => None,
         };
 
-        if let Some(d) = developer {
-            let sql = "md.developer_id = ";
-            builder.push(sql);
-            counter_builder.push(sql);
-            builder.push_bind(d.id);
-            counter_builder.push_bind(d.id);
-            let sql = " AND ";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
+        let order = match query.sort {
+            IndexSortType::Downloads => "m.download_count DESC",
+            IndexSortType::RecentlyUpdated => "m.updated_at DESC",
+            IndexSortType::RecentlyPublished => "m.created_at DESC",
+            IndexSortType::Name => "mv.name ASC",
+            IndexSortType::NameReverse => "mv.name DESC",
+        };
 
-        let sql = "mvs.status = ";
-        builder.push(sql);
-        counter_builder.push(sql);
+        let geode = query
+            .geode
+            .map(|x| Version::parse(&x))
+            .transpose()
+            .or(Err(ApiError::BadRequest("Invalid geode version".into())))?;
 
-        let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
-        builder.push_bind(status);
-        counter_builder.push_bind(status);
-
-        let sql = " AND mv.name ILIKE ";
-        builder.push(sql);
-        counter_builder.push(sql);
-
-        let query_string = format!("%{}%", query.query.unwrap_or("".to_string()).to_lowercase());
-        counter_builder.push_bind(&query_string);
-        builder.push_bind(&query_string);
-
-        if let Some(ref geode) = query.geode {
-            let geode = geode.trim_start_matches('v').to_string();
-            if let Ok(parsed) = Version::parse(&geode) {
-                let major = i32::try_from(parsed.major).unwrap_or_default();
-                let minor = i32::try_from(parsed.minor).unwrap_or_default();
-                let patch = i32::try_from(parsed.patch).unwrap_or_default();
-                let meta = parsed.pre.to_string();
-                let meta = (!meta.is_empty()).then_some(meta);
-
-                // Always match major version
-                let sql = " AND mv.geode_major = ";
-                builder.push(sql);
-                counter_builder.push(sql);
-                builder.push_bind(major);
-                counter_builder.push_bind(major);
-
-                // If alpha, match exactly that version
-                if parsed.pre.contains("alpha") {
-                    let sql = " AND mv.geode_minor = ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(minor);
-                    counter_builder.push_bind(minor);
-                    let sql = " AND mv.geode_patch = ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(patch);
-                    counter_builder.push_bind(patch);
-                    let sql = " AND mv.geode_meta = ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(meta.clone());
-                    counter_builder.push_bind(meta.clone());
-                } else {
-                    let sql = " AND mv.geode_minor <= ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(minor);
-                    counter_builder.push_bind(minor);
-
-                    let sql = " AND (mv.geode_meta IS NULL OR mv.geode_minor < ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(minor);
-                    counter_builder.push_bind(minor);
-
-                    let sql = " OR mv.geode_patch < ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(patch);
-                    counter_builder.push_bind(patch);
-
-                    let sql = " OR (mv.geode_meta NOT ILIKE 'alpha%' AND mv.geode_meta <= ";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                    builder.push_bind(meta.clone());
-                    counter_builder.push_bind(meta.clone());
-
-                    let sql = "))";
-                    builder.push(sql);
-                    counter_builder.push(sql);
-                }
-            }
-        }
-
-        if let Some(g) = query.gd {
-            let sql = " AND (mgv.gd = ";
-            builder.push(sql);
-            builder.push_bind(g);
-            counter_builder.push(sql);
-            counter_builder.push_bind(g);
-            let sql = " OR mgv.gd = ";
-            builder.push(sql);
-            counter_builder.push(sql);
-            builder.push_bind(GDVersionEnum::All);
-            counter_builder.push_bind(GDVersionEnum::All);
-            let sql = ")";
-            builder.push(sql);
-            counter_builder.push(sql);
-        }
-
-        for (i, platform) in platforms.iter().enumerate() {
-            if i == 0 {
-                let sql = " AND mgv.platform IN (";
-                builder.push(sql);
-                counter_builder.push(sql);
-            }
-            builder.push_bind(*platform);
-            counter_builder.push_bind(*platform);
-            if i == platforms.len() - 1 {
-                builder.push(")");
-                counter_builder.push(")");
+        let geode_major = geode
+            .as_ref()
+            .map(|x| i32::try_from(x.major).unwrap_or_default());
+        let geode_minor = geode
+            .as_ref()
+            .map(|x| i32::try_from(x.minor).unwrap_or_default());
+        let geode_patch = geode
+            .as_ref()
+            .map(|x| i32::try_from(x.patch).unwrap_or_default());
+        let geode_meta = geode.as_ref().and_then(|x| {
+            if x.pre.is_empty() {
+                None
             } else {
-                builder.push(", ");
-                counter_builder.push(", ");
+                Some(x.pre.to_string())
             }
-        }
+        });
 
-        match query.sort {
-            IndexSortType::Downloads => {
-                builder.push(" ORDER BY m.download_count DESC");
-            }
-            IndexSortType::RecentlyUpdated => {
-                builder.push(" ORDER BY m.updated_at DESC");
-            }
-            IndexSortType::RecentlyPublished => {
-                builder.push(" ORDER BY m.created_at DESC");
-            }
-            IndexSortType::Name => {
-                builder.push(" ORDER BY mv.name ASC");
-            }
-            IndexSortType::NameReverse => {
-                builder.push(" ORDER BY mv.name DESC");
-            }
-        }
+        let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
-        builder.push(") q WHERE q.rn = 1 LIMIT ");
-        builder.push_bind(limit);
-        builder.push(" OFFSET ");
-        builder.push_bind(offset);
+        let joins_filters = r#"
+            INNER JOIN mod_versions mv ON m.id = mv.mod_id
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+            LEFT JOIN mods_mod_tags mmt ON mmt.mod_id = m.id
+            INNER JOIN mods_developers md ON md.mod_id = m.id
+            WHERE ($1 IS NULL OR mmt.tag_id = ANY($1))
+            AND ($2 IS NULL OR m.featured = $2)
+            AND ($3 IS NULL OR md.developer_id = $3)
+            AND ($13 IS NULL OR mvs.status = $13)
+            AND ($4 IS NULL OR $4 = mv.geode_major)
+            AND ($5 IS NULL OR $5 >= mv.geode_minor)
+            AND (
+                ($7 IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')
+                OR (
+                    $7 ILIKE 'alpha%'
+                    AND $5 = mv.geode_minor
+                    AND $6 = mv.geode_patch
+                    AND $7 = mv.geode_meta
+                )
+                OR (
+                    mv.geode_meta IS NULL
+                    OR $5 > mv.geode_minor
+                    OR $6 > mv.geode_patch
+                    OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)
+                )
+            )
+            AND ($8 IS NULL OR mv.name ILIKE '%' || $8 || '%' OR m.id = $8)
+            AND ($9 IS NULL OR mgv.gd = ANY($9))
+            AND ($10 IS NULL OR mgv.platform = ANY($10))
+        "#;
 
-        let result = builder
-            .build_query_as::<ModRecord>()
-            .fetch_all(&mut *pool)
-            .await;
-        let records = match result {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+        let records: Vec<ModRecord> = sqlx::query_as(&format!(
+            "SELECT
+                q.id, q.repository, q.about,
+                q.changelog, q.download_count,
+                q.featured, q.created_at, q.updated_at, q.status
+            FROM (
+                SELECT 
+                    m.id, m.repository, m.about, m.changelog, 
+                    m.download_count, m.featured, m.created_at, m.updated_at, mvs.status,
+                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
+                FROM mods m
+                {}
+                ORDER BY {}
+            ) q
+            WHERE q.rn = 1
+            LIMIT $11
+            OFFSET $12",
+            joins_filters, order
+        ))
+        .bind(tags.as_ref())
+        .bind(query.featured)
+        .bind(developer.as_ref().map(|x| x.id))
+        .bind(geode_major)
+        .bind(geode_minor)
+        .bind(geode_patch)
+        .bind(geode_meta.as_ref())
+        .bind(query.query.as_ref())
+        .bind(gd.as_ref())
+        .bind(platforms.as_ref())
+        .bind(limit)
+        .bind(offset)
+        .bind(status)
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))
+        .or(Err(ApiError::DbError))?;
 
-        let result = counter_builder
-            .build_query_scalar()
-            .fetch_one(&mut *pool)
-            .await;
-        let count = match result {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(c) => c,
-        };
+        let count: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(DISTINCT m.id)
+                FROM mods m
+                {}",
+            joins_filters
+        ))
+        .bind(&tags)
+        .bind(query.featured)
+        .bind(developer.as_ref().map(|x| x.id))
+        .bind(geode_major)
+        .bind(geode_minor)
+        .bind(geode_patch)
+        .bind(&geode_meta)
+        .bind(&query.query)
+        .bind(&gd)
+        .bind(&platforms)
+        .bind(limit)
+        .bind(offset)
+        .bind(status)
+        .fetch_optional(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))
+        .or(Err(ApiError::DbError))?
+        .unwrap_or_default();
 
         if records.is_empty() {
             return Ok(PaginatedData {
@@ -435,13 +347,13 @@ impl Mod {
             return Mod::get_pending(records, count, pool).await;
         }
 
-        let ids: Vec<_> = records.iter().map(|x| x.id.clone()).collect();
+        let ids: Vec<String> = records.iter().map(|x| x.id.clone()).collect();
         let versions = ModVersion::get_latest_for_mods(
             pool,
-            ids.clone(),
+            &ids,
             query.gd,
-            platforms,
-            query.geode.as_ref(),
+            platforms.as_deref(),
+            geode.as_ref(),
         )
         .await?;
         let developers = developers::get_all_for_mods(&ids, pool).await?;
