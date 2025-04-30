@@ -6,6 +6,7 @@ use crate::types::{
     },
 };
 use chrono::{DateTime, SecondsFormat, Utc};
+use semver::Version;
 use sqlx::PgConnection;
 
 use super::mod_version_statuses;
@@ -72,7 +73,8 @@ pub async fn get_by_version_str(
         r#"SELECT
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash,
-            mv.geode, mv.early_load, mv.api, mv.mod_id,
+            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+            mv.early_load, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
@@ -148,16 +150,27 @@ pub async fn create_from_json(
         .inspect_err(|e| log::error!("Failed to update constraint: {}", e))
         .or(Err(ApiError::DbError))?;
 
+    let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
+        "Invalid geode version in mod.json".into(),
+    )))?;
+
+    let meta = if geode.pre.is_empty() {
+        None
+    } else {
+        Some(geode.pre.to_string())
+    };
+
     let row = sqlx::query!(
         "INSERT INTO mod_versions
         (name, version, description, download_link,
-        hash, geode, early_load, api, mod_id, status_id,
+        hash, geode_major, geode_minor, geode_patch, geode_meta,
+        early_load, api, mod_id, status_id,
         created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0,
         NOW(), NOW())
         RETURNING
             id, name, version, description,
-            download_link, hash, geode,
+            download_link, hash,
             early_load, api, mod_id,
             created_at, updated_at",
         json.name,
@@ -165,7 +178,10 @@ pub async fn create_from_json(
         json.description,
         json.download_url,
         json.hash,
-        json.geode,
+        i32::try_from(geode.major).unwrap_or_default(),
+        i32::try_from(geode.minor).unwrap_or_default(),
+        i32::try_from(geode.patch).unwrap_or_default(),
+        meta,
         json.early_load,
         json.api.is_some(),
         json.id
@@ -206,7 +222,7 @@ pub async fn create_from_json(
         version: row.version,
         download_link: row.download_link,
         hash: row.hash,
-        geode: row.geode,
+        geode: geode.to_string(),
         download_count: 0,
         early_load: row.early_load,
         api: row.api,
@@ -234,28 +250,40 @@ pub async fn update_pending_version(
     make_accepted: bool,
     conn: &mut PgConnection,
 ) -> Result<ModVersion, ApiError> {
+    let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
+        "Invalid geode version in mod.json".into(),
+    )))?;
+
+    let meta = if geode.pre.is_empty() {
+        None
+    } else {
+        Some(geode.pre.to_string())
+    };
+
     let row = sqlx::query!(
         "UPDATE mod_versions mv
             SET name = $1,
             version = $2,
             download_link = $3,
             hash = $4,
-            geode = $5,
-            early_load = $6,
-            api = $7,
-            description = $8,
+            geode_major = $5,
+            geode_minor = $6,
+            geode_patch = $7,
+            geode_meta = $8,
+            early_load = $9,
+            api = $10,
+            description = $11,
             updated_at = NOW()
         FROM mod_version_statuses mvs
         WHERE mv.status_id = mvs.id
         AND mvs.status = 'pending'
-        AND mv.id = $9
+        AND mv.id = $12
         RETURNING mv.id,
             name,
             version,
             download_link,
             download_count,
             hash,
-            geode,
             early_load,
             api,
             status_id,
@@ -267,7 +295,10 @@ pub async fn update_pending_version(
         &json.version,
         &json.download_url,
         &json.hash,
-        &json.geode,
+        i32::try_from(geode.major).unwrap_or_default(),
+        i32::try_from(geode.minor).unwrap_or_default(),
+        i32::try_from(geode.patch).unwrap_or_default(),
+        meta,
         &json.early_load,
         &json.api.is_some(),
         json.description.clone().unwrap_or_default(),
@@ -305,7 +336,7 @@ pub async fn update_pending_version(
         version: row.version,
         download_link: row.download_link,
         hash: row.hash,
-        geode: row.geode,
+        geode: geode.to_string(),
         download_count: row.download_count,
         early_load: row.early_load,
         api: row.api,

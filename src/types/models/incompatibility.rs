@@ -124,6 +124,11 @@ impl Incompatibility {
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, ApiError> {
+        let geode_pre = geode.map(|x| {
+            let pre = x.pre.to_string();
+            (!pre.is_empty()).then(|| pre)
+        }).flatten();
+
         let q = sqlx::query_as::<Postgres, FetchedIncompatibility>(
             r#"SELECT icp.compare,
             icp.importance,
@@ -133,21 +138,32 @@ impl Incompatibility {
             WHERE mv.id = ANY($1)
             AND ($2 IS NULL OR mgv.gd = $2)
             AND ($3 IS NULL OR mgv.platform = $3)
-            AND ($4 IS NULL OR CASE
-                WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = mv.geode
-                ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(mv.geode, '.', 1)
-                    AND SPLIT_PART(mv.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
-                    AND (
-                        SPLIT_PART(mv.geode, '-', 2) = '' 
-                        OR SPLIT_PART(mv.geode, '-', 2) >= SPLIT_PART($4, '-', 2)
-                    )
-            END)
+            AND ($4 IS NULL OR $4 = mv.geode_major)
+            AND ($5 IS NULL OR $5 >= mv.geode_minor)
+            AND (
+                ($7 IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')
+                OR (
+                    $7 ILIKE 'alpha%'
+                    AND $5 = mv.geode_minor
+                    AND $6 = mv.geode_patch
+                    AND $7 = mv.geode_meta
+                )
+                OR (
+                    mv.geode_meta IS NULL
+                    OR $5 > mv.geode_minor
+                    OR $6 > mv.geode_patch
+                    OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)
+                )
+            )
             "#,
         )
         .bind(ids)
         .bind(gd)
         .bind(platform)
-        .bind(geode.map(|x| x.to_string()));
+        .bind(geode.map(|x| i64::try_from(x.major).ok()))
+        .bind(geode.map(|x| i64::try_from(x.minor).ok()))
+        .bind(geode.map(|x| i64::try_from(x.patch).ok()))
+        .bind(geode_pre);
 
         let result = match q.fetch_all(&mut *pool).await {
             Ok(d) => d,
@@ -173,6 +189,8 @@ impl Incompatibility {
         pool: &mut PgConnection,
     ) -> Result<HashMap<String, Replacement>, ApiError> {
         let mut ret: HashMap<String, Replacement> = HashMap::new();
+        let pre = geode.pre.to_string();
+        let pre = (!pre.is_empty()).then(|| pre);
         let r = match sqlx::query!(
             r#"
             SELECT 
@@ -200,11 +218,23 @@ impl Incompatibility {
                 AND replaced.incompatibility_id = ANY($1)
                 AND (replacement_mgv.gd = $2 OR replacement_mgv.gd = '*')
                 AND replacement_mgv.platform = $3
-                AND CASE
-                    WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = replacement.geode
-                    ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(replacement.geode, '.', 1)
-                        AND semver_compare(replacement.geode, $4) >= 0
-                END
+                AND ($4 = replacement.geode_major)
+                AND ($5 >= replacement.geode_minor)
+                AND (
+                    ($7::text IS NULL AND replacement.geode_meta NOT ILIKE 'alpha%')
+                    OR (
+                        $7 ILIKE 'alpha%'
+                        AND $5 = replacement.geode_minor
+                        AND $6 = replacement.geode_patch
+                        AND $7 = replacement.geode_meta
+                    )
+                    OR (
+                        replacement.geode_meta IS NULL
+                        OR $5 > replacement.geode_minor
+                        OR $6 > replacement.geode_patch
+                        OR (replacement.geode_meta NOT ILIKE 'alpha%' AND $7 >= replacement.geode_meta)
+                    )
+                )
                 ORDER BY replacement.id DESC, replacement.version DESC
             ) q
             WHERE q.rn = 1
@@ -212,7 +242,10 @@ impl Incompatibility {
             ids,
             gd as GDVersionEnum,
             platform as VerPlatform,
-            geode.to_string()
+            i32::try_from(geode.major).unwrap_or_default(),
+            i32::try_from(geode.minor).unwrap_or_default(),
+            i32::try_from(geode.patch).unwrap_or_default(),
+            pre
         )
         .fetch_all(&mut *pool)
         .await
