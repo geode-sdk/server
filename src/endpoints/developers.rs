@@ -207,9 +207,9 @@ pub async fn update_profile(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    if !json.display_name.chars().all(char::is_alphanumeric) {
+    if !json.display_name.chars().all(|x| char::is_ascii_alphanumeric(&x)) {
         return Err(ApiError::BadRequest(
-            "Display name must contain only alphanumeric characters".into(),
+            "Display name must contain only ASCII alphanumeric characters".into(),
         ));
     }
 
