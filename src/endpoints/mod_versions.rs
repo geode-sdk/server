@@ -278,7 +278,7 @@ pub async fn create_version(
         })
         .count();
 
-    let verified = match accepted_versions {
+    let make_accepted = match accepted_versions {
         0 => false,
         _ => dev.verified,
     };
@@ -291,7 +291,7 @@ pub async fn create_version(
         .collect();
 
     let bytes = download_mod(&download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &download_link, verified).map_err(|err| {
+    let json = ModJson::from_zip(bytes, &download_link, make_accepted).map_err(|err| {
         log::error!("Failed to parse mod.json: {}", err);
         ApiError::FilesystemError
     })?;
@@ -307,7 +307,7 @@ pub async fn create_version(
     let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
 
     let mut version: ModVersion = if versions.is_empty() {
-        mod_versions::create_from_json(&json, verified, &mut tx).await?
+        mod_versions::create_from_json(&json, make_accepted, &mut tx).await?
     } else {
         let latest = versions.first().unwrap();
         let latest_version = semver::Version::parse(&latest.version)
@@ -317,9 +317,16 @@ pub async fn create_version(
             ApiError::BadRequest(format!("Invalid mod.json version: {}", json.version)),
         ))?;
 
-        if new_version <= latest_version {
+        if new_version == latest_version {
             return Err(ApiError::BadRequest(format!(
-                "mod.json version {} is smaller / equal to latest mod version {}",
+                "mod.json has the same version as the latest version: {}",
+                new_version
+            )));
+        }
+
+        if new_version < latest_version {
+            return Err(ApiError::BadRequest(format!(
+                "mod.json version {} is less than latest mod version {}",
                 json.version, latest_version
             )));
         }
@@ -329,9 +336,9 @@ pub async fn create_version(
             dependencies::clear(latest.id, &mut tx).await?;
             incompatibilities::clear(latest.id, &mut tx).await?;
             mod_gd_versions::clear(latest.id, &mut tx).await?;
-            mod_versions::update_pending_version(latest.id, &json, verified, &mut tx).await?
+            mod_versions::update_pending_version(latest.id, &json, make_accepted, &mut tx).await?
         } else {
-            mod_versions::create_from_json(&json, verified, &mut tx).await?
+            mod_versions::create_from_json(&json, make_accepted, &mut tx).await?
         }
     };
 
@@ -351,7 +358,7 @@ pub async fn create_version(
             .collect(),
     );
 
-    if verified || accepted_versions == 0 {
+    if make_accepted {
         if let Some(links) = json.links.clone() {
             mod_links::upsert(
                 &the_mod.id,
@@ -374,7 +381,7 @@ pub async fn create_version(
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
 
-    if verified {
+    if make_accepted {
         let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
 
         NewModVersionAcceptedEvent {
