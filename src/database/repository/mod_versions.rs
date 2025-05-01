@@ -96,21 +96,23 @@ pub async fn get_for_mod(
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
 ) -> Result<Vec<ModVersion>, ApiError> {
-    sqlx::query_as(
+    sqlx::query_as!(
+        ModVersionRow,
         r#"SELECT
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash,
-            mv.geode, mv.early_load, mv.api, mv.mod_id,
+            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+            mv.early_load, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
-            mvs.status, mvs.info
+            mvs.status as "status: _", mvs.info
         FROM mod_versions mv
         INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
         WHERE mv.mod_id = $1
-        AND ($2 IS NULL OR mvs.status = ANY($2))
+        AND ($2::mod_version_status[] IS NULL OR mvs.status = ANY($2))
         ORDER BY mv.id DESC"#,
+        mod_id,
+        statuses as Option<&[ModVersionStatusEnum]>
     )
-    .bind(mod_id)
-    .bind(statuses)
     .fetch_all(conn)
     .await
     .inspect_err(|e| log::error!("{}", e))
