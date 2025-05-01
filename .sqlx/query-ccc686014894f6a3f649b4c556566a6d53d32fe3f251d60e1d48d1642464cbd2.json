@@ -1,0 +1,138 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version,\n            mv.download_link, mv.download_count, mv.hash,\n            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n            mv.early_load, mv.api, mv.mod_id,\n            mv.created_at, mv.updated_at,\n            mvs.status as \"status: _\", mvs.info\n        FROM mod_versions mv\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE mv.mod_id = $1\n        AND ($2::mod_version_status[] IS NULL OR mvs.status = ANY($2))\n        ORDER BY mv.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "download_link",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "geode!: _",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "early_load",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "info",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "mod_version_status[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "mod_version_status",
+                  "kind": {
+                    "Enum": [
+                      "pending",
+                      "rejected",
+                      "accepted",
+                      "unlisted"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "ccc686014894f6a3f649b4c556566a6d53d32fe3f251d60e1d48d1642464cbd2"
+}
