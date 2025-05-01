@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mods_mod_tags\n                (mod_id, tag_id)\n            SELECT * FROM UNNEST(\n                $1::text[],\n                $2::int4[]\n            )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "99f03a9fc6e461650225ae307d52d7ea9c9aae4ca71dba9e0630dd3109a6d08e"
+}

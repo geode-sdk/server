@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image\n        ) VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "repository",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "about",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "changelog",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "featured",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f98fe5c88a7a234cc0b68fb39c156a741fbad1d2e4682e1e748037bb08962912"
+}

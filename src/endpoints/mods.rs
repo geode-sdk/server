@@ -1,12 +1,19 @@
 use crate::config::AppData;
+use crate::database::repository::dependencies;
 use crate::database::repository::developers;
+use crate::database::repository::incompatibilities;
+use crate::database::repository::mod_gd_versions;
+use crate::database::repository::mod_links;
+use crate::database::repository::mod_tags;
+use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
+use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiError, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models::incompatibility::Incompatibility;
-use crate::types::models::mod_entity::{download_geode_file, Mod, ModUpdate};
+use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
@@ -98,19 +105,30 @@ pub async fn get(
         _ => false,
     };
 
-    let found = Mod::get_one(&id, false, &mut pool).await?;
-    match found {
-        Some(mut m) => {
-            for i in &mut m.versions {
-                i.modify_metadata(data.app_url(), has_extended_permissions);
-            }
-            Ok(web::Json(ApiResponse {
-                error: "".into(),
-                payload: m,
-            }))
-        }
-        None => Err(ApiError::NotFound(format!("Mod '{id}' not found"))),
+    let mut the_mod: Mod = mods::get_one(&id, true, &mut pool)
+        .await?
+        .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
+
+    the_mod.tags = mod_tags::get_for_mod(&the_mod.id, &mut pool)
+        .await?
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut pool).await?;
+    the_mod.versions = mod_versions::get_for_mod(
+        &the_mod.id,
+        Some(&[ModVersionStatusEnum::Accepted]),
+        &mut pool,
+    )
+    .await?;
+    for i in &mut the_mod.versions {
+        i.modify_metadata(data.app_url(), has_extended_permissions);
     }
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: the_mod,
+    }))
 }
 
 #[post("/v1/mods")]
@@ -125,29 +143,84 @@ pub async fn create(
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let mut file_path = download_geode_file(&payload.download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(
-        &mut file_path,
-        &payload.download_link,
-        false,
-        data.max_download_mb(),
-    )?;
+    let bytes = mod_zip::download_mod(&payload.download_link, data.max_download_mb()).await?;
+    let json = ModJson::from_zip(bytes, &payload.download_link, false)?;
     json.validate()?;
-    let mut transaction = pool.begin().await.or(Err(ApiError::TransactionError))?;
-    let result = Mod::from_json(&json, dev.clone(), &mut transaction).await;
-    if result.is_err() {
-        transaction
-            .rollback()
-            .await
-            .or(Err(ApiError::TransactionError))?;
-        return Err(result.err().unwrap());
-    }
-    transaction
-        .commit()
-        .await
-        .or(Err(ApiError::TransactionError))?;
 
-    Ok(HttpResponse::NoContent())
+    let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
+
+    if let Some(s) = &existing {
+        let versions = mod_versions::get_for_mod(&s.id, None, &mut pool).await?;
+
+        if !versions.is_empty() {
+            return Ok(HttpResponse::Conflict().json(ApiResponse {
+                error: format!("Mod {} already exists! Submit a new version.", s.id),
+                payload: "",
+            }));
+        }
+    }
+
+    if let Some(m) = &existing {
+        if !developers::has_access_to_mod(dev.id, &m.id, &mut pool).await? {
+            return Err(ApiError::Forbidden);
+        }
+    }
+
+    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+
+    let mod_already_exists = existing.is_some();
+
+    // Wacky stuff
+    let mut the_mod = if let Some(m) = existing {
+        m
+    } else {
+        mods::create(&json, &mut tx).await?
+    };
+
+    if !mod_already_exists {
+        mods::assign_owner(&the_mod.id, dev.id, &mut tx).await?;
+    }
+
+    if let Some(tags) = &json.tags {
+        let tag_list = mod_tags::parse_tag_list(tags, &mut tx).await?;
+        mod_tags::update_for_mod(&the_mod.id, &tag_list, &mut tx).await?;
+    }
+    if let Some(l) = json.links.clone() {
+        the_mod.links =
+            Some(mod_links::upsert(&the_mod.id, l.community, l.homepage, l.source, &mut tx).await?);
+    }
+
+    // First version is always not accepted, even if the developer is verified
+    let mut version = mod_versions::create_from_json(&json, false, &mut tx).await?;
+
+    version.dependencies = Some(
+        dependencies::create(version.id, &json, &mut tx)
+            .await?
+            .into_iter()
+            .map(|x| x.into_response())
+            .collect(),
+    );
+    version.incompatibilities = Some(
+        incompatibilities::create(version.id, &json, &mut tx)
+            .await?
+            .into_iter()
+            .map(|x| x.into_response())
+            .collect(),
+    );
+    version.gd = mod_gd_versions::create(version.id, &json, &mut tx).await?;
+    the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut tx).await?;
+    the_mod.versions.insert(0, version);
+
+    tx.commit().await.or(Err(ApiError::TransactionError))?;
+
+    for i in &mut the_mod.versions {
+        i.modify_metadata(data.app_url(), false);
+    }
+
+    Ok(HttpResponse::Created().json(ApiResponse {
+        error: "".into(),
+        payload: the_mod,
+    }))
 }
 
 #[derive(Deserialize)]

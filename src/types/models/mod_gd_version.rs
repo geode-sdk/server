@@ -211,62 +211,6 @@ impl DetailedGDVersion {
 }
 
 impl ModGDVersion {
-    pub async fn create_from_json(
-        json: Vec<ModGDVersionCreate>,
-        mod_version_id: i32,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if json.is_empty() {
-            return Err(ApiError::BadRequest(
-                "mod.json gd version array has no elements".to_string(),
-            ));
-        }
-
-        if let Err(e) = check_for_duplicate_platforms(&json) {
-            return Err(ApiError::BadRequest(e));
-        }
-
-        let mut builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("INSERT INTO mod_gd_versions (gd, platform, mod_id) VALUES ");
-        let mut i = 0;
-        for current in json.iter() {
-            builder.push("(");
-            let mut separated = builder.separated(", ");
-            separated.push_bind(current.gd as GDVersionEnum);
-            separated.push_bind(current.platform as VerPlatform);
-            separated.push_bind(mod_version_id);
-            separated.push_unseparated(")");
-            i += 1;
-            if i != json.len() {
-                separated.push_unseparated(", ");
-            }
-        }
-
-        if let Err(e) = builder.build().execute(&mut *pool).await {
-            log::error!("{:?}", e);
-            return Err(ApiError::DbError);
-        }
-
-        Ok(())
-    }
-
-    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), String> {
-        sqlx::query!(
-            "DELETE FROM mod_gd_versions mgv
-            WHERE mgv.mod_id = $1",
-            id
-        )
-        .execute(&mut *pool)
-        .await
-        .map(|_| ())
-        .map_err(|err| {
-            format!(
-                "Failed to remove gd versions for mod version {}: {}",
-                id, err
-            )
-        })
-    }
-
     // to be used for GET mods/{id}/version/{version}
     pub async fn get_for_mod_version(
         id: i32,
@@ -386,15 +330,4 @@ impl ModGDVersion {
 
         Ok(ret)
     }
-}
-
-fn check_for_duplicate_platforms(versions: &Vec<ModGDVersionCreate>) -> Result<(), String> {
-    let mut found: HashMap<VerPlatform, GDVersionEnum> = HashMap::new();
-    for i in versions {
-        match found.get(&i.platform) {
-            Some(_) => return Err("Duplicated platforms detected in mod.json gd key".to_string()),
-            None => found.insert(i.platform, i.gd),
-        };
-    }
-    Ok(())
 }

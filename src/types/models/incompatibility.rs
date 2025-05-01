@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::types::api::ApiError;
 use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::{PgConnection, Postgres};
 
 use super::{
     dependency::ResponseDependency,
@@ -58,6 +58,20 @@ pub struct ResponseIncompatibility {
 }
 
 impl FetchedIncompatibility {
+    pub fn into_response(self) -> ResponseIncompatibility {
+        ResponseIncompatibility {
+            mod_id: self.incompatibility_id,
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
+
     pub fn to_response(&self) -> ResponseIncompatibility {
         ResponseIncompatibility {
             mod_id: self.incompatibility_id.clone(),
@@ -74,56 +88,6 @@ impl FetchedIncompatibility {
 }
 
 impl Incompatibility {
-    pub async fn create_for_mod_version(
-        id: i32,
-        incompats: Vec<IncompatibilityCreate>,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "INSERT INTO incompatibilities (mod_id, incompatibility_id, version, compare, importance) VALUES ",
-        );
-        for (index, i) in incompats.iter().enumerate() {
-            let mut separated = builder.separated(", ");
-            separated.push_unseparated("(");
-            separated.push_bind(id);
-            separated.push_bind(&i.incompatibility_id);
-            separated.push_bind(&i.version);
-            separated.push_bind(i.compare);
-            separated.push_bind(i.importance);
-            separated.push_unseparated(")");
-            if index != incompats.len() - 1 {
-                separated.push_unseparated(", ");
-            }
-        }
-
-        let result = builder.build().execute(&mut *pool).await;
-        if result.is_err() {
-            log::error!("{:?}", result.err().unwrap());
-            return Err(ApiError::DbError);
-        }
-
-        Ok(())
-    }
-
-    pub async fn clear_for_mod_version(id: i32, pool: &mut PgConnection) -> Result<(), ApiError> {
-        sqlx::query!(
-            "DELETE FROM incompatibilities
-            WHERE mod_id = $1",
-            id
-        )
-        .execute(&mut *pool)
-        .await
-        .map(|_| ())
-        .map_err(|err| {
-            log::error!(
-                "Failed to remove incompatibilities for mod version {}: {}",
-                id,
-                err
-            );
-            ApiError::DbError
-        })
-    }
-
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,
