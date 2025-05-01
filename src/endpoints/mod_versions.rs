@@ -336,8 +336,20 @@ pub async fn create_version(
     };
 
     version.gd = mod_gd_versions::create(version.id, &json, &mut tx).await?;
-    dependencies::create(version.id, &json, &mut tx).await?;
-    incompatibilities::create(version.id, &json, &mut tx).await?;
+    version.dependencies = Some(
+        dependencies::create(version.id, &json, &mut tx)
+            .await?
+            .into_iter()
+            .map(|x| x.into_response())
+            .collect(),
+    );
+    version.incompatibilities = Some(
+        incompatibilities::create(version.id, &json, &mut tx)
+            .await?
+            .into_iter()
+            .map(|x| x.into_response())
+            .collect(),
+    );
 
     if verified || accepted_versions == 0 {
         if let Some(links) = json.links.clone() {
@@ -376,7 +388,13 @@ pub async fn create_version(
         .to_discord_webhook()
         .send(data.webhook_url());
     }
-    Ok(HttpResponse::NoContent())
+
+    version.modify_metadata(data.app_url(), false);
+
+    Ok(HttpResponse::Created().json(ApiResponse {
+        error: "".into(),
+        payload: version,
+    }))
 }
 
 #[put("v1/mods/{id}/versions/{version}")]
