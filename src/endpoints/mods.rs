@@ -212,6 +212,11 @@ pub async fn create(
     the_mod.versions.insert(0, version);
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
+
+    for i in &mut the_mod.versions {
+        i.modify_metadata(data.app_url(), false);
+    }
+
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
         payload: the_mod,
