@@ -5,6 +5,7 @@ use crate::types::api::ApiError;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ModLinks {
+    #[serde(skip_serializing)]
     pub mod_id: String,
     pub community: Option<String>,
     pub homepage: Option<String>,
