@@ -27,12 +27,7 @@ pub struct IncompatibilityCreate {
 }
 
 #[derive(sqlx::FromRow)]
-pub struct Incompatibility {
-    pub mod_id: i32,
-    pub incompatibility_id: String,
-    pub compare: ModVersionCompare,
-    pub importance: IncompatibilityImportance,
-}
+pub struct Incompatibility {}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Replacement {
@@ -124,10 +119,14 @@ impl Incompatibility {
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, ApiError> {
-        let geode_pre = geode.map(|x| {
-            let pre = x.pre.to_string();
-            (!pre.is_empty()).then(|| pre)
-        }).flatten();
+        let geode_pre = geode
+            .and_then(|x| {
+                if x.pre.is_empty() {
+                    None
+                } else {
+                    Some(x.pre.to_string())
+                }
+            });
 
         let q = sqlx::query_as::<Postgres, FetchedIncompatibility>(
             r#"SELECT icp.compare,
@@ -189,8 +188,11 @@ impl Incompatibility {
         pool: &mut PgConnection,
     ) -> Result<HashMap<String, Replacement>, ApiError> {
         let mut ret: HashMap<String, Replacement> = HashMap::new();
-        let pre = geode.pre.to_string();
-        let pre = (!pre.is_empty()).then(|| pre);
+        let pre = if geode.pre.is_empty() {
+            None
+        } else {
+            Some(geode.pre.to_string())
+        };
         let r = match sqlx::query!(
             r#"
             SELECT 

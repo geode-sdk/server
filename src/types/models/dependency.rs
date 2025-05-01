@@ -8,12 +8,7 @@ use crate::types::api::ApiError;
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
 #[derive(sqlx::FromRow, Clone)]
-pub struct Dependency {
-    pub dependent_id: i32,
-    pub dependency_id: String,
-    pub compare: ModVersionCompare,
-    pub importance: DependencyImportance,
-}
+pub struct Dependency {}
 
 pub struct DependencyCreate {
     pub dependency_id: String,
@@ -135,7 +130,7 @@ impl Dependency {
             (!pre.is_empty()).then_some(pre)
         });
 
-        let q = sqlx::query_as::<Postgres, QueryResult>(
+        let result: Vec<QueryResult> = sqlx::query_as(
             r#"
             WITH RECURSIVE dep_tree AS (
                 SELECT * FROM (
@@ -264,15 +259,11 @@ impl Dependency {
         .bind(geode.map(|x| i32::try_from(x.major).unwrap_or_default()))
         .bind(geode.map(|x| i32::try_from(x.minor).unwrap_or_default()))
         .bind(geode.map(|x| i32::try_from(x.patch).unwrap_or_default()))
-        .bind(geode_pre);
-
-        let result = match q.fetch_all(&mut *pool).await {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+        .bind(geode_pre)
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|x| log::error!("Failed to fetch dependencies: {}", x))
+        .or(Err(ApiError::DbError))?;
 
         let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
         for i in result {

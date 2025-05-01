@@ -272,20 +272,13 @@ impl Mod {
         "#;
 
         let records: Vec<ModRecord> = sqlx::query_as(&format!(
-            "SELECT
-                q.id, q.repository, q.about,
-                q.changelog, q.download_count,
-                q.featured, q.created_at, q.updated_at, q.status
-            FROM (
-                SELECT 
-                    m.id, m.repository, m.about, m.changelog, 
-                    m.download_count, m.featured, m.created_at, m.updated_at, mvs.status,
-                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
-                FROM mods m
-                {}
-                ORDER BY {}
-            ) q
-            WHERE q.rn = 1
+            "SELECT 
+                m.id, m.repository, m.about, m.changelog, 
+                m.download_count, m.featured, m.created_at, m.updated_at
+            FROM mods m
+            {}
+            GROUP BY m.id
+            ORDER BY {}
             LIMIT $11
             OFFSET $12",
             joins_filters, order
@@ -310,8 +303,8 @@ impl Mod {
 
         let count: i64 = sqlx::query_scalar(&format!(
             "SELECT COUNT(DISTINCT m.id)
-                FROM mods m
-                {}",
+            FROM mods m
+            {}",
             joins_filters
         ))
         .bind(&tags)
