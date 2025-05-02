@@ -95,6 +95,7 @@ pub async fn get(
     id: web::Path<String>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    let dev = auth.developer().ok();
     let mut pool = data
         .db()
         .acquire()
@@ -110,6 +111,19 @@ pub async fn get(
         .await?
         .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
 
+    let version_statuses = match dev {
+        None => Some(vec![ModVersionStatusEnum::Accepted]),
+        Some(d) => {
+            if d.admin {
+                None
+            } else if developers::has_access_to_mod(d.id, &the_mod.id, &mut pool).await? {
+                Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending])
+            } else {
+                Some(vec![ModVersionStatusEnum::Accepted])
+            }
+        }
+    };
+
     the_mod.tags = mod_tags::get_for_mod(&the_mod.id, &mut pool)
         .await?
         .into_iter()
@@ -118,7 +132,7 @@ pub async fn get(
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut pool).await?;
     the_mod.versions = mod_versions::get_for_mod(
         &the_mod.id,
-        Some(&[ModVersionStatusEnum::Accepted]),
+        version_statuses.as_deref(),
         &mut pool,
     )
     .await?;
