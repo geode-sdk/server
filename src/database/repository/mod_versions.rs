@@ -395,18 +395,3 @@ pub async fn update_version_status(
 
     Ok(version)
 }
-
-pub async fn touch_updated_at(id: i32, conn: &mut PgConnection) -> Result<(), ApiError> {
-    sqlx::query!(
-        "UPDATE mod_versions
-        SET updated_at = NOW()
-        WHERE id = $1",
-        id
-    )
-    .execute(conn)
-    .await
-    .inspect_err(|e| log::error!("Failed to touch updated_at for mod version {}: {}", id, e))
-    .or(Err(ApiError::DbError))?;
-
-    Ok(())
-}
