@@ -460,6 +460,11 @@ pub async fn update_version(
     if old_status == ModVersionStatusEnum::Pending
         && version.status == ModVersionStatusEnum::Accepted
     {
+        if approved_count == 0 {
+            // Used to push new mods to the top of the "Recently created" list
+            mods::touch_created_at(&the_mod.id, &mut tx).await?;
+        }
+
         let bytes = mod_zip::download_mod_hash_comp(
             &version.download_link,
             &version.hash,
