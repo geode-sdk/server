@@ -29,6 +29,8 @@ enum JobCommand {
     },
     /// Runs migrations
     Migrate,
+    /// Intern stuff
+    Fixeroo
 }
 
 pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
@@ -58,6 +60,12 @@ pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
                 JobCommand::CleanupTokens => {
                     let mut conn = data.db().acquire().await?;
                     jobs::token_cleanup::token_cleanup(&mut conn).await?;
+
+                    Ok(true)
+                },
+                JobCommand::Fixeroo => {
+                    let mut conn = data.db().acquire().await?;
+                    jobs::fixeroo::fixeroo(data.max_download_mb(), &mut conn).await?;
 
                     Ok(true)
                 }
