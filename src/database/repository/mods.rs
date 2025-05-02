@@ -240,36 +240,34 @@ pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<()
     Ok(())
 }
 
-pub async fn update_with_json(
-    mut the_mod: Mod,
+pub async fn update_with_json_fixeroo(
+    id: &str,
     json: &ModJson,
     conn: &mut PgConnection,
-) -> Result<Mod, ApiError> {
+) -> Result<(), ApiError> {
     sqlx::query!(
         "UPDATE mods
         SET repository = $1,
         about = $2,
         changelog = $3,
         image = $4,
-        updated_at = NOW()",
+        updated_at = NOW()
+        WHERE id = $5",
         json.repository,
         json.about,
         json.changelog,
-        json.logo
+        json.logo,
+        id
     )
     .execute(conn)
     .await
     .inspect_err(|e| log::error!("Failed to update mod: {}", e))
     .or(Err(ApiError::DbError))?;
 
-    the_mod.repository = json.repository.clone();
-    the_mod.about = json.about.clone();
-    the_mod.changelog = json.changelog.clone();
-
-    Ok(the_mod)
+    Ok(())
 }
 
-pub async fn update_with_json_moved(
+pub async fn update_with_json(
     mut the_mod: Mod,
     json: ModJson,
     conn: &mut PgConnection,

@@ -376,7 +376,7 @@ pub async fn create_version(
             }
         }
 
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+        mods::update_with_json(the_mod, json, &mut tx).await?;
     }
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
@@ -474,7 +474,7 @@ pub async fn update_version(
 
         let json = ModJson::from_zip(bytes, &version.download_link, true)?;
 
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+        mods::update_with_json(the_mod, json, &mut tx).await?;
     }
 
     tx.commit().await.or(Err(ApiError::TransactionError))?;
