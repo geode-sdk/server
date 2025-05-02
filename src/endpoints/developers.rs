@@ -247,6 +247,8 @@ pub async fn update_profile(
 struct GetOwnModsQuery {
     #[serde(default = "default_own_mods_status")]
     status: ModVersionStatusEnum,
+    #[serde(default)]
+    only_owner: bool
 }
 
 pub fn default_own_mods_status() -> ModVersionStatusEnum {
@@ -265,7 +267,7 @@ pub async fn get_own_mods(
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, query.status, &mut pool).await?;
+    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, query.status, query.only_owner, &mut pool).await?;
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
         payload: mods,

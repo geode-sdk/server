@@ -22,7 +22,7 @@ use semver::Version;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder,
+    PgConnection
 };
 use std::{collections::HashMap, str::FromStr};
 
@@ -228,16 +228,14 @@ impl Mod {
 
         let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
-        /* 
-         * VERY IMPORTANT MESSAGE BELOW. 
-         * This beautiful chunk of code below uses format!() to reuse the same joins / where clauses
-         * in 2 queries. This uses prepared statements, the parameters are bound in the queries at the end.
-         * 
-         * DO NOT, I repeat, DO NOT enter any user input inside the format!().
-         * I will find you personally if you do so.
-         * 
-         * - Flame
-         */
+        // VERY IMPORTANT MESSAGE BELOW.
+        // This beautiful chunk of code below uses format!() to reuse the same joins / where clauses
+        // in 2 queries. This uses prepared statements, the parameters are bound in the queries at the end.
+        //
+        // DO NOT, I repeat, DO NOT enter any user input inside the format!().
+        // I will find you personally if you do so.
+        //
+        // - Flame
 
         let joins_filters = r#"
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
@@ -440,9 +438,9 @@ impl Mod {
     pub async fn get_all_for_dev(
         id: i32,
         status: ModVersionStatusEnum,
+        only_owner: bool,
         pool: &mut PgConnection,
     ) -> Result<Vec<SimpleDevMod>, ApiError> {
-        #[derive(sqlx::FromRow)]
         struct Record {
             id: String,
             featured: bool,
@@ -455,36 +453,33 @@ impl Mod {
             info: Option<String>,
         }
 
-        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT
-            m.id, m.featured, m.download_count as mod_download_count,
-            mv.name, mv.version, mv.download_count as mod_version_download_count,
-            mvs.info, mvs.status,
-            exists(
-                select 1 from mod_version_statuses mvs_inner
-                where mvs_inner.mod_version_id = mv.id and mvs_inner.status = 'accepted'
-            ) as validated
+        let records = sqlx::query_as!(
+            Record,
+            r#"SELECT
+                m.id, m.featured, m.download_count as mod_download_count,
+                mv.name, mv.version, mv.download_count as mod_version_download_count,
+                mvs.info, mvs.status as "status: _",
+                exists(
+                    select 1 from mod_version_statuses mvs_inner
+                    where mvs_inner.mod_version_id = mv.id and mvs_inner.status = 'accepted'
+                ) as "validated!: _"
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mods_developers md ON md.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE md.developer_id = ",
-        );
-        query_builder.push_bind(id);
-        query_builder.push(" AND mvs.status = ");
-        query_builder.push_bind(status);
-
-        let records = match query_builder
-            .build_query_as::<Record>()
-            .fetch_all(&mut *pool)
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+            WHERE md.developer_id = $1
+            AND mvs.status = $2
+            AND ($3 = false OR md.is_owner = true)
+            ORDER BY m.created_at DESC, mv.id DESC
+            "#,
+            id,
+            status as ModVersionStatusEnum,
+            only_owner
+        )
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|x| log::error!("Failed to fetch developer mods: {}", x))
+        .or(Err(ApiError::DbError))?;
 
         if records.is_empty() {
             return Ok(vec![]);
