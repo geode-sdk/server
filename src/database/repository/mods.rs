@@ -280,11 +280,13 @@ pub async fn update_with_json_moved(
         about = $2,
         changelog = $3,
         image = $4,
-        updated_at = NOW()",
+        updated_at = NOW()
+        WHERE id = $5",
         json.repository,
         json.about,
         json.changelog,
-        json.logo
+        json.logo,
+        the_mod.id
     )
     .execute(conn)
     .await
