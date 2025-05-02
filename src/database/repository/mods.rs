@@ -142,6 +142,33 @@ pub async fn assign_developer(
     Ok(())
 }
 
+pub async fn unassign_developer(
+    id: &str,
+    developer_id: i32,
+    conn: &mut PgConnection,
+) -> Result<(), ApiError> {
+    sqlx::query!(
+        "DELETE FROM mods_developers
+        WHERE mod_id = $1
+        AND developer_id = $2",
+        id,
+        developer_id
+    )
+    .execute(conn)
+    .await
+    .inspect_err(|x| {
+        log::error!(
+            "Couldn't unassign developer {} from mod {}: {}",
+            developer_id,
+            id,
+            x
+        )
+    })
+    .or(Err(ApiError::DbError))?;
+
+    Ok(())
+}
+
 pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
     Ok(sqlx::query!("SELECT featured FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)

@@ -116,7 +116,7 @@ pub async fn add_developer_to_mod(
             json.username
         )))?;
 
-    Mod::assign_dev(&path.id, target.id, &mut pool).await?;
+    mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
 
     Ok(HttpResponse::NoContent())
 }
@@ -149,9 +149,23 @@ pub async fn remove_dev_from_mod(
             path.username
         )))?;
 
-    Mod::unassign_dev(&path.id, target.id, &mut pool).await?;
+    if target.id == dev.id {
+        return Ok(HttpResponse::Conflict().json(ApiResponse {
+            error: "Cannot remove self from mod developer list".into(),
+            payload: "",
+        }));
+    }
 
-    Ok(HttpResponse::NoContent())
+    if !developers::has_access_to_mod(target.id, &path.id, &mut pool).await? {
+        return Ok(HttpResponse::NotFound().json(ApiResponse {
+            error: format!("{} is not a developer for this mod", target.username),
+            payload: "",
+        }));
+    }
+
+    mods::unassign_developer(&path.id, target.id, &mut pool).await?;
+
+    Ok(HttpResponse::NoContent().finish())
 }
 
 #[delete("v1/me/token")]
@@ -207,7 +221,11 @@ pub async fn update_profile(
         .await
         .or(Err(ApiError::DbAcquireError))?;
 
-    if !json.display_name.chars().all(|x| char::is_ascii_alphanumeric(&x)) {
+    if !json
+        .display_name
+        .chars()
+        .all(|x| char::is_ascii_alphanumeric(&x))
+    {
         return Err(ApiError::BadRequest(
             "Display name must contain only ASCII alphanumeric characters".into(),
         ));
