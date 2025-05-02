@@ -15,6 +15,7 @@ use crate::types::mod_json::ModJson;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
+use crate::types::models::mod_link::ModLinks;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{get, post, put, web, HttpResponse, Responder};
@@ -121,6 +122,8 @@ pub async fn get(
         &mut pool,
     )
     .await?;
+    the_mod.links = ModLinks::fetch(&the_mod.id, &mut pool).await?;
+
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), has_extended_permissions);
     }
