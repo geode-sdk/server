@@ -112,14 +112,12 @@ pub async fn get(
         .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
 
     let version_statuses = match dev {
-        None => Some(vec![ModVersionStatusEnum::Accepted]),
+        None => Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending]),
         Some(d) => {
             if d.admin {
                 None
-            } else if developers::has_access_to_mod(d.id, &the_mod.id, &mut pool).await? {
-                Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending])
             } else {
-                Some(vec![ModVersionStatusEnum::Accepted])
+                Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending])
             }
         }
     };
