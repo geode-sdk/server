@@ -392,7 +392,6 @@ pub async fn update_version_status(
     .or(Err(ApiError::DbError))?;
 
     version.status = status;
-    touch_updated_at(version.id, &mut *conn).await?;
 
     Ok(version)
 }
