@@ -303,13 +303,13 @@ pub async fn update_with_json_moved(
 pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), ApiError> {
     sqlx::query!(
         "UPDATE mods
-        SET updated_at = NOW()
+        SET created_at = NOW()
         WHERE id = $1",
         id
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to touch updated_at for mod {}: {}", id, e))
+    .inspect_err(|e| log::error!("Failed to touch created_at for mod {}: {}", id, e))
     .or(Err(ApiError::DbError))?;
 
     Ok(())
