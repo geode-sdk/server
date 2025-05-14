@@ -112,12 +112,18 @@ pub async fn get(
         .ok_or(ApiError::NotFound(format!("Mod '{id}' not found")))?;
 
     let version_statuses = match dev {
-        None => Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending]),
+        None => Some(vec![
+            ModVersionStatusEnum::Accepted,
+            ModVersionStatusEnum::Pending,
+        ]),
         Some(d) => {
             if d.admin {
                 None
             } else {
-                Some(vec![ModVersionStatusEnum::Accepted, ModVersionStatusEnum::Pending])
+                Some(vec![
+                    ModVersionStatusEnum::Accepted,
+                    ModVersionStatusEnum::Pending,
+                ])
             }
         }
     };
@@ -128,12 +134,8 @@ pub async fn get(
         .map(|t| t.name)
         .collect();
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut pool).await?;
-    the_mod.versions = mod_versions::get_for_mod(
-        &the_mod.id,
-        version_statuses.as_deref(),
-        &mut pool,
-    )
-    .await?;
+    the_mod.versions =
+        mod_versions::get_for_mod(&the_mod.id, version_statuses.as_deref(), &mut pool).await?;
     the_mod.links = ModLinks::fetch(&the_mod.id, &mut pool).await?;
 
     for i in &mut the_mod.versions {
@@ -164,20 +166,18 @@ pub async fn create(
 
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
-    if let Some(s) = &existing {
-        let versions = mod_versions::get_for_mod(&s.id, None, &mut pool).await?;
-
-        if !versions.is_empty() {
-            return Ok(HttpResponse::Conflict().json(ApiResponse {
-                error: format!("Mod {} already exists! Submit a new version.", s.id),
-                payload: "",
-            }));
-        }
-    }
-
     if let Some(m) = &existing {
         if !developers::has_access_to_mod(dev.id, &m.id, &mut pool).await? {
             return Err(ApiError::Forbidden);
+        }
+
+        let versions = mod_versions::get_for_mod(&m.id, None, &mut pool).await?;
+
+        if !versions.is_empty() {
+            return Ok(HttpResponse::Conflict().json(ApiResponse {
+                error: format!("Mod {} already exists! Submit a new version.", m.id),
+                payload: "",
+            }));
         }
     }
 
