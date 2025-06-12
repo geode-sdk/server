@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
+use crate::{database::DatabaseError, endpoints::ApiError};
 use sqlx::PgConnection;
-
-use crate::types::api::ApiError;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FetchedTag {
@@ -22,8 +21,8 @@ impl Tag {
     pub async fn get_tags_for_mod(
         mod_id: &str,
         pool: &mut PgConnection,
-    ) -> Result<Vec<String>, ApiError> {
-        let tags = match sqlx::query!(
+    ) -> Result<Vec<String>, DatabaseError> {
+        sqlx::query!(
             "SELECT mod_tags.name FROM mod_tags
             INNER JOIN mods_mod_tags ON mod_tags.id = mods_mod_tags.tag_id
             WHERE mods_mod_tags.mod_id = $1",
@@ -31,22 +30,16 @@ impl Tag {
         )
         .fetch_all(&mut *pool)
         .await
-        {
-            Ok(tags) => tags,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        Ok(tags.iter().map(|t| t.name.clone()).collect())
+        .inspect_err(|e| log::error!("{}", e))
+        .map(|tags| tags.into_iter().map(|t| t.name).collect::<Vec<_>>())
+        .map_err(|e| e.into())
     }
 
     pub async fn get_tags_for_mods(
         ids: &Vec<String>,
         pool: &mut PgConnection,
-    ) -> Result<HashMap<String, Vec<String>>, ApiError> {
-        let tags = match sqlx::query!(
+    ) -> Result<HashMap<String, Vec<String>>, DatabaseError> {
+        let tags = sqlx::query!(
             "SELECT mod_tags.name, mods_mod_tags.mod_id FROM mod_tags
             INNER JOIN mods_mod_tags ON mod_tags.id = mods_mod_tags.tag_id
             WHERE mods_mod_tags.mod_id = ANY($1)",
@@ -54,13 +47,7 @@ impl Tag {
         )
         .fetch_all(&mut *pool)
         .await
-        {
-            Ok(tags) => tags,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+        .inspect_err(|e| log::error!("{}", e))?;
 
         let mut ret: HashMap<String, Vec<String>> = HashMap::new();
         for tag in tags {
@@ -80,19 +67,13 @@ impl Tag {
             .map(|t| t.trim().to_lowercase())
             .collect::<Vec<String>>();
 
-        let fetched = match sqlx::query!(
+        let fetched = sqlx::query!(
             "SELECT DISTINCT id, name FROM mod_tags WHERE name = ANY($1)",
             &tags
         )
         .fetch_all(&mut *pool)
         .await
-        {
-            Ok(fetched) => fetched,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+        .inspect_err(|e| log::error!("Failed to fetch tags: {}", e))?;
 
         let fetched_ids = fetched.iter().map(|t| t.id).collect::<Vec<i32>>();
         let fetched_names = fetched

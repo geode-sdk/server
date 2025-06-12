@@ -1,4 +1,7 @@
-use crate::types::{api::ApiError, mod_json::ModJson, models::mod_entity::Mod};
+use crate::{
+    database::DatabaseError,
+    types::{api::ApiError, mod_json::ModJson, models::mod_entity::Mod},
+};
 use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::PgConnection;
 
@@ -109,7 +112,7 @@ pub async fn assign_owner(
     id: &str,
     developer_id: i32,
     conn: &mut PgConnection,
-) -> Result<(), ApiError> {
+) -> Result<(), DatabaseError> {
     assign_developer(id, developer_id, true, conn).await
 }
 
@@ -118,7 +121,7 @@ pub async fn assign_developer(
     developer_id: i32,
     owner: bool,
     conn: &mut PgConnection,
-) -> Result<(), ApiError> {
+) -> Result<(), DatabaseError> {
     sqlx::query!(
         "INSERT INTO mods_developers (mod_id, developer_id, is_owner)
         VALUES ($1, $2, $3)",
@@ -137,16 +140,15 @@ pub async fn assign_developer(
             x
         )
     })
-    .or(Err(ApiError::DbError))?;
-
-    Ok(())
+    .map(|_| ())
+    .map_err(|e| e.into())
 }
 
 pub async fn unassign_developer(
     id: &str,
     developer_id: i32,
     conn: &mut PgConnection,
-) -> Result<(), ApiError> {
+) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM mods_developers
         WHERE mod_id = $1
@@ -164,9 +166,8 @@ pub async fn unassign_developer(
             x
         )
     })
-    .or(Err(ApiError::DbError))?;
-
-    Ok(())
+    .map(|_| ())
+    .map_err(|e| e.into())
 }
 
 pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
@@ -181,14 +182,11 @@ pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiE
         .unwrap_or(false))
 }
 
-pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
+pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
     Ok(sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)
         .await
-        .map_err(|e| {
-            log::error!("Failed to check if mod {} exists: {}", id, e);
-            ApiError::DbError
-        })?
+        .inspect_err(|e| log::error!("Failed to check if mod {} exists: {}", id, e))?
         .is_some())
 }
 

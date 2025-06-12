@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::database::repository::developers;
+use crate::database::DatabaseError;
 use crate::types::api::{create_download_link, ApiError, PaginatedData};
 use chrono::SecondsFormat;
 use serde::Serialize;
@@ -161,7 +162,7 @@ impl ModVersion {
         );
         let mut counter_q: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"
-            SELECT COUNT(DISTINCT mv.id) 
+            SELECT COUNT(DISTINCT mv.id)
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
@@ -305,16 +306,16 @@ impl ModVersion {
         gd: Option<GDVersionEnum>,
         platforms: Option<&[VerPlatform]>,
         geode: Option<&semver::Version>,
-    ) -> Result<HashMap<String, ModVersion>, ApiError> {
+    ) -> Result<HashMap<String, ModVersion>, DatabaseError> {
         if ids.is_empty() {
             return Ok(Default::default());
         }
 
         let gd_vec = gd.map(|x| vec![GDVersionEnum::All, x]);
 
-        Ok(sqlx::query_as(
+        sqlx::query_as(
             "SELECT
-                q.name, q.id, q.description, q.version, 
+                q.name, q.id, q.description, q.version,
                 q.download_link, q.hash, q.geode,
                 q.download_count, q.early_load, q.api, q.mod_id,
                 'accepted'::mod_version_status as status,
@@ -369,54 +370,46 @@ impl ModVersion {
         .fetch_all(&mut *pool)
         .await
         .inspect_err(|x| log::error!("Failed to fetch latest versions for mods: {}", x))
-        .or(Err(ApiError::DbError))?
-        .into_iter()
-        .map(|i: ModVersionGetOne| (i.mod_id.clone(), i.into_mod_version()))
-        .collect::<HashMap<_, _>>())
+        .map_err(|e| e.into())
+        .map(|result: Vec<ModVersionGetOne>| {
+            result.into_iter()
+                .map(|i| (i.mod_id.clone(), i.into_mod_version()))
+                .collect::<HashMap<_, _>>()
+        })
     }
 
     pub async fn get_pending_for_mods(
-        ids: &Vec<String>,
+        ids: &[String],
         pool: &mut PgConnection,
-    ) -> Result<HashMap<String, Vec<ModVersion>>, ApiError> {
+    ) -> Result<HashMap<String, Vec<ModVersion>>, DatabaseError> {
         if ids.is_empty() {
-            return Ok(Default::default());
+            return Ok(HashMap::new());
         }
 
-        let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        let records = sqlx::query_as!(
+            ModVersionGetOne,
             r#"SELECT DISTINCT
-            mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
-            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
-            mv.download_count,
-            mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at, mvs.status FROM mod_versions mv 
+                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+                mv.download_count, mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
+                'pending'::mod_version_status as "status!: _", NULL as info
+            FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            WHERE mvs.status = 'pending' AND mv.mod_id IN ("#,
-        );
-        let mut separated = query_builder.separated(",");
-
-        for id in ids {
-            separated.push_bind(id);
-        }
-        separated.push_unseparated(")");
-        let records = query_builder
-            .build_query_as::<ModVersionGetOne>()
-            .fetch_all(&mut *pool)
-            .await;
-        let records = match records {
-            Err(e) => {
-                log::info!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+            WHERE mvs.status = 'pending'
+            AND mv.mod_id = ANY($1)
+            ORDER BY mv.id DESC"#,
+            ids
+        ).fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch pending mod versions: {}", e))?;
 
         let mut ret: HashMap<String, Vec<ModVersion>> = HashMap::new();
 
         for x in records.into_iter() {
-            let mod_id = x.mod_id.clone();
+            let entry = ret.entry(x.mod_id.clone()).or_default();
             let version = x.into_mod_version();
 
-            ret.entry(mod_id).or_default().push(version);
+            entry.push(version);
         }
         Ok(ret)
     }
@@ -429,18 +422,18 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<ModVersion, ApiError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, 
+            r#"SELECT q.name, q.id, q.description, q.version, q.download_link,
                 q.hash, q.geode, q.download_count,
                 q.early_load, q.api, q.mod_id, q.status,
                 q.created_at, q.updated_at
             FROM (
-                SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link, 
+                SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link,
                     mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
                     mv.download_count, mvs.status,
                     mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
-                    row_number() over (partition by m.id order by mv.id desc) rn 
-                FROM mods m 
+                    row_number() over (partition by m.id order by mv.id desc) rn
+                FROM mods m
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
                 INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -521,7 +514,7 @@ impl ModVersion {
     ) -> Result<ModVersion, ApiError> {
         let result = match sqlx::query_as!(
             ModVersionGetOne,
-            r#"SELECT mv.id, mv.name, mv.description, mv.version, 
+            r#"SELECT mv.id, mv.name, mv.description, mv.version,
                 mv.download_link, mv.download_count,
                 mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
@@ -530,8 +523,8 @@ impl ModVersion {
                 mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mod_versions mv
             INNER JOIN mods m ON m.id = mv.mod_id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id 
-            WHERE mv.mod_id = $1 AND mv.version = $2 
+            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            WHERE mv.mod_id = $1 AND mv.version = $2
                 AND (mvs.status = 'accepted' OR $3 = false)"#,
             id,
             version,

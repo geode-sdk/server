@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sqlx::PgConnection;
 
-use crate::types::api::ApiError;
+use crate::database::DatabaseError;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ModLinks {
@@ -16,8 +16,8 @@ impl ModLinks {
     pub async fn fetch(
         mod_id: &str,
         pool: &mut PgConnection,
-    ) -> Result<Option<ModLinks>, ApiError> {
-        match sqlx::query_as!(
+    ) -> Result<Option<ModLinks>, DatabaseError> {
+        sqlx::query_as!(
             ModLinks,
             "SELECT
                 mod_id, community, homepage, source
@@ -27,24 +27,19 @@ impl ModLinks {
         )
         .fetch_optional(pool)
         .await
-        {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                log::error!("Failed to fetch mod links for mod {}. Error: {}", mod_id, e);
-                Err(ApiError::DbError)
-            }
-        }
+        .inspect_err(|e| log::error!("Failed to fetch mod links for mod {}. Error: {}", mod_id, e))
+        .map_err(|e| e.into())
     }
 
     pub async fn fetch_for_mods(
         mod_ids: &Vec<String>,
         pool: &mut PgConnection,
-    ) -> Result<Vec<ModLinks>, ApiError> {
+    ) -> Result<Vec<ModLinks>, DatabaseError> {
         if mod_ids.is_empty() {
             return Ok(vec![]);
         }
 
-        match sqlx::query_as!(
+        sqlx::query_as!(
             ModLinks,
             "SELECT
                 mod_id, community, homepage, source
@@ -54,12 +49,7 @@ impl ModLinks {
         )
         .fetch_all(pool)
         .await
-        {
-            Err(e) => {
-                log::error!("Failed to fetch mod links for multiple mods. Error: {}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(r) => Ok(r),
-        }
+        .inspect_err(|e| log::error!("Failed to fetch mod links for multiple mods. Error: {}", e))
+        .map_err(|e| e.into())
     }
 }

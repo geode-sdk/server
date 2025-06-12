@@ -1,7 +1,10 @@
 use std::pin::Pin;
 
+use crate::auth::AuthenticationError;
 use crate::config::AppData;
-use crate::types::{api::ApiError, models::developer::Developer};
+use crate::database::repository::developers;
+use crate::endpoints::ApiError;
+use crate::types::models::developer::Developer;
 use actix_web::http::header::HeaderMap;
 use actix_web::{web, FromRequest, HttpRequest};
 use futures::Future;
@@ -13,30 +16,39 @@ pub struct Auth {
 }
 
 impl Auth {
-    /**
-     * Returns Ok(developer) if token was valid in request or returns ApiError::Unauthorized otherwise
-     */
-    pub fn developer(&self) -> Result<Developer, ApiError> {
+    pub fn developer(&self) -> Result<Developer, AuthenticationError> {
+        if self.token.is_none() {
+            return Err(AuthenticationError::NoToken);
+        }
         match &self.developer {
-            None => Err(ApiError::Unauthorized),
+            None => Err(AuthenticationError::InvalidToken),
             Some(d) => Ok(d.clone()),
         }
     }
 
-    pub fn token(&self) -> Result<Uuid, ApiError> {
+    fn check_auth(&self) -> Result<(), AuthenticationError> {
+        if self.token.is_none() {
+            return Err(AuthenticationError::NoToken);
+        }
+        if self.developer.is_none() {
+            return Err(AuthenticationError::InvalidToken);
+        }
+
+        Ok(())
+    }
+
+    pub fn token(&self) -> Result<Uuid, AuthenticationError> {
         match self.token {
-            None => Err(ApiError::Unauthorized),
+            None => Err(AuthenticationError::NoToken),
             Some(t) => Ok(t),
         }
     }
 
-    pub fn admin(&self) -> Result<(), ApiError> {
-        if self.developer.is_none() {
-            return Err(ApiError::Unauthorized);
-        }
+    pub fn check_admin(&self) -> Result<(), ApiError> {
+        self.check_auth()?;
 
         match self.developer.as_ref().is_some_and(|dev| dev.admin) {
-            false => Err(ApiError::Forbidden),
+            false => Err(ApiError::Authorization),
             true => Ok(()),
         }
     }
@@ -60,45 +72,17 @@ impl FromRequest for Auth {
                 }
             };
 
-            let mut pool = data
-                .db()
-                .acquire()
-                .await
-                .or(Err(ApiError::DbAcquireError))?;
-            let hash = sha256::digest(token.to_string());
-            let developer = match sqlx::query_as!(
-                Developer,
-                "SELECT
-                    d.id,
-                    d.username,
-                    d.display_name,
-                    d.verified,
-                    d.admin,
-                    d.github_user_id as github_id
-                FROM developers d
-                INNER JOIN auth_tokens a ON d.id = a.developer_id
-                WHERE a.token = $1",
-                hash
-            )
-            .fetch_optional(&mut *pool)
-            .await
-            .map_err(|e| {
-                log::error!("Failed to lookup developer for auth: {}", e);
-                ApiError::DbError
-            })? {
-                None => {
-                    return Ok(Auth {
-                        developer: None,
-                        token: None,
-                    })
-                }
-                Some(d) => d,
-            };
-
-            Ok(Auth {
-                developer: Some(developer),
-                token: Some(token),
-            })
+            let mut pool = data.db().acquire().await?;
+            match developers::find_by_token(&token, &mut pool).await? {
+                None => Ok(Auth {
+                    developer: None,
+                    token: Some(token),
+                }),
+                Some(dev) => Ok(Auth {
+                    developer: Some(dev),
+                    token: Some(token),
+                }),
+            }
         })
     }
 }
