@@ -26,7 +26,7 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ] }
 uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
-zip = "2.5.0"
+zip = "4.2.0"
 sha256 = "1.5"
 semver = "1.0"
 clap = { version = "4.5", features = ["derive"] }
