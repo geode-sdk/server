@@ -275,8 +275,8 @@ impl Mod {
                 m.download_count, m.featured, m.created_at, m.updated_at
             FROM mods m
             {}
-            GROUP BY m.id, mv.id, mv.name
-            ORDER BY {}, mv.id DESC
+            GROUP BY m.id
+            ORDER BY {}
             LIMIT $11
             OFFSET $12",
             joins_filters, order
