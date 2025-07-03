@@ -11,7 +11,7 @@ pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError>
         .acquire()
         .await
         .or(Err(ApiError::DbAcquireError))?;
-    let tags = mod_tags::get_all(&mut pool)
+    let tags = mod_tags::get_all_writable(&mut pool)
         .await?
         .into_iter()
         .map(|tag| tag.name)
