@@ -199,6 +199,7 @@ impl Mod {
             IndexSortType::Downloads => "q.download_count DESC",
             IndexSortType::RecentlyUpdated => "q.updated_at DESC",
             IndexSortType::RecentlyPublished => "q.created_at DESC",
+            IndexSortType::Oldest => "q.created_at ASC",
             IndexSortType::Name => "q.name ASC",
             IndexSortType::NameReverse => "q.name DESC",
         };

@@ -29,6 +29,7 @@ pub enum IndexSortType {
     Downloads,
     RecentlyUpdated,
     RecentlyPublished,
+    Oldest,
     Name,
     NameReverse,
 }
