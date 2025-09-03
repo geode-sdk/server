@@ -474,6 +474,29 @@ pub async fn update_version(
 
         let json = ModJson::from_zip(bytes, &version.download_link, true)?;
 
+        // Update links with data from mod.json
+        if let Some(links) = json.links.clone() {
+            mod_links::upsert(
+                the_mod.id.as_str(),
+                links.community,
+                links.homepage,
+                links.source,
+                &mut tx,
+            )
+            .await?;
+        } else {
+            mod_links::upsert(the_mod.id.as_str(), None, None, None, &mut tx).await?;
+        }
+
+        // Update tags with data from mod.json
+        let tags = if let Some(tags) = &json.tags {
+            mod_tags::parse_tag_list(tags, &mut tx).await?
+        } else {
+            vec![]
+        };
+
+        mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
+
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
     }
 
