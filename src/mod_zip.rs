@@ -101,8 +101,7 @@ pub async fn download_mod_hash_comp(
     let new_hash = sha256::digest(slice);
     if new_hash != hash {
         return Err(ApiError::BadRequest(format!(
-            ".geode hash mismatch: old {}, new {}",
-            hash, new_hash,
+            ".geode hash mismatch: old {hash}, new {new_hash}",
         )));
     }
 
