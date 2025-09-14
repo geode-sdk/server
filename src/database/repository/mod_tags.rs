@@ -2,19 +2,20 @@ use crate::types::api::ApiError;
 use crate::types::models::tag::Tag;
 use sqlx::PgConnection;
 
-pub async fn get_all(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
+pub async fn get_all_writable(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
     let tags = sqlx::query!(
         "SELECT
             id,
             name,
             display_name,
             is_readonly
-        FROM mod_tags"
+        FROM mod_tags
+        where is_readonly = false"
     )
     .fetch_all(&mut *conn)
     .await
     .map_err(|e| {
-        log::error!("mod_tags::get_tags failed: {}", e);
+        log::error!("mod_tags::get_all_writeable failed: {}", e);
         ApiError::DbError
     })?
     .into_iter()
@@ -25,6 +26,33 @@ pub async fn get_all(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
         is_readonly: i.is_readonly,
     })
     .collect::<Vec<Tag>>();
+
+    Ok(tags)
+}
+
+pub async fn get_all(conn: &mut PgConnection) -> Result<Vec<Tag>, ApiError> {
+    let tags = sqlx::query!(
+        "SELECT
+            id,
+            name,
+            display_name,
+            is_readonly
+        FROM mod_tags"
+    )
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| {
+            log::error!("mod_tags::get_all failed: {}", e);
+            ApiError::DbError
+        })?
+        .into_iter()
+        .map(|i| Tag {
+            id: i.id,
+            display_name: i.display_name.unwrap_or(i.name.clone()),
+            name: i.name,
+            is_readonly: i.is_readonly,
+        })
+        .collect::<Vec<Tag>>();
 
     Ok(tags)
 }
@@ -67,7 +95,7 @@ pub async fn parse_tag_list(
         return Ok(vec![]);
     }
 
-    let db_tags = get_all(conn).await?;
+    let db_tags = get_all_writable(conn).await?;
 
     let mut ret = Vec::new();
     for tag in tags {
@@ -104,7 +132,7 @@ pub async fn update_for_mod(
 
     let deletable = existing
         .iter()
-        .filter(|e| !tags.iter().any(|t| e.id == t.id))
+        .filter(|e| !e.is_readonly && !tags.iter().any(|t| e.id == t.id))
         .map(|x| x.id)
         .collect::<Vec<_>>();
 

@@ -30,7 +30,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -172,11 +172,12 @@ impl Mod {
         };
 
         let order = match query.sort {
-            IndexSortType::Downloads => "m.download_count DESC",
-            IndexSortType::RecentlyUpdated => "m.updated_at DESC",
-            IndexSortType::RecentlyPublished => "m.created_at DESC",
-            IndexSortType::Name => "mv.name ASC",
-            IndexSortType::NameReverse => "mv.name DESC",
+            IndexSortType::Downloads => "q.download_count DESC",
+            IndexSortType::RecentlyUpdated => "q.updated_at DESC",
+            IndexSortType::RecentlyPublished => "q.created_at DESC",
+            IndexSortType::Oldest => "q.created_at ASC",
+            IndexSortType::Name => "q.name ASC",
+            IndexSortType::NameReverse => "q.name DESC",
         };
 
         let geode = query
@@ -246,15 +247,20 @@ impl Mod {
         "#;
 
         let records: Vec<ModRecord> = sqlx::query_as(&format!(
-            "SELECT
-                m.id, m.repository, m.about, m.changelog,
-                m.download_count, m.featured, m.created_at, m.updated_at
-            FROM mods m
-            {}
-            GROUP BY m.id
+            "SELECT q.id, q.repository, q.about, q.changelog,
+                q.download_count, q.featured, q.created_at, q.updated_at
+            FROM (
+                SELECT m.id, mv.name, m.repository, m.about, m.changelog,
+                    m.download_count, m.featured, m.created_at, m.updated_at,
+                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
+                FROM mods m
+                {}
+            ) q
+            WHERE q.rn = 1
             ORDER BY {}
             LIMIT $11
-            OFFSET $12",
+            OFFSET $12
+            ",
             joins_filters, order
         ))
         .bind(tags.as_ref())

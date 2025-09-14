@@ -11,7 +11,7 @@ use zip::ZipArchive;
 
 use crate::types::api::ApiError;
 
-pub fn extract_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
+pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, ApiError> {
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
         .inspect_err(|e| log::error!("logo.png read fail: {}", e))
@@ -60,7 +60,7 @@ pub fn extract_mod_logo(file: &mut ZipFile) -> Result<Vec<u8>, ApiError> {
     Ok(bytes)
 }
 
-pub fn validate_mod_logo(file: &mut ZipFile) -> Result<(), ApiError> {
+pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ApiError> {
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
         .inspect_err(|e| log::error!("logo.png read fail: {}", e))
@@ -101,8 +101,7 @@ pub async fn download_mod_hash_comp(
     let new_hash = sha256::digest(slice);
     if new_hash != hash {
         return Err(ApiError::BadRequest(format!(
-            ".geode hash mismatch: old {}, new {}",
-            hash, new_hash,
+            ".geode hash mismatch: old {hash}, new {new_hash}",
         )));
     }
 

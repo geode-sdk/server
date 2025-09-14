@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 use actix_web::web::Bytes;
 use regex::Regex;
@@ -138,7 +138,7 @@ impl ModJson {
             .by_name("mod.json")
             .or(Err(ApiError::BadRequest("mod.json not found".into())))?;
 
-        let mut json = serde_json::from_reader::<ZipFile, ModJson>(json_file)
+        let mut json = serde_json::from_reader::<ZipFile<Cursor<Bytes>>, ModJson>(json_file)
             .inspect_err(|e| log::error!("Failed to parse mod.json: {}", e))
             .or(Err(ApiError::BadRequest("Invalid mod.json".into())))?;
 
@@ -411,7 +411,7 @@ impl ModJson {
     }
 }
 
-fn parse_zip_entry_to_str(file: &mut ZipFile) -> Result<String, String> {
+fn parse_zip_entry_to_str(file: &mut ZipFile<Cursor<Bytes>>) -> Result<String, String> {
     let mut string: String = String::from("");
     match file.read_to_string(&mut string) {
         Ok(_) => Ok(string),
@@ -453,7 +453,7 @@ fn parse_download_url(url: &str) -> String {
     String::from(url.trim_end_matches("\\/"))
 }
 
-fn check_mac_binary(file: &mut ZipFile) -> Result<(bool, bool), ApiError> {
+fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), ApiError> {
     // 12 bytes is all we need
     let mut bytes: Vec<u8> = vec![0; 12];
     file.read_exact(&mut bytes).map_err(|e| {
