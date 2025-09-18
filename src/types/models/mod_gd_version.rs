@@ -3,10 +3,7 @@ use std::{collections::HashMap, str::FromStr};
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 
-use crate::{
-    database::DatabaseError,
-    types::{api::ApiError, mod_json::ModJson},
-};
+use crate::{database::DatabaseError, types::mod_json::ModJson};
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
 #[sqlx(type_name = "gd_version")]
@@ -221,17 +218,21 @@ impl ModGDVersion {
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,
-    ) -> Result<DetailedGDVersion, ApiError> {
-        let result = sqlx::query_as!(ModGDVersion, r#"SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1"#, id)
-            .fetch_all(&mut *pool)
-            .await;
-        let result: Vec<ModGDVersion> = match result {
-            Err(e) => {
-                log::info!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+    ) -> Result<DetailedGDVersion, DatabaseError> {
+        let result = sqlx::query_as!(
+            ModGDVersion,
+            r#"
+            SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _"
+            FROM mod_gd_versions mgv
+            WHERE mgv.mod_id = $1
+            "#,
+            id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| {
+            log::error!("Failed to fetch mod_gd_versions for mod_version {id}: {e}")
+        })?;
         let mut ret = DetailedGDVersion {
             win: None,
             mac: None,

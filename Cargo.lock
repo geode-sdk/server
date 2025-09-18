@@ -1179,6 +1179,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.12",
  "tokio",
+ "url",
  "uuid",
  "zip",
 ]

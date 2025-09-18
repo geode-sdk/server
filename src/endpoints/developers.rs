@@ -163,11 +163,7 @@ pub async fn delete_token(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let token = auth.token()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     auth_tokens::remove_token(token, &mut pool).await?;
 
@@ -180,11 +176,7 @@ pub async fn delete_tokens(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
     refresh_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
@@ -204,11 +196,7 @@ pub async fn update_profile(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     if !json
         .display_name
@@ -222,7 +210,7 @@ pub async fn update_profile(
 
     if json.display_name.len() < 2 {
         return Err(ApiError::BadRequest(
-            "Display name must have > 1 character".into(),
+            "Display name must have more than 1 character".into(),
         ));
     }
 
@@ -251,11 +239,7 @@ pub async fn get_own_mods(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
     let mods: Vec<SimpleDevMod> =
         Mod::get_all_for_dev(dev.id, query.status, query.only_owner, &mut pool).await?;
     Ok(HttpResponse::Ok().json(ApiResponse {
@@ -283,11 +267,7 @@ pub async fn get_developer(
     data: web::Data<AppData>,
     path: web::Path<GetDeveloperPath>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
     let result = developers::get_one(path.id, &mut pool)
         .await?
         .ok_or(ApiError::NotFound("Developer not found".into()))?;
@@ -314,11 +294,7 @@ pub async fn update_developer(
         ));
     }
 
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     if payload.admin.is_some() && dev.id == path.id {
         return Err(ApiError::BadRequest(

@@ -1,5 +1,5 @@
 use crate::database::DatabaseError;
-use crate::types::api::{ApiError, PaginatedData};
+use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, ModDeveloper};
 use sqlx::PgConnection;
 use std::collections::HashMap;
@@ -71,7 +71,7 @@ pub async fn fetch_or_insert_github(
     github_id: i64,
     username: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     match sqlx::query_as!(
         Developer,
         "SELECT
@@ -87,10 +87,8 @@ pub async fn fetch_or_insert_github(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer for GitHub id: {}", e);
-        ApiError::DbError
-    })? {
+    .inspect_err(|e| log::error!("Failed to fetch developer for GitHub id: {e}"))?
+    {
         Some(dev) => Ok(dev),
         None => Ok(insert_github(github_id, username, conn).await?),
     }
@@ -100,7 +98,7 @@ async fn insert_github(
     github_id: i64,
     username: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "INSERT INTO developers(username, display_name, github_user_id)
@@ -117,13 +115,11 @@ async fn insert_github(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to insert developer: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to insert developer: {e}"))
+    .map_err(|e| e.into())
 }
 
-pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
+pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Developer>, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "SELECT
@@ -139,10 +135,8 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer {}: {}", id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch developer {id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn get_one_by_username(
@@ -164,7 +158,7 @@ pub async fn get_one_by_username(
     )
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to fetch developer {}: {}", username, e))
+    .inspect_err(|e| log::error!("Failed to fetch developer {username}: {e}"))
     .map_err(|x| x.into())
 }
 
@@ -295,7 +289,7 @@ pub async fn owns_mod(
 pub async fn get_owner_for_mod(
     mod_id: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Option<Developer>, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "SELECT
@@ -311,18 +305,10 @@ pub async fn get_owner_for_mod(
         AND md.is_owner = true",
         mod_id
     )
-    .fetch_one(&mut *conn)
+    .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| match e {
-        sqlx::Error::RowNotFound => {
-            log::error!("Mod {} doesn't have an owner!", mod_id);
-            ApiError::InternalError
-        }
-        _ => {
-            log::error!("Failed to fetch owner for mod {}", mod_id);
-            ApiError::InternalError
-        }
-    })
+    .inspect_err(|e| log::error!("Failed to fetch owner for mod {mod_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn update_status(
@@ -330,7 +316,7 @@ pub async fn update_status(
     verified: bool,
     admin: bool,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "UPDATE developers
@@ -350,17 +336,15 @@ pub async fn update_status(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to update developer {}: {}", dev_id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to update developer {dev_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn update_profile(
     dev_id: i32,
     display_name: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "UPDATE developers
@@ -378,16 +362,14 @@ pub async fn update_profile(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to update profile for {}: {}", dev_id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to update profile for {dev_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn find_by_refresh_token(
     uuid: Uuid,
     conn: &mut PgConnection,
-) -> Result<Option<Developer>, ApiError> {
+) -> Result<Option<Developer>, DatabaseError> {
     let hash = sha256::digest(uuid.to_string());
     sqlx::query_as!(
         Developer,
@@ -406,10 +388,8 @@ pub async fn find_by_refresh_token(
     )
     .fetch_optional(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to search for developer by refresh token: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to search for developer by refresh token: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn find_by_token(

@@ -1,3 +1,4 @@
+use crate::auth::AuthenticationError;
 use crate::database::repository::github_login_attempts;
 use crate::types::api::ApiError;
 use crate::types::models::github_login_attempt::StoredLoginAttempt;
@@ -14,6 +15,40 @@ pub struct GithubStartAuth {
     verification_uri: String,
     expires_in: i32,
     interval: i32,
+}
+
+#[derive(Deserialize)]
+pub enum GithubDeviceFlowErrorString {
+    #[serde(rename(deserialize = "authorization_pending"))]
+    AuthorizationPending,
+    #[serde(rename(deserialize = "slow_down"))]
+    SlowDown,
+    #[serde(rename(deserialize = "expired_token"))]
+    ExpiredToken,
+    #[serde(rename(deserialize = "unsupported_grant_type"))]
+    UnsupportedGrantType,
+    #[serde(rename(deserialize = "incorrect_client_credentials"))]
+    IncorrectClientCredentials,
+    #[serde(rename(deserialize = "incorrect_device_code"))]
+    IncorrectDeviceCode,
+    #[serde(rename(deserialize = "access_denied"))]
+    AccessDenied,
+    #[serde(rename(deserialize = "device_flow_disabled"))]
+    DeviceFlowDisabled,
+    Unknown,
+}
+
+impl Default for GithubDeviceFlowErrorString {
+    fn default() -> Self {
+        GithubDeviceFlowErrorString::Unknown
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GithubErrorResponse {
+    error: GithubDeviceFlowErrorString,
+    error_description: String,
+    error_uri: String,
 }
 
 pub struct GithubClient {
@@ -55,7 +90,7 @@ impl GithubClient {
         &self,
         ip: IpNetwork,
         pool: &mut PgConnection,
-    ) -> Result<StoredLoginAttempt, ApiError> {
+    ) -> Result<StoredLoginAttempt, AuthenticationError> {
         if let Some(r) = github_login_attempts::get_one_by_ip(ip, pool).await? {
             if r.is_expired() {
                 let uuid = Uuid::parse_str(&r.uuid).unwrap();
@@ -74,26 +109,27 @@ impl GithubClient {
             }))
             .send()
             .await
-            .map_err(|e| {
-                log::error!("Failed to start OAuth device flow with GitHub: {}", e);
-                ApiError::InternalError
-            })?;
+            .inspect_err(|e| log::error!("Failed to start OAuth device flow with GitHub: {e}"))?;
 
         if !res.status().is_success() {
             log::error!(
                 "GitHub OAuth device flow start request failed with code {}",
                 res.status()
             );
-            return Err(ApiError::InternalError);
+            return Err(AuthenticationError::InternalError(
+                "Failed to start GitHub device flow".into(),
+            ));
         }
 
-        let body = res.json::<GithubStartAuth>().await.map_err(|e| {
-            log::error!(
-                "Failed to parse OAuth device flow response from GitHub: {}",
-                e
-            );
-            ApiError::InternalError
-        })?;
+        let body = res
+            .json::<GithubStartAuth>()
+            .await
+            .inspect_err(|e| {
+                log::error!("Failed to parse OAuth device flow response from GitHub: {e}")
+            })
+            .or(Err(AuthenticationError::InternalError(
+                "Failed to parse response from GitHub".into(),
+            )))?;
 
         github_login_attempts::create(
             ip,
@@ -105,6 +141,7 @@ impl GithubClient {
             &mut *pool,
         )
         .await
+        .map_err(|e| e.into())
     }
 
     pub async fn poll_github(

@@ -1,6 +1,6 @@
 use crate::{
     database::DatabaseError,
-    types::{api::ApiError, mod_json::ModJson, models::mod_entity::Mod},
+    types::{mod_json::ModJson, models::mod_entity::Mod},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::PgConnection;
@@ -45,7 +45,7 @@ pub async fn get_one(
     id: &str,
     include_md: bool,
     conn: &mut PgConnection,
-) -> Result<Option<Mod>, ApiError> {
+) -> Result<Option<Mod>, DatabaseError> {
     if include_md {
         sqlx::query_as!(
             ModRecordGetOne,
@@ -58,8 +58,8 @@ pub async fn get_one(
         )
         .fetch_optional(conn)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
-        .or(Err(ApiError::DbError))
+        .inspect_err(|e| log::error!("Failed to fetch mod {id}: {e}"))
+        .map_err(|e| e.into())
         .map(|x| x.map(|x| x.into_mod()))
     } else {
         sqlx::query_as!(
@@ -74,13 +74,13 @@ pub async fn get_one(
         .fetch_optional(conn)
         .await
         .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
-        .or(Err(ApiError::DbError))
+        .map_err(|e| e.into())
         .map(|x| x.map(|x| x.into_mod()))
     }
 }
 
 /// Does NOT check if the target mod exists
-pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, ApiError> {
+pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, DatabaseError> {
     sqlx::query_as!(
         ModRecordGetOne,
         "INSERT INTO mods (
@@ -103,8 +103,8 @@ pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, ApiE
     )
     .fetch_one(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to created mod {}: {}", &json.id, e))
-    .or(Err(ApiError::DbError))
+    .inspect_err(|e| log::error!("Failed to created mod {}: {e}", &json.id))
+    .map_err(|e| e.into())
     .map(|x| x.into_mod())
 }
 
@@ -132,13 +132,7 @@ pub async fn assign_developer(
     .execute(conn)
     .await
     .inspect_err(|x| {
-        log::error!(
-            "Couldn't assign developer {} on mod {} (owner {}): {}",
-            developer_id,
-            id,
-            owner,
-            x
-        )
+        log::error!("Couldn't assign developer {developer_id} on mod {id} (owner {owner}): {x}")
     })
     .map(|_| ())
     .map_err(|e| e.into())
@@ -170,14 +164,11 @@ pub async fn unassign_developer(
     .map_err(|e| e.into())
 }
 
-pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, ApiError> {
+pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
     Ok(sqlx::query!("SELECT featured FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)
         .await
-        .map_err(|e| {
-            log::error!("Failed to check if mod {} exists: {}", id, e);
-            ApiError::DbError
-        })?
+        .inspect_err(|e| log::error!("Failed to check if mod {id} is featured: {e}"))?
         .map(|row| row.featured)
         .unwrap_or(false))
 }
@@ -190,7 +181,7 @@ pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseE
         .is_some())
 }
 
-pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, ApiError> {
+pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, DatabaseError> {
     struct QueryResult {
         image: Option<Vec<u8>>,
     }
@@ -207,10 +198,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch mod logo for {}: {}", id, e);
-        ApiError::DbError
-    })?
+    .inspect_err(|e| log::error!("Failed to fetch mod logo for {id}: {e}"))?
     .and_then(|optional| optional.image);
 
     // Empty vec means no image
@@ -221,7 +209,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
     }
 }
 
-pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mods
         SET download_count = download_count + 1
@@ -230,10 +218,7 @@ pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<()
     )
     .execute(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to increment downloads for mod {}: {}", id, e);
-        ApiError::DbError
-    })?;
+    .inspect_err(|e| log::error!("Failed to increment downloads for mod {id}: {e}"))?;
 
     Ok(())
 }
@@ -242,7 +227,7 @@ pub async fn update_with_json(
     mut the_mod: Mod,
     json: &ModJson,
     conn: &mut PgConnection,
-) -> Result<Mod, ApiError> {
+) -> Result<Mod, DatabaseError> {
     sqlx::query!(
         "UPDATE mods
         SET repository = $1,
@@ -257,8 +242,7 @@ pub async fn update_with_json(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to update mod: {}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to update mod: {}", e))?;
 
     the_mod.repository = json.repository.clone();
     the_mod.about = json.about.clone();
@@ -271,7 +255,7 @@ pub async fn update_with_json_moved(
     mut the_mod: Mod,
     json: ModJson,
     conn: &mut PgConnection,
-) -> Result<Mod, ApiError> {
+) -> Result<Mod, DatabaseError> {
     sqlx::query!(
         "UPDATE mods
         SET repository = $1,
@@ -288,8 +272,7 @@ pub async fn update_with_json_moved(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to update mod: {}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to update mod: {e}"))?;
 
     the_mod.repository = json.repository;
     the_mod.about = json.about;
@@ -300,7 +283,7 @@ pub async fn update_with_json_moved(
 
 /// Used when first version goes from pending to accepted.
 /// Makes it so versions that stay a lot in pending appear at the top of the newly created lists
-pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mods
         SET created_at = NOW()
@@ -309,8 +292,7 @@ pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), A
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to touch created_at for mod {}: {}", id, e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to touch created_at for mod {id}: {e}"))?;
 
     Ok(())
 }

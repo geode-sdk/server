@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::database::repository::mod_tags;
 use crate::{database::DatabaseError, endpoints::ApiError};
 use sqlx::PgConnection;
 
@@ -94,4 +95,34 @@ impl Tag {
 
         Ok(fetched_ids)
     }
+}
+
+pub async fn parse_tag_list(
+    tags: &[String],
+    conn: &mut PgConnection,
+) -> Result<Vec<Tag>, ApiError> {
+    if tags.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let db_tags = mod_tags::get_all_writable(&mut *conn).await?;
+
+    let mut ret = Vec::with_capacity(tags.len());
+    for tag in tags {
+        if let Some(t) = db_tags.iter().find(|t| t.name == *tag) {
+            ret.push(t.clone());
+        } else {
+            let taglist = db_tags
+                .into_iter()
+                .map(|t| t.name)
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            return Err(ApiError::BadRequest(format!(
+                "Tag '{tags}' isn't allowed. Only the following are allowed: '{taglist}'"
+            )));
+        }
+    }
+
+    Ok(ret)
 }

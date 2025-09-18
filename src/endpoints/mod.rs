@@ -1,5 +1,4 @@
 use actix_web::{http::StatusCode, HttpResponse};
-
 use crate::types::{api::ApiResponse, models::mod_gd_version::PlatformParseError};
 
 pub mod auth;
@@ -25,6 +24,8 @@ pub enum ApiError {
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     BadRequest(String),
+    #[error("{0}")]
+    TooManyRequests(String),
     #[error("Internal error: {0}")]
     InternalError(String),
     #[error("{0}")]
@@ -47,16 +48,17 @@ impl ApiError {
 }
 
 impl actix_web::ResponseError for ApiError {
-    fn status_code(&self) -> actix_web::http::StatusCode {
+    fn status_code(&self) -> StatusCode {
         match self {
             ApiError::Authentication(..) => StatusCode::UNAUTHORIZED,
             ApiError::Authorization => StatusCode::FORBIDDEN,
             ApiError::Json(..) => StatusCode::BAD_REQUEST,
+            ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
-    fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
+    fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
         HttpResponse::build(self.status_code()).json(self.as_response())
     }
 }

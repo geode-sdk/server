@@ -30,7 +30,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection,
 };
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {

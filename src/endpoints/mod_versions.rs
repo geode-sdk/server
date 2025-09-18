@@ -9,15 +9,17 @@ use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
     mod_tags, mod_versions, mods,
 };
+use crate::endpoints::ApiError;
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
 };
 use crate::mod_zip::{self, download_mod};
+use crate::types::models;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
     types::{
-        api::{ApiError, ApiResponse},
+        api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
         models::{
             mod_gd_version::{GDVersionEnum, VerPlatform},
@@ -80,7 +82,7 @@ pub async fn get_version_index(
     query: web::Query<IndexQuery>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default());
+    let platforms = VerPlatform::parse_query_string(&query.platforms.clone().unwrap_or_default())?;
     let compare = query.compare.as_ref().map(|c| split_version_and_compare(c));
 
     if compare.is_some() && compare.as_ref().unwrap().is_err() {
@@ -92,11 +94,7 @@ pub async fn get_version_index(
 
     let compare = compare.map(|x| x.unwrap());
 
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     let has_extended_permissions = match auth.developer() {
         Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
@@ -133,11 +131,7 @@ pub async fn get_one(
     query: web::Query<GetOneQuery>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     let has_extended_permissions = match auth.developer() {
         Ok(dev) => dev.admin || developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?,
@@ -155,13 +149,16 @@ pub async fn get_one(
             };
 
             let platform_string = query.platforms.clone().unwrap_or_default();
-            let platforms = VerPlatform::parse_query_string(&platform_string);
+            let platforms = VerPlatform::parse_query_string(&platform_string)?;
 
             ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
             ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
         }
-    };
+    }
+    .ok_or(ApiError::NotFound(
+        "Couldn't find valid mod version for given filters".into(),
+    ))?;
 
     version.modify_metadata(data.app_url(), has_extended_permissions);
     Ok(web::Json(ApiResponse {
@@ -185,21 +182,20 @@ pub async fn download_version(
     query: web::Query<DownloadQuery>,
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
     let mod_version = {
         if path.version == "latest" {
             let platform_str = query.platforms.clone().unwrap_or_default();
-            let platforms = VerPlatform::parse_query_string(&platform_str);
+            let platforms = VerPlatform::parse_query_string(&platform_str)?;
             ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
                 .await?
         } else {
             ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
         }
-    };
+    }
+    .ok_or(ApiError::NotFound(
+        "Couldn't find valid mod version for given filters".into(),
+    ))?;
     let url = mod_version.download_link;
 
     if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
@@ -209,13 +205,15 @@ pub async fn download_version(
             .finish());
     }
 
-    let ip = match info.realip_remote_addr() {
-        None => return Err(ApiError::InternalError),
-        Some(i) => i,
+    let Some(ip) = info.realip_remote_addr() else {
+        return Err(ApiError::InternalError(
+            "Couldn't detect IP address of client".into(),
+        ));
     };
+
     let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
 
-    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    let mut tx = pool.begin().await?;
 
     let downloaded_mod_previously =
         mod_downloads::has_downloaded_mod(net, &mod_version.mod_id, &mut tx).await?;
@@ -244,11 +242,7 @@ pub async fn create_version(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     let id = path.into_inner();
 
@@ -257,7 +251,7 @@ pub async fn create_version(
         .ok_or(ApiError::NotFound(format!("Mod {} not found", &id)))?;
 
     if !(developers::has_access_to_mod(dev.id, &the_mod.id, &mut pool).await?) {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::Authorization);
     }
 
     let versions = mod_versions::get_for_mod(
@@ -291,10 +285,8 @@ pub async fn create_version(
         .collect();
 
     let bytes = download_mod(&download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &download_link, make_accepted).map_err(|err| {
-        log::error!("Failed to parse mod.json: {}", err);
-        ApiError::FilesystemError
-    })?;
+    let json = ModJson::from_zip(bytes, &download_link, make_accepted)
+        .inspect_err(|e| log::error!("Failed to parse mod.json: {e}"))?;
     if json.id != the_mod.id {
         return Err(ApiError::BadRequest(format!(
             "Request id {} does not match mod.json id {}",
@@ -304,7 +296,7 @@ pub async fn create_version(
 
     json.validate()?;
 
-    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    let mut tx = pool.begin().await?;
 
     let mut version: ModVersion = if versions.is_empty() {
         mod_versions::create_from_json(&json, make_accepted, &mut tx).await?
@@ -371,7 +363,7 @@ pub async fn create_version(
         }
         if let Some(tags) = &json.tags {
             if !tags.is_empty() {
-                let tags = mod_tags::parse_tag_list(tags, &mut tx).await?;
+                let tags = models::tag::parse_tag_list(tags, &mut tx).await?;
                 mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
             }
         }
@@ -379,10 +371,12 @@ pub async fn create_version(
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
     }
 
-    tx.commit().await.or(Err(ApiError::TransactionError))?;
+    tx.commit().await?;
 
     if make_accepted {
-        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
+        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)
+            .await?
+            .ok_or(ApiError::BadRequest("Mod doesn't have an owner".into()))?;
 
         NewModVersionAcceptedEvent {
             id: version.mod_id.clone(),
@@ -413,18 +407,14 @@ pub async fn update_version(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
 
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     let the_mod = mods::get_one(&path.id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", path.id)))?;
 
     if !dev.admin {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::Authorization);
     }
 
     let version = mod_versions::get_by_version_str(&the_mod.id, &path.version, &mut pool)
@@ -445,7 +435,7 @@ pub async fn update_version(
     }
 
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
-    let mut tx = pool.begin().await.or(Err(ApiError::TransactionError))?;
+    let mut tx = pool.begin().await?;
 
     let old_status = version.status;
     let version = mod_versions::update_version_status(
@@ -490,7 +480,7 @@ pub async fn update_version(
 
         // Update tags with data from mod.json
         let tags = if let Some(tags) = &json.tags {
-            mod_tags::parse_tag_list(tags, &mut tx).await?
+            models::tag::parse_tag_list(tags, &mut tx).await?
         } else {
             vec![]
         };
@@ -500,12 +490,16 @@ pub async fn update_version(
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
     }
 
-    tx.commit().await.or(Err(ApiError::TransactionError))?;
+    tx.commit().await?;
 
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
-        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool).await?;
+        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)
+            .await?
+            .ok_or(Err(ApiError::InternalError(
+                "Couldn't find owner for mod".into(),
+            )))?;
 
         if !is_update {
             NewModAcceptedEvent {

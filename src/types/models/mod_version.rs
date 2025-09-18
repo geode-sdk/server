@@ -1,14 +1,13 @@
-use std::collections::HashMap;
-
 use crate::database::repository::developers;
 use crate::database::DatabaseError;
-use crate::types::api::{create_download_link, ApiError, PaginatedData};
+use crate::types::api::{create_download_link, PaginatedData};
 use chrono::SecondsFormat;
 use serde::Serialize;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
 };
+use std::collections::HashMap;
 
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
@@ -145,7 +144,7 @@ impl ModVersion {
     pub async fn get_index(
         query: IndexQuery,
         pool: &mut PgConnection,
-    ) -> Result<PaginatedData<ModVersion>, ApiError> {
+    ) -> Result<PaginatedData<ModVersion>, DatabaseError> {
         let limit = query.per_page;
         let offset = (query.page - 1) * query.per_page;
 
@@ -238,25 +237,17 @@ impl ModVersion {
         q.push(sql);
         q.push_bind(offset);
 
-        let records = match q
+        let records = q
             .build_query_as::<ModVersionGetOne>()
             .fetch_all(&mut *pool)
             .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+            .inspect_err(|e| log::error!("Failed to fetch index: {e}"))?;
 
-        let count: i64 = match counter_q.build_query_scalar().fetch_one(&mut *pool).await {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(c) => c,
-        };
+        let count: i64 = counter_q
+            .build_query_scalar()
+            .fetch_one(&mut *pool)
+            .await
+            .inspect_err(|e| log::error!("Failed to fetch index count: {e}"))?;
 
         if records.is_empty() {
             return Ok(PaginatedData {
@@ -420,7 +411,7 @@ impl ModVersion {
         platforms: Vec<VerPlatform>,
         major: Option<u32>,
         pool: &mut PgConnection,
-    ) -> Result<ModVersion, ApiError> {
+    ) -> Result<Option<ModVersion>, DatabaseError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link,
                 q.hash, q.geode, q.download_count,
@@ -465,19 +456,16 @@ impl ModVersion {
         query_builder.push(" AND mv.mod_id = ");
         query_builder.push_bind(id);
         query_builder.push(") q WHERE q.rn = 1");
-        let mut version = match query_builder
+
+        let mut version = query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_optional(&mut *pool)
             .await
-        {
-            Ok(Some(r)) => r.into_mod_version(),
-            Ok(None) => {
-                return Err(ApiError::NotFound("".to_string()));
-            }
-            Err(e) => {
-                log::error!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
+            .inspect_err(|e| log::error!("Failed to fetch latest mod_version for mod {id}: {e}"))?
+            .map(|v| v.into_mod_version());
+
+        let Some(mut version) = version else {
+            return Ok(None);
         };
 
         let ids: Vec<i32> = vec![version.id];
@@ -502,7 +490,7 @@ impl ModVersion {
         version.developers = Some(developers::get_all_for_mod(&version.mod_id, pool).await?);
         version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
 
-        Ok(version)
+        Ok(Some(version))
     }
 
     pub async fn get_one(
@@ -511,8 +499,8 @@ impl ModVersion {
         fetch_extras: bool,
         fetch_only_accepted: bool,
         pool: &mut PgConnection,
-    ) -> Result<ModVersion, ApiError> {
-        let result = match sqlx::query_as!(
+    ) -> Result<Option<ModVersion>, DatabaseError> {
+        let result = sqlx::query_as!(
             ModVersionGetOne,
             r#"SELECT mv.id, mv.name, mv.description, mv.version,
                 mv.download_link, mv.download_count,
@@ -532,16 +520,13 @@ impl ModVersion {
         )
         .fetch_optional(&mut *pool)
         .await
-        {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(None) => return Err(ApiError::NotFound("Not found".to_string())),
-            Ok(Some(r)) => r,
+        .inspect_err(|e| log::error!("ModVersion::get_one failed: {e}"))?
+        .map(|x| x.into_mod_version());
+
+        let Some(mut version) = result else {
+            return Ok(None);
         };
 
-        let mut version = result.into_mod_version();
         if fetch_extras {
             version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
             let ids = vec![version.id];
@@ -562,14 +547,14 @@ impl ModVersion {
             version.tags = Some(Tag::get_tags_for_mod(&version.mod_id, pool).await?);
         }
 
-        Ok(version)
+        Ok(Some(version))
     }
 
     pub async fn get_accepted_count(
         mod_id: &str,
         pool: &mut PgConnection,
-    ) -> Result<i64, ApiError> {
-        let count = match sqlx::query_scalar!(
+    ) -> Result<i64, DatabaseError> {
+        sqlx::query_scalar!(
             "SELECT COUNT(*)
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
@@ -579,15 +564,7 @@ impl ModVersion {
         )
         .fetch_one(&mut *pool)
         .await
-        {
-            Ok(Some(count)) => count,
-            Ok(None) => 0,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
-
-        Ok(count)
+        .map(|x| x.unwrap_or_default())
+        .map_err(|e| e.into())
     }
 }
