@@ -198,7 +198,7 @@ pub async fn create(
     }
 
     if let Some(tags) = &json.tags {
-        let tag_list = mod_tags::parse_tag_list(tags, &mut tx).await?;
+        let tag_list = mod_tags::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
         mod_tags::update_for_mod(&the_mod.id, &tag_list, &mut tx).await?;
     }
     if let Some(l) = json.links.clone() {
