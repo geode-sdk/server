@@ -1,4 +1,4 @@
-use crate::types::api::ApiError;
+use crate::database::DatabaseError;
 use crate::types::models::github_login_attempt::StoredLoginAttempt;
 use chrono::Utc;
 use sqlx::types::ipnetwork::IpNetwork;
@@ -8,7 +8,7 @@ use uuid::Uuid;
 pub async fn get_one_by_ip(
     ip: IpNetwork,
     conn: &mut PgConnection,
-) -> Result<Option<StoredLoginAttempt>, ApiError> {
+) -> Result<Option<StoredLoginAttempt>, DatabaseError> {
     sqlx::query_as!(
         StoredLoginAttempt,
         "SELECT
@@ -27,16 +27,14 @@ pub async fn get_one_by_ip(
     )
     .fetch_optional(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch existing login attempt: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch existing login attempt: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn get_one_by_uuid(
     uuid: Uuid,
     pool: &mut PgConnection,
-) -> Result<Option<StoredLoginAttempt>, ApiError> {
+) -> Result<Option<StoredLoginAttempt>, DatabaseError> {
     sqlx::query_as!(
         StoredLoginAttempt,
         "SELECT
@@ -55,10 +53,8 @@ pub async fn get_one_by_uuid(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch GitHub login attempt: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch GitHub login attempt: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn create(
@@ -69,7 +65,7 @@ pub async fn create(
     uri: &str,
     user_code: &str,
     pool: &mut PgConnection,
-) -> Result<StoredLoginAttempt, ApiError> {
+) -> Result<StoredLoginAttempt, DatabaseError> {
     sqlx::query_as!(
         StoredLoginAttempt,
         "INSERT INTO github_login_attempts
@@ -94,13 +90,11 @@ pub async fn create(
     )
     .fetch_one(&mut *pool)
     .await
-    .map_err(|e| {
-        log::error!("Failed to insert new GitHub login attempt: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to insert new GitHub login attempt: {e}"))
+    .map_err(|e| e.into())
 }
 
-pub async fn poll_now(uuid: Uuid, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn poll_now(uuid: Uuid, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     let now = Utc::now();
     sqlx::query!(
         "UPDATE github_login_attempts
@@ -111,22 +105,16 @@ pub async fn poll_now(uuid: Uuid, conn: &mut PgConnection) -> Result<(), ApiErro
     )
     .execute(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to poll GitHub login attempt: {}", e);
-        ApiError::DbError
-    })?;
+    .inspect_err(|e| log::error!("Failed to poll GitHub login attempt: {e}"))?;
 
     Ok(())
 }
 
-pub async fn remove(uuid: Uuid, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn remove(uuid: Uuid, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!("DELETE FROM github_login_attempts WHERE uid = $1", uuid)
         .execute(conn)
         .await
-        .map_err(|e| {
-            log::error!("Failed to remove GitHub login attempt: {}", e);
-            ApiError::DbError
-        })?;
+        .inspect_err(|e| log::error!("Failed to remove GitHub login attempt: {e}"))?;
 
     Ok(())
 }

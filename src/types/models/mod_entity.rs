@@ -6,14 +6,17 @@ use super::{
     mod_link::ModLinks,
     tag::Tag,
 };
-use crate::database::repository::{developers, mods};
+use crate::{
+    database::{repository::developers, DatabaseError},
+    endpoints::ApiError,
+};
 use crate::{
     endpoints::{
         developers::{SimpleDevMod, SimpleDevModVersion},
         mods::{IndexQueryParams, IndexSortType},
     },
     types::{
-        api::{ApiError, PaginatedData},
+        api::PaginatedData,
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
     },
 };
@@ -24,7 +27,7 @@ use sqlx::{
     types::chrono::{DateTime, Utc},
     PgConnection,
 };
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 #[derive(Serialize, Debug, sqlx::FromRow)]
 pub struct Mod {
@@ -100,10 +103,10 @@ pub struct ModStats {
 }
 
 impl Mod {
-    pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, ApiError> {
-        match sqlx::query!(
+    pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, DatabaseError> {
+        let result = sqlx::query!(
             "
-            SELECT COUNT(id), SUM(download_count)
+            SELECT COUNT(id) as id_count, SUM(download_count) as download_sum
             FROM (
                 select m.id, m.download_count, row_number() over(partition by m.id) rn
                 FROM mods m
@@ -116,26 +119,20 @@ impl Mod {
         )
         .fetch_optional(&mut *pool)
         .await
+        .inspect_err(|e| log::error!("failed to get mod stats: {}", e))?;
+
+        if let Some((Some(total_count), Some(total_downloads))) =
+            result.map(|o| (o.id_count, o.download_sum))
         {
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-            Ok(r) => {
-                if let Some((Some(total_count), Some(total_downloads))) =
-                    r.map(|o| (o.count, o.sum))
-                {
-                    Ok(ModStats {
-                        total_count,
-                        total_downloads,
-                    })
-                } else {
-                    Ok(ModStats {
-                        total_count: 0,
-                        total_downloads: 0,
-                    })
-                }
-            }
+            Ok(ModStats {
+                total_count,
+                total_downloads,
+            })
+        } else {
+            Ok(ModStats {
+                total_count: 0,
+                total_downloads: 0,
+            })
         }
     }
 
@@ -152,34 +149,10 @@ impl Mod {
 
         let limit = per_page;
         let offset = (page - 1) * per_page;
-        let platforms: Option<Vec<VerPlatform>> = query
+        let platforms = query
             .platforms
-            .map(|p| {
-                let split: Vec<&str> = p.split(',').collect();
-                let mut ret: Vec<VerPlatform> = Vec::with_capacity(split.len());
-
-                for i in split {
-                    let trimmed = i.trim();
-                    let platform = VerPlatform::from_str(trimmed).or(Err(ApiError::BadRequest(
-                        format!("Invalid platform: {}", i),
-                    )))?;
-                    match platform {
-                        VerPlatform::Android => {
-                            ret.push(VerPlatform::Android32);
-                            ret.push(VerPlatform::Android64);
-                        }
-                        VerPlatform::Mac => {
-                            ret.push(VerPlatform::MacArm);
-                            ret.push(VerPlatform::MacIntel);
-                        }
-                        _ => ret.push(platform),
-                    }
-                }
-
-                Ok(ret)
-            })
+            .map(|p| VerPlatform::parse_query_string(&p))
             .transpose()?;
-
         let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
 
         let developer = match query.developer {
@@ -302,8 +275,7 @@ impl Mod {
         .bind(status)
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))?;
 
         let count: i64 = sqlx::query_scalar(&format!(
             "SELECT COUNT(DISTINCT m.id)
@@ -326,8 +298,7 @@ impl Mod {
         .bind(status)
         .fetch_optional(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))
-        .or(Err(ApiError::DbError))?
+        .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))?
         .unwrap_or_default();
 
         if records.is_empty() {
@@ -342,7 +313,7 @@ impl Mod {
         }
 
         let ids: Vec<String> = records.iter().map(|x| x.id.clone()).collect();
-        let versions = ModVersion::get_latest_for_mods(
+        let mut versions = ModVersion::get_latest_for_mods(
             pool,
             &ids,
             query.gd,
@@ -350,30 +321,29 @@ impl Mod {
             geode.as_ref(),
         )
         .await?;
-        let developers = developers::get_all_for_mods(&ids, pool).await?;
+        let mut developers = developers::get_all_for_mods(&ids, pool).await?;
         let links = ModLinks::fetch_for_mods(&ids, pool).await?;
-        let mut mod_version_ids: Vec<i32> = vec![];
-        for (_, mod_version) in versions.iter() {
-            mod_version_ids.push(mod_version.id);
-        }
+        let mod_version_ids: Vec<i32> = versions
+            .iter()
+            .map(|(_, mod_version)| mod_version.id)
+            .collect();
 
-        let gd_versions = ModGDVersion::get_for_mod_versions(&mod_version_ids, pool).await?;
-        let tags = Tag::get_tags_for_mods(&ids, pool).await?;
+        let mut gd_versions = ModGDVersion::get_for_mod_versions(&mod_version_ids, pool).await?;
+        let mut tags = Tag::get_tags_for_mods(&ids, pool).await?;
 
         let ret = records
             .into_iter()
             .map(|x| {
-                let mut version = versions.get(&x.id).cloned().unwrap();
-                let gd_ver = gd_versions.get(&version.id).cloned().unwrap_or_default();
-                version.gd = gd_ver;
+                let mut version = versions.remove(&x.id).unwrap();
+                version.gd = gd_versions.remove(&version.id).unwrap_or_default();
 
-                let devs = developers.get(&x.id).cloned().unwrap_or_default();
-                let tags = tags.get(&x.id).cloned().unwrap_or_default();
+                let devs = developers.remove(&x.id).unwrap_or_default();
+                let tags = tags.remove(&x.id).unwrap_or_default();
                 let links = links.iter().find(|link| link.mod_id == x.id).cloned();
 
                 Mod {
-                    id: x.id.clone(),
-                    repository: x.repository.clone(),
+                    id: x.id,
+                    repository: x.repository,
                     download_count: x.download_count,
                     featured: x.featured,
                     versions: vec![version],
@@ -446,7 +416,7 @@ impl Mod {
         status: ModVersionStatusEnum,
         only_owner: bool,
         pool: &mut PgConnection,
-    ) -> Result<Vec<SimpleDevMod>, ApiError> {
+    ) -> Result<Vec<SimpleDevMod>, DatabaseError> {
         struct Record {
             id: String,
             featured: bool,
@@ -484,8 +454,7 @@ impl Mod {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|x| log::error!("Failed to fetch developer mods: {}", x))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|x| log::error!("Failed to fetch developer mods: {}", x))?;
 
         if records.is_empty() {
             return Ok(vec![]);
@@ -532,30 +501,33 @@ impl Mod {
         id: &str,
         only_accepted: bool,
         pool: &mut PgConnection,
-    ) -> Result<Option<Mod>, ApiError> {
-        let records: Vec<ModRecordGetOne> = sqlx::query_as(
+    ) -> Result<Option<Mod>, DatabaseError> {
+        let records = sqlx::query_as!(
+            ModRecordGetOne,
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
                 mv.hash,
-                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
-                mv.early_load, mv.api, mv.mod_id, mvs.status, mvs.info
+                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+                mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE m.id = $1
             AND ($2 = false OR mvs.status = 'accepted')
             ORDER BY mv.id DESC"#,
+            id,
+            only_accepted
         )
-            .bind(id)
-            .bind(only_accepted)
-            .fetch_all(&mut *pool)
-            .await
-            .or(Err(ApiError::DbError))?;
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("{}", e))?;
+
         if records.is_empty() {
             return Ok(None);
         }
+
         let mut versions: Vec<ModVersion> = records
             .iter()
             .map(|x| ModVersion {
@@ -629,25 +601,18 @@ impl Mod {
     }
 
     /// At the moment this is only used to set the mod to featured.
-    /// Checks if the mod exists.
+    /// DOES NOT check if the mod exists
     pub async fn update_mod(
         id: &str,
         featured: bool,
         pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if !mods::exists(id, &mut *pool).await? {
-            return Err(ApiError::NotFound(format!("Mod {} doesn't exist", id)));
-        }
-
+    ) -> Result<(), DatabaseError> {
         sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
             .execute(&mut *pool)
             .await
-            .map_err(|e| {
-                log::error!("Failed to update mod {}: {}", id, e);
-                ApiError::DbError
-            })?;
-
-        Ok(())
+            .inspect_err(|e| log::error!("Failed to update mod {id}: {e}"))
+            .map_err(|e| e.into())
+            .map(|_| ())
     }
 
     pub async fn get_updates(
@@ -656,7 +621,7 @@ impl Mod {
         geode: &semver::Version,
         gd: GDVersionEnum,
         pool: &mut PgConnection,
-    ) -> Result<Vec<ModUpdate>, ApiError> {
+    ) -> Result<Vec<ModUpdate>, DatabaseError> {
         #[derive(sqlx::FromRow)]
         struct QueryResult {
             id: String,
@@ -716,8 +681,7 @@ impl Mod {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|x| log::error!("Failed to fetch mod updates: {}", x))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|x| log::error!("Failed to fetch mod updates: {}", x))?;
 
         if result.is_empty() {
             return Ok(vec![]);

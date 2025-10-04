@@ -1,16 +1,18 @@
 use sqlx::PgConnection;
 
-use crate::types::{
-    api::ApiError,
-    mod_json::ModJson,
-    models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
+use crate::{
+    database::DatabaseError,
+    types::{
+        mod_json::ModJson,
+        models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
+    },
 };
 
 pub async fn create(
     mod_version_id: i32,
     json: &ModJson,
     conn: &mut PgConnection,
-) -> Result<DetailedGDVersion, ApiError> {
+) -> Result<DetailedGDVersion, DatabaseError> {
     let create = json.gd.to_create_payload(json);
 
     let gd: Vec<GDVersionEnum> = create.iter().map(|x| x.gd).collect();
@@ -31,13 +33,12 @@ pub async fn create(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to insert mod_gd_versions: {}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("mod_gd_versions::create query failed: {e}"))?;
 
     Ok(json.gd.clone())
 }
 
-pub async fn clear(mod_version_id: i32, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn clear(mod_version_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM mod_gd_versions mgv
             WHERE mgv.mod_id = $1",
@@ -45,8 +46,7 @@ pub async fn clear(mod_version_id: i32, conn: &mut PgConnection) -> Result<(), A
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to remove GD versions: {}", e))
-    .or(Err(ApiError::DbError))?;
-
-    Ok(())
+    .inspect_err(|e| log::error!("incompatibilities::clear query failed: {e}"))
+    .map_err(|e| e.into())
+    .map(|_| ())
 }

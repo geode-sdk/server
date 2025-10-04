@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(id)\n        FROM developers\n        WHERE (\n            ($1::text IS NULL OR username = $1)\n            OR ($1::text IS NULL OR display_name ILIKE '%' || $1 || '%')\n        )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c376c807583ad0bec9f6abe17ba00ce8d2cf76047bb0d1bb97b6e20c8d527224"
+}

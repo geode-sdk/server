@@ -2,8 +2,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
-
-use crate::types::api::ApiError;
+use crate::database::DatabaseError;
 
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
@@ -111,7 +110,7 @@ impl Dependency {
         gd: Option<GDVersionEnum>,
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
-    ) -> Result<HashMap<i32, Vec<FetchedDependency>>, ApiError> {
+    ) -> Result<HashMap<i32, Vec<FetchedDependency>>, DatabaseError> {
         // Fellow developer, I am sorry for what you're about to see :)
         // I present to you the ugly monster of the Geode index
         // The *GigaQuery™*
@@ -262,8 +261,7 @@ impl Dependency {
         .bind(geode_pre)
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|x| log::error!("Failed to fetch dependencies: {}", x))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|x| log::error!("Failed to fetch dependencies: {x}"))?;
 
         let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
         for i in result {

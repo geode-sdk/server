@@ -1177,7 +1177,9 @@ dependencies = [
  "serde_json",
  "sha256",
  "sqlx",
+ "thiserror 2.0.12",
  "tokio",
+ "url",
  "uuid",
  "zip",
 ]

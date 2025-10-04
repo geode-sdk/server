@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE (\n            ($1 = '' OR username = $1)\n            OR ($2 = '' OR display_name ILIKE $2)\n        )\n        GROUP BY id\n        LIMIT $3\n        OFFSET $4",
+  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE (\n            ($1::text IS NULL OR username = $1)\n            OR ($1::text IS NULL OR display_name ILIKE '%' || $1 || '%')\n        )\n        GROUP BY id\n        LIMIT $2\n        OFFSET $3",
   "describe": {
     "columns": [
       {
@@ -37,7 +37,6 @@
     "parameters": {
       "Left": [
         "Text",
-        "Text",
         "Int8",
         "Int8"
       ]
@@ -51,5 +50,5 @@
       false
     ]
   },
-  "hash": "f10845904d7f6db087feb5065d7282e398248fd4bce5c31cdfe19168ce19376f"
+  "hash": "1ed87bd1d14f9c1febbb2a2a2d11eb3d413d28283d97c0b9bfca6f4ca3c80256"
 }

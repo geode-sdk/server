@@ -1,25 +1,18 @@
-use crate::types::api::{ApiError, PaginatedData};
+use crate::database::DatabaseError;
+use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, ModDeveloper};
 use sqlx::PgConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 pub async fn index(
-    query: &str,
+    query: Option<&str>,
     page: i64,
     per_page: i64,
     conn: &mut PgConnection,
-) -> Result<PaginatedData<Developer>, ApiError> {
+) -> Result<PaginatedData<Developer>, DatabaseError> {
     let limit = per_page;
     let offset = (page - 1) * per_page;
-
-    let display_name_query = {
-        if query.is_empty() {
-            "".into()
-        } else {
-            format!("%{}%", query)
-        }
-    };
 
     let result = sqlx::query_as!(
         Developer,
@@ -32,23 +25,19 @@ pub async fn index(
             github_user_id as github_id
         FROM developers
         WHERE (
-            ($1 = '' OR username = $1)
-            OR ($2 = '' OR display_name ILIKE $2)
+            ($1::text IS NULL OR username = $1)
+            OR ($1::text IS NULL OR display_name ILIKE '%' || $1 || '%')
         )
         GROUP BY id
-        LIMIT $3
-        OFFSET $4",
+        LIMIT $2
+        OFFSET $3",
         query,
-        &display_name_query,
         limit,
         offset
     )
     .fetch_all(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developers: {}", e);
-        ApiError::DbError
-    })?;
+    .inspect_err(|e| log::error!("Failed to fetch developers: {}", e))?;
 
     let count = index_count(query, &mut *conn).await?;
 
@@ -58,40 +47,31 @@ pub async fn index(
     })
 }
 
-pub async fn index_count(query: &str, conn: &mut PgConnection) -> Result<i64, ApiError> {
-    let display_name_query = {
-        if query.is_empty() {
-            "".into()
-        } else {
-            format!("%{}%", query)
-        }
-    };
-
-    Ok(sqlx::query!(
+pub async fn index_count(
+    query: Option<&str>,
+    conn: &mut PgConnection,
+) -> Result<i64, DatabaseError> {
+    sqlx::query!(
         "SELECT COUNT(id)
         FROM developers
         WHERE (
-            ($1 = '' OR username = $1)
-            OR ($2 = '' OR display_name ILIKE $2)
+            ($1::text IS NULL OR username = $1)
+            OR ($1::text IS NULL OR display_name ILIKE '%' || $1 || '%')
         )",
-        query,
-        display_name_query
+        query
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer count: {}", e);
-        ApiError::DbError
-    })?
-    .count
-    .unwrap_or(0))
+    .inspect_err(|e| log::error!("Failed to fetch developer count: {}", e))
+    .map(|x| x.count.unwrap_or(0))
+    .map_err(|e| e.into())
 }
 
 pub async fn fetch_or_insert_github(
     github_id: i64,
     username: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     match sqlx::query_as!(
         Developer,
         "SELECT
@@ -107,10 +87,8 @@ pub async fn fetch_or_insert_github(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer for GitHub id: {}", e);
-        ApiError::DbError
-    })? {
+    .inspect_err(|e| log::error!("Failed to fetch developer for GitHub id: {e}"))?
+    {
         Some(dev) => Ok(dev),
         None => Ok(insert_github(github_id, username, conn).await?),
     }
@@ -120,7 +98,7 @@ async fn insert_github(
     github_id: i64,
     username: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "INSERT INTO developers(username, display_name, github_user_id)
@@ -137,13 +115,11 @@ async fn insert_github(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to insert developer: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to insert developer: {e}"))
+    .map_err(|e| e.into())
 }
 
-pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Developer>, ApiError> {
+pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Developer>, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "SELECT
@@ -159,16 +135,14 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer {}: {}", id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch developer {id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn get_one_by_username(
     username: &str,
     conn: &mut PgConnection,
-) -> Result<Option<Developer>, ApiError> {
+) -> Result<Option<Developer>, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "SELECT
@@ -184,16 +158,14 @@ pub async fn get_one_by_username(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developer {}: {}", username, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch developer {username}: {e}"))
+    .map_err(|x| x.into())
 }
 
 pub async fn get_all_for_mod(
     mod_id: &str,
     conn: &mut PgConnection,
-) -> Result<Vec<ModDeveloper>, ApiError> {
+) -> Result<Vec<ModDeveloper>, DatabaseError> {
     sqlx::query_as!(
         ModDeveloper,
         "SELECT
@@ -209,16 +181,14 @@ pub async fn get_all_for_mod(
     )
     .fetch_all(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developers for mod {}: {}", mod_id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to fetch developers for mod {}: {}", mod_id, e))
+    .map_err(|e| e.into())
 }
 
 pub async fn get_all_for_mods(
     mod_ids: &[String],
     conn: &mut PgConnection,
-) -> Result<HashMap<String, Vec<ModDeveloper>>, ApiError> {
+) -> Result<HashMap<String, Vec<ModDeveloper>>, DatabaseError> {
     if mod_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -246,10 +216,7 @@ pub async fn get_all_for_mods(
     )
     .fetch_all(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to fetch developers for mods: {}", e);
-        ApiError::DbError
-    })?;
+    .inspect_err(|e| log::error!("Failed to fetch developers for mods: {}", e))?;
 
     let mut ret: HashMap<String, Vec<ModDeveloper>> = HashMap::new();
 
@@ -271,8 +238,8 @@ pub async fn has_access_to_mod(
     dev_id: i32,
     mod_id: &str,
     conn: &mut PgConnection,
-) -> Result<bool, ApiError> {
-    Ok(sqlx::query!(
+) -> Result<bool, DatabaseError> {
+    sqlx::query!(
         "SELECT developer_id FROM mods_developers
         WHERE developer_id = $1
         AND mod_id = $2",
@@ -281,23 +248,23 @@ pub async fn has_access_to_mod(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
+    .inspect_err(|e| {
         log::error!(
             "Failed to find mod {} access for developer {}: {}",
             mod_id,
             dev_id,
             e
         );
-        ApiError::DbError
-    })?
-    .is_some())
+    })
+    .map(|x| x.is_some())
+    .map_err(|e| e.into())
 }
 
 pub async fn owns_mod(
     dev_id: i32,
     mod_id: &str,
     conn: &mut PgConnection,
-) -> Result<bool, ApiError> {
+) -> Result<bool, DatabaseError> {
     Ok(sqlx::query!(
         "SELECT developer_id FROM mods_developers
         WHERE developer_id = $1
@@ -308,14 +275,13 @@ pub async fn owns_mod(
     )
     .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| {
+    .inspect_err(|e| {
         log::error!(
             "Failed to check mod {} owner for developer {}: {}",
             mod_id,
             dev_id,
             e
-        );
-        ApiError::DbError
+        )
     })?
     .is_some())
 }
@@ -323,7 +289,7 @@ pub async fn owns_mod(
 pub async fn get_owner_for_mod(
     mod_id: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Option<Developer>, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "SELECT
@@ -339,18 +305,10 @@ pub async fn get_owner_for_mod(
         AND md.is_owner = true",
         mod_id
     )
-    .fetch_one(&mut *conn)
+    .fetch_optional(&mut *conn)
     .await
-    .map_err(|e| match e {
-        sqlx::Error::RowNotFound => {
-            log::error!("Mod {} doesn't have an owner!", mod_id);
-            ApiError::InternalError
-        }
-        _ => {
-            log::error!("Failed to fetch owner for mod {}", mod_id);
-            ApiError::InternalError
-        }
-    })
+    .inspect_err(|e| log::error!("Failed to fetch owner for mod {mod_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn update_status(
@@ -358,7 +316,7 @@ pub async fn update_status(
     verified: bool,
     admin: bool,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "UPDATE developers
@@ -378,17 +336,15 @@ pub async fn update_status(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to update developer {}: {}", dev_id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to update developer {dev_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn update_profile(
     dev_id: i32,
     display_name: &str,
     conn: &mut PgConnection,
-) -> Result<Developer, ApiError> {
+) -> Result<Developer, DatabaseError> {
     sqlx::query_as!(
         Developer,
         "UPDATE developers
@@ -406,16 +362,14 @@ pub async fn update_profile(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to update profile for {}: {}", dev_id, e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to update profile for {dev_id}: {e}"))
+    .map_err(|e| e.into())
 }
 
 pub async fn find_by_refresh_token(
     uuid: Uuid,
     conn: &mut PgConnection,
-) -> Result<Option<Developer>, ApiError> {
+) -> Result<Option<Developer>, DatabaseError> {
     let hash = sha256::digest(uuid.to_string());
     sqlx::query_as!(
         Developer,
@@ -434,8 +388,35 @@ pub async fn find_by_refresh_token(
     )
     .fetch_optional(conn)
     .await
-    .map_err(|e| {
-        log::error!("Failed to search for developer by refresh token: {}", e);
-        ApiError::DbError
-    })
+    .inspect_err(|e| log::error!("Failed to search for developer by refresh token: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn find_by_token(
+    token: &Uuid,
+    conn: &mut PgConnection,
+) -> Result<Option<Developer>, DatabaseError> {
+    let hash = sha256::digest(token.to_string());
+    sqlx::query_as!(
+        Developer,
+        "SELECT
+            d.id,
+            d.username,
+            d.display_name,
+            d.verified,
+            d.admin,
+            d.github_user_id as github_id
+        FROM developers d
+        INNER JOIN auth_tokens a ON d.id = a.developer_id
+        WHERE a.token = $1
+        AND (
+            expires_at IS NULL
+            OR expires_at > NOW()
+        )",
+        hash
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("{}", e))
+    .map_err(|e| e.into())
 }

@@ -1,5 +1,4 @@
-use crate::database::repository::developers;
-use crate::types::api::ApiError;
+use crate::{database::repository::developers, endpoints::ApiError};
 use chrono::Utc;
 use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
@@ -34,7 +33,7 @@ impl Stats {
         Ok(Stats {
             total_mod_count: mod_stats.total_count,
             total_mod_downloads: mod_stats.total_downloads,
-            total_registered_developers: developers::index_count("", &mut *pool).await?,
+            total_registered_developers: developers::index_count(None, &mut *pool).await?,
             total_geode_downloads: Self::get_latest_github_release_download_count(&mut *pool)
                 .await?,
         })
@@ -45,11 +44,9 @@ impl Stats {
     ) -> Result<i64, ApiError> {
         // If release stats were fetched less than a day ago, just use cached stats
         if let Ok((cache_time, total_download_count)) = sqlx::query!(
-            "
-            SELECT s.checked_at, s.total_download_count
+            "SELECT s.checked_at, s.total_download_count
             FROM github_loader_release_stats s
-            ORDER BY s.checked_at DESC
-        "
+            ORDER BY s.checked_at DESC"
         )
         .fetch_one(&mut *pool)
         .await
@@ -63,21 +60,17 @@ impl Stats {
         // Fetch latest stats
         let new = Self::fetch_github_release_stats().await?;
         sqlx::query!(
-            "
-            INSERT INTO github_loader_release_stats (total_download_count, latest_loader_version)
-            VALUES ($1, $2)
-        ",
+            "INSERT INTO github_loader_release_stats (total_download_count, latest_loader_version)
+            VALUES ($1, $2)",
             new.0,
             new.1
         )
         .execute(&mut *pool)
         .await
-        .map_err(|e| {
-            log::error!("{}", e);
-            ApiError::DbError
-        })?;
+        .inspect_err(|e| log::error!("{}", e))?;
         Ok(new.0)
     }
+
     async fn fetch_github_release_stats() -> Result<(i64, String), ApiError> {
         let client = Client::new();
         let resp = client
@@ -87,21 +80,23 @@ impl Stats {
             .query(&[("per_page", "100")])
             .send()
             .await
-            .map_err(|e| {
-                log::info!("{}", e);
-                ApiError::InternalError
+            .inspect_err(|e| {
+                log::error!("Failed to request Geode release stats from GitHub: {}", e)
             })?;
+
         if !resp.status().is_success() {
-            return Err(ApiError::InternalError);
+            return Err(ApiError::InternalError(
+                "Failed to retrieve Geode release stats from GitHub".into(),
+            ));
         }
-        let releases: Vec<GithubReleaseWithAssets> = resp.json().await.map_err(|e| {
-            log::info!("{}", e);
-            ApiError::InternalError
-        })?;
+
+        let releases: Vec<GithubReleaseWithAssets> = resp.json().await?;
         let latest_release_tag = releases
             .iter()
             .find(|r| r.tag_name != "nightly")
-            .ok_or(ApiError::InternalError)?
+            .ok_or(ApiError::InternalError(
+                "No latest version detected on Geode repository".into(),
+            ))?
             .tag_name
             .clone();
         Ok((

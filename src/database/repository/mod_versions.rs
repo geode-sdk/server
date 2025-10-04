@@ -1,5 +1,6 @@
+use super::mod_version_statuses;
+use crate::database::DatabaseError;
 use crate::types::{
-    api::ApiError,
     mod_json::ModJson,
     models::{
         developer::Developer, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
@@ -8,8 +9,6 @@ use crate::types::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use semver::Version;
 use sqlx::PgConnection;
-
-use super::mod_version_statuses;
 
 #[derive(sqlx::FromRow)]
 struct ModVersionRow {
@@ -67,7 +66,7 @@ pub async fn get_by_version_str(
     mod_id: &str,
     version: &str,
     conn: &mut PgConnection,
-) -> Result<Option<ModVersion>, ApiError> {
+) -> Result<Option<ModVersion>, DatabaseError> {
     sqlx::query_as!(
         ModVersionRow,
         r#"SELECT
@@ -84,18 +83,18 @@ pub async fn get_by_version_str(
         mod_id,
         version
     )
-    .fetch_optional(conn)
-    .await
-    .inspect_err(|e| log::error!("{}", e))
-    .or(Err(ApiError::DbError))
-    .map(|opt| opt.map(|x| x.into_mod_version()))
+        .fetch_optional(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to get mod_version by version string: {e}"))
+        .map_err(|e| e.into())
+        .map(|opt| opt.map(|x| x.into_mod_version()))
 }
 
 pub async fn get_for_mod(
     mod_id: &str,
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
-) -> Result<Vec<ModVersion>, ApiError> {
+) -> Result<Vec<ModVersion>, DatabaseError> {
     sqlx::query_as!(
         ModVersionRow,
         r#"SELECT
@@ -113,14 +112,14 @@ pub async fn get_for_mod(
         mod_id,
         statuses as Option<&[ModVersionStatusEnum]>
     )
-    .fetch_all(conn)
-    .await
-    .inspect_err(|e| log::error!("{}", e))
-    .or(Err(ApiError::DbError))
-    .map(|opt: Vec<ModVersionRow>| opt.into_iter().map(|x| x.into_mod_version()).collect())
+        .fetch_all(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to get mod_versions for mod {mod_id}: {e}"))
+        .map_err(|e| e.into())
+        .map(|opt: Vec<ModVersionRow>| opt.into_iter().map(|x| x.into_mod_version()).collect())
 }
 
-pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mod_versions
         SET download_count = download_count + 1
@@ -129,14 +128,7 @@ pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(),
     )
     .execute(&mut *conn)
     .await
-    .map_err(|e| {
-        log::error!(
-            "Failed to increment downloads for mod_version {}: {}",
-            id,
-            e
-        );
-        ApiError::DbError
-    })?;
+    .inspect_err(|e| log::error!("Failed to increment downloads for mod_version {id}: {e}"))?;
 
     Ok(())
 }
@@ -145,15 +137,14 @@ pub async fn create_from_json(
     json: &ModJson,
     make_accepted: bool,
     conn: &mut PgConnection,
-) -> Result<ModVersion, ApiError> {
+) -> Result<ModVersion, DatabaseError> {
     sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to update constraint: {}", e))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|e| log::error!("Failed to update constraint: {e}"))?;
 
-    let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
-        "Invalid geode version in mod.json".into(),
+    let geode = Version::parse(&json.geode).or(Err(DatabaseError::InvalidInput(
+        "mod.json geode version is invalid semver".into(),
     )))?;
 
     let meta = if geode.pre.is_empty() {
@@ -190,8 +181,7 @@ pub async fn create_from_json(
     )
     .fetch_one(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to insert mod_version: {}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to insert mod_version: {e}"))?;
 
     let id = row.id;
 
@@ -208,14 +198,12 @@ pub async fn create_from_json(
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to set status: {}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to set status: {e}"))?;
 
     sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey IMMEDIATE")
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to update constraint: {}", e))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|e| log::error!("Failed to update constraint: {e}"))?;
 
     Ok(ModVersion {
         id,
@@ -251,9 +239,9 @@ pub async fn update_pending_version(
     json: &ModJson,
     make_accepted: bool,
     conn: &mut PgConnection,
-) -> Result<ModVersion, ApiError> {
-    let geode = Version::parse(&json.geode).or(Err(ApiError::BadRequest(
-        "Invalid geode version in mod.json".into(),
+) -> Result<ModVersion, DatabaseError> {
+    let geode = Version::parse(&json.geode).or(Err(DatabaseError::InvalidInput(
+        "mod.json geode version is invalid semver".into(),
     )))?;
 
     let meta = if geode.pre.is_empty() {
@@ -308,14 +296,12 @@ pub async fn update_pending_version(
     )
     .fetch_one(&mut *conn)
     .await
-    .map_err(|err| {
+    .inspect_err(|err| {
         log::error!(
-            "Failed to update pending version {}-{}: {}",
+            "Failed to update pending version {}-{}: {err}",
             json.id,
-            json.version,
-            err
-        );
-        ApiError::DbError
+            json.version
+        )
     })?;
 
     if make_accepted {
@@ -327,8 +313,7 @@ pub async fn update_pending_version(
         )
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to update tag for mod: {}", e))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|e| log::error!("Failed to update tag for mod: {e}"))?;
     }
 
     Ok(ModVersion {
@@ -369,7 +354,7 @@ pub async fn update_version_status(
     info: Option<&str>,
     updated_by: &Developer,
     conn: &mut PgConnection,
-) -> Result<ModVersion, ApiError> {
+) -> Result<ModVersion, DatabaseError> {
     if version.status == status {
         return Ok(version);
     }
@@ -388,8 +373,7 @@ pub async fn update_version_status(
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("{}", e))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|e| log::error!("Failed to update mod_version_status: {e}"))?;
 
     version.status = status;
 

@@ -6,7 +6,6 @@ use actix_web::{
 };
 
 use crate::types::api;
-
 mod auth;
 mod cli;
 mod config;

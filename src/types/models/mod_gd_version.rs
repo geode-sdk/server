@@ -1,12 +1,9 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
+use sqlx::PgConnection;
 
-use crate::types::{api::ApiError, mod_json::ModJson};
+use crate::{database::DatabaseError, types::mod_json::ModJson};
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
 #[sqlx(type_name = "gd_version")]
@@ -66,6 +63,12 @@ impl FromStr for GDVersionEnum {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum PlatformParseError {
+    #[error("Invalid platform {0}")]
+    InvalidPlatform(String),
+}
+
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[sqlx(type_name = "gd_ver_platform", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -106,28 +109,28 @@ impl FromStr for VerPlatform {
 }
 
 impl VerPlatform {
-    pub fn parse_query_string(s: &str) -> Vec<VerPlatform> {
+    pub fn parse_query_string(s: &str) -> Result<Vec<VerPlatform>, PlatformParseError> {
         let mut ret = vec![];
-        if s.is_empty() {
-            return ret;
-        }
 
         for x in s.split(',') {
-            match VerPlatform::from_str(x) {
-                Ok(v) => {
-                    if v == VerPlatform::Android {
-                        ret.push(VerPlatform::Android32);
-                        ret.push(VerPlatform::Android64);
-                    } else {
-                        ret.push(v);
-                    }
+            let x = x.trim();
+            let v = VerPlatform::from_str(x)
+                .map_err(|_| PlatformParseError::InvalidPlatform(x.into()))?;
+
+            match v {
+                VerPlatform::Android => {
+                    ret.push(VerPlatform::Android32);
+                    ret.push(VerPlatform::Android64);
                 }
-                Err(_) => {
-                    log::error!("invalid platform {}", x);
+                VerPlatform::Mac => {
+                    ret.push(VerPlatform::MacArm);
+                    ret.push(VerPlatform::MacIntel);
                 }
+                default => ret.push(default),
             }
         }
-        ret
+
+        Ok(ret)
     }
 }
 
@@ -215,17 +218,21 @@ impl ModGDVersion {
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,
-    ) -> Result<DetailedGDVersion, ApiError> {
-        let result = sqlx::query_as!(ModGDVersion, r#"SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1"#, id)
-            .fetch_all(&mut *pool)
-            .await;
-        let result: Vec<ModGDVersion> = match result {
-            Err(e) => {
-                log::info!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+    ) -> Result<DetailedGDVersion, DatabaseError> {
+        let result = sqlx::query_as!(
+            ModGDVersion,
+            r#"
+            SELECT mgv.id, mgv.mod_id, mgv.gd AS "gd: _", mgv.platform as "platform: _"
+            FROM mod_gd_versions mgv
+            WHERE mgv.mod_id = $1
+            "#,
+            id
+        )
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| {
+            log::error!("Failed to fetch mod_gd_versions for mod_version {id}: {e}")
+        })?;
         let mut ret = DetailedGDVersion {
             win: None,
             mac: None,
@@ -260,71 +267,43 @@ impl ModGDVersion {
 
     // hello
     pub async fn get_for_mod_versions(
-        versions: &Vec<i32>,
+        versions: &[i32],
         pool: &mut PgConnection,
-    ) -> Result<HashMap<i32, DetailedGDVersion>, ApiError> {
+    ) -> Result<HashMap<i32, DetailedGDVersion>, DatabaseError> {
         if versions.is_empty() {
-            return Err(ApiError::DbError);
+            return Ok(HashMap::new());
         }
-        let mut builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT * FROM mod_gd_versions WHERE mod_id IN (");
-        let mut separated = builder.separated(", ");
-        for i in versions {
-            separated.push_bind(i);
-        }
-        separated.push_unseparated(")");
 
-        let result = builder
-            .build_query_as::<ModGDVersion>()
-            .fetch_all(&mut *pool)
-            .await;
-        let result = match result {
-            Err(e) => {
-                log::info!("{:?}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+        let result = sqlx::query_as!(
+            ModGDVersion,
+            r#"SELECT
+                id, mod_id, gd as "gd: _", platform as "platform: _"
+            FROM mod_gd_versions
+            WHERE mod_id = ANY($1)"#,
+            versions
+        )
+        .fetch_all(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("Failed to fetch mod_gd_versions: {}", e))?;
 
         let mut ret: HashMap<i32, DetailedGDVersion> = HashMap::new();
         for i in result {
-            match ret.entry(i.mod_id) {
-                Entry::Vacant(e) => {
-                    let mut ver = DetailedGDVersion::default();
-                    match i.platform {
-                        VerPlatform::Android => {
-                            ver.android32 = Some(i.gd);
-                            ver.android64 = Some(i.gd);
-                        }
-                        VerPlatform::Android32 => ver.android32 = Some(i.gd),
-                        VerPlatform::Android64 => ver.android64 = Some(i.gd),
-                        VerPlatform::MacArm => ver.mac_arm = Some(i.gd),
-                        VerPlatform::MacIntel => ver.mac_intel = Some(i.gd),
-                        VerPlatform::Mac => {
-                            ver.mac_arm = Some(i.gd);
-                            ver.mac_intel = Some(i.gd);
-                        }
-                        VerPlatform::Ios => ver.ios = Some(i.gd),
-                        VerPlatform::Win => ver.win = Some(i.gd),
-                    }
-                    e.insert(ver);
+            let ver = ret.entry(i.mod_id).or_default();
+            match i.platform {
+                VerPlatform::Android => {
+                    ver.android32 = Some(i.gd);
+                    ver.android64 = Some(i.gd);
                 }
-                Entry::Occupied(mut e) => match i.platform {
-                    VerPlatform::Android => {
-                        e.get_mut().android32 = Some(i.gd);
-                        e.get_mut().android64 = Some(i.gd);
-                    }
-                    VerPlatform::Android32 => e.get_mut().android32 = Some(i.gd),
-                    VerPlatform::Android64 => e.get_mut().android64 = Some(i.gd),
-                    VerPlatform::Mac => {
-                        e.get_mut().mac_arm = Some(i.gd);
-                        e.get_mut().mac_intel = Some(i.gd);
-                    }
-                    VerPlatform::MacArm => e.get_mut().mac_arm = Some(i.gd),
-                    VerPlatform::MacIntel => e.get_mut().mac_intel = Some(i.gd),
-                    VerPlatform::Ios => e.get_mut().ios = Some(i.gd),
-                    VerPlatform::Win => e.get_mut().win = Some(i.gd),
-                },
+                VerPlatform::Android32 => ver.android32 = Some(i.gd),
+                VerPlatform::Android64 => ver.android64 = Some(i.gd),
+                VerPlatform::MacArm => ver.mac_arm = Some(i.gd),
+                VerPlatform::MacIntel => ver.mac_intel = Some(i.gd),
+                VerPlatform::Mac => {
+                    ver.mac_arm = Some(i.gd);
+                    ver.mac_intel = Some(i.gd);
+                }
+                VerPlatform::Ios => ver.ios = Some(i.gd),
+                VerPlatform::Win => ver.win = Some(i.gd),
             }
         }
 

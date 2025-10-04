@@ -1,9 +1,8 @@
-use crate::types::api::ApiError;
-use actix_web::{get, Responder};
+use actix_web::get;
 
 #[get("/")]
-pub async fn health() -> Result<impl Responder, ApiError> {
-    Ok(r#"
+pub async fn health() -> &'static str {
+    r#"
  _____                                                                        _____
 ( ___ )----------------------------------------------------------------------( ___ )
  |   |                                                                        |   |
@@ -22,5 +21,5 @@ pub async fn health() -> Result<impl Responder, ApiError> {
  |   |  \____|\___|\___/ \__,_|\___| |_|_| |_|\__,_|\___/_/\_(_)              |   |
  |___|                                                                        |___|
 (_____)----------------------------------------------------------------------(_____)
-"#)
+"#
 }
