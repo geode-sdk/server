@@ -6,8 +6,6 @@ pub enum AuthenticationError {
     NoToken,
     #[error("Provided token is invalid")]
     InvalidToken,
-    #[error("User didn't accept authentication")]
-    UserRejectedAuth,
     #[error("User auth pending")]
     UserAuthPending,
     #[error("Failed to communicate with GitHub")]

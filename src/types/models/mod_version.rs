@@ -457,7 +457,7 @@ impl ModVersion {
         query_builder.push_bind(id);
         query_builder.push(") q WHERE q.rn = 1");
 
-        let mut version = query_builder
+        let version = query_builder
             .build_query_as::<ModVersionGetOne>()
             .fetch_optional(&mut *pool)
             .await

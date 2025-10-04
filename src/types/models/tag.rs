@@ -5,12 +5,6 @@ use crate::{database::DatabaseError, endpoints::ApiError};
 use sqlx::PgConnection;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FetchedTag {
-    pub id: i32,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Tag {
     pub id: i32,
     pub name: String,
