@@ -371,7 +371,7 @@ pub async fn create_version(
         }
         if let Some(tags) = &json.tags {
             if !tags.is_empty() {
-                let tags = mod_tags::parse_tag_list(tags, &mut tx).await?;
+                let tags = mod_tags::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
                 mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
             }
         }
@@ -490,7 +490,7 @@ pub async fn update_version(
 
         // Update tags with data from mod.json
         let tags = if let Some(tags) = &json.tags {
-            mod_tags::parse_tag_list(tags, &mut tx).await?
+            mod_tags::parse_tag_list(tags, &the_mod.id, &mut tx).await?
         } else {
             vec![]
         };
