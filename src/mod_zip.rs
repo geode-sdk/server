@@ -32,11 +32,16 @@ pub enum ModZipError {
     InvalidModJson(String),
     #[error("Invalid binaries: {0}")]
     InvalidBinaries(String),
-    #[error("{0}")]
-    GenericError(String),
 }
 
 pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, ModZipError> {
+    const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
+    if file.size() > FIVE_MEGABYTES {
+        return Err(ModZipError::InvalidLogo(
+            "Logo size excedes max allowed size (5 MB)".into(),
+        ));
+    }
+
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
         .inspect_err(|e| log::error!("logo.png read fail: {}", e))?;
@@ -83,6 +88,13 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
 }
 
 pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZipError> {
+    const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
+    if file.size() > FIVE_MEGABYTES {
+        return Err(ModZipError::InvalidLogo(
+            "Logo size excedes max allowed size (5 MB)".into(),
+        ));
+    }
+
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
         .inspect_err(|e| log::error!("logo.png read fail: {}", e))?;
@@ -133,23 +145,33 @@ pub fn bytes_to_ziparchive(bytes: Bytes) -> Result<ZipArchive<Cursor<Bytes>>, Mo
 }
 
 async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
-    let limit_bytes = limit_mb * 1_000_000;
-    let response = reqwest::get(url)
+    let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
+    let mut response = reqwest::get(url)
         .await
         .inspect_err(|e| log::error!("Failed to fetch .geode file: {e}"))?;
 
-    let len = response.content_length().ok_or(ModZipError::GenericError(
-        "Couldn't determine .geode file size".into(),
-    ))?;
+    // Check Content-Length, but the server can lie about this, so we'll also stream the file
+    // If the header is somehow unavailable, we'll just check the size when streaming
+    let content_length = response.content_length().unwrap_or(0);
 
-    if len > limit_bytes as u64 {
-        let len_mb = len / 1_000_000;
+    if content_length > limit_bytes {
+        let len_mb = content_length / 1_000_000;
         return Err(ModZipError::ModFileTooLarge(len_mb, limit_mb.into()));
     }
 
-    response
-        .bytes()
-        .await
-        .inspect_err(|e| log::error!("Failed to get bytes from .geode: {}", e))
-        .map_err(|e| e.into())
+    let mut data: Vec<u8> = Vec::with_capacity(content_length as usize);
+
+    let mut streamed: u64 = 0;
+    while let Some(chunk) = response.chunk().await? {
+        streamed += chunk.len() as u64;
+
+        if streamed > limit_bytes {
+            let len_mb = streamed / 1_000_000;
+            return Err(ModZipError::ModFileTooLarge(len_mb, limit_mb.into()));
+        }
+
+        data.extend_from_slice(&chunk);
+    }
+
+    Ok(Bytes::from(data))
 }
