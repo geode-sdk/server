@@ -211,23 +211,25 @@ pub async fn download_version(
         ));
     };
 
-    let net: IpNetwork = ip.parse().or(Err(ApiError::InternalError))?;
+    let net = ip.parse::<IpNetwork>().ok();
 
-    let mut tx = pool.begin().await?;
+    if let Some(net) = net {
+        let mut tx = pool.begin().await?;
 
-    let downloaded_mod_previously =
-        mod_downloads::has_downloaded_mod(net, &mod_version.mod_id, &mut tx).await?;
-    let inserted = mod_downloads::create(net, mod_version.id, &mut tx).await?;
+        let downloaded_mod_previously =
+            mod_downloads::has_downloaded_mod(net, &mod_version.mod_id, &mut tx).await?;
+        let inserted = mod_downloads::create(net, mod_version.id, &mut tx).await?;
 
-    if inserted {
-        mod_versions::increment_downloads(mod_version.id, &mut tx).await?;
+        if inserted {
+            mod_versions::increment_downloads(mod_version.id, &mut tx).await?;
 
-        if !downloaded_mod_previously {
-            mods::increment_downloads(&mod_version.mod_id, &mut tx).await?;
+            if !downloaded_mod_previously {
+                mods::increment_downloads(&mod_version.mod_id, &mut tx).await?;
+            }
         }
-    }
 
-    let _ = tx.commit().await;
+        let _ = tx.commit().await;
+    }
 
     Ok(HttpResponse::Found()
         .append_header(("Location", url))
@@ -363,7 +365,7 @@ pub async fn create_version(
         }
         if let Some(tags) = &json.tags {
             if !tags.is_empty() {
-                let tags = models::tag::parse_tag_list(tags, &mut tx).await?;
+                let tags = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
                 mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
             }
         }
@@ -480,7 +482,7 @@ pub async fn update_version(
 
         // Update tags with data from mod.json
         let tags = if let Some(tags) = &json.tags {
-            models::tag::parse_tag_list(tags, &mut tx).await?
+            models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?
         } else {
             vec![]
         };

@@ -99,13 +99,14 @@ impl Tag {
 
 pub async fn parse_tag_list(
     tags: &[String],
+    mod_id: &str,
     conn: &mut PgConnection,
 ) -> Result<Vec<Tag>, ApiError> {
     if tags.is_empty() {
         return Ok(vec![]);
     }
 
-    let db_tags = mod_tags::get_all_writable(&mut *conn).await?;
+    let db_tags = mod_tags::get_allowed_for_mod(mod_id, &mut *conn).await?;
 
     let mut ret = Vec::with_capacity(tags.len());
     for tag in tags {
@@ -119,7 +120,8 @@ pub async fn parse_tag_list(
                 .join(", ");
 
             return Err(ApiError::BadRequest(format!(
-                "Tag '{tags}' isn't allowed. Only the following are allowed: '{taglist}'"
+                "Tag '{}' isn't allowed. Only the following are allowed: '{}'",
+                tag, taglist
             )));
         }
     }

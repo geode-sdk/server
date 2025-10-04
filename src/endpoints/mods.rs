@@ -13,6 +13,7 @@ use crate::extractors::auth::Auth;
 use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiResponse};
 use crate::types::mod_json::ModJson;
+use crate::types::models;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
@@ -22,7 +23,6 @@ use crate::webhook::discord::DiscordWebhook;
 use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::Acquire;
-use crate::types::models;
 
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -185,7 +185,7 @@ pub async fn create(
     }
 
     if let Some(tags) = &json.tags {
-        let tag_list = models::tag::parse_tag_list(tags, &mut tx).await?;
+        let tag_list = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
         mod_tags::update_for_mod(&the_mod.id, &tag_list, &mut tx).await?;
     }
     if let Some(l) = json.links.clone() {
@@ -348,8 +348,8 @@ pub async fn update_mod(
                         base_url: data.app_url().to_string(),
                         featured: payload.featured,
                     }
-                        .to_discord_webhook()
-                        .send(data.webhook_url());
+                    .to_discord_webhook()
+                    .send(data.webhook_url());
                 }
             }
         }

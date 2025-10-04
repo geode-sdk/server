@@ -27,6 +27,40 @@ pub async fn get_all_writable(conn: &mut PgConnection) -> Result<Vec<Tag>, Datab
     Ok(tags)
 }
 
+pub async fn get_allowed_for_mod(
+    id: &str,
+    conn: &mut PgConnection,
+) -> Result<Vec<Tag>, DatabaseError> {
+    let mut writable = get_all_writable(&mut *conn).await?;
+    let allowed_readonly = sqlx::query!(
+        "SELECT DISTINCT
+            t.id,
+            t.name,
+            t.display_name,
+            t.is_readonly
+        FROM mod_tags t
+        INNER JOIN mods_mod_tags mmt ON mmt.tag_id = t.id
+        WHERE t.is_readonly = true
+        AND mmt.mod_id = $1",
+        id
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("mod_tags::get_allowed_for_mod failed: {e}"))?
+    .into_iter()
+    .map(|i| Tag {
+        id: i.id,
+        display_name: i.display_name.unwrap_or(i.name.clone()),
+        name: i.name,
+        is_readonly: i.is_readonly,
+    })
+    .collect::<Vec<Tag>>();
+
+    writable.extend(allowed_readonly);
+
+    return Ok(writable);
+}
+
 pub async fn get_all(conn: &mut PgConnection) -> Result<Vec<Tag>, DatabaseError> {
     let tags = sqlx::query!(
         "SELECT
@@ -88,13 +122,13 @@ pub async fn update_for_mod(
 
     let insertable = tags
         .iter()
-        .filter(|t| !existing.iter().any(|e| e.id == t.id))
+        .filter(|t| !t.is_readonly && !existing.iter().any(|e| e.id == t.id))
         .map(|x| x.id)
         .collect::<Vec<_>>();
 
     let deletable = existing
         .iter()
-        .filter(|e| !e.is_readonly && !tags.iter().any(|t| e.id == t.id))
+        .filter(|i| !i.is_readonly && !tags.iter().any(|j| i.id == j.id))
         .map(|x| x.id)
         .collect::<Vec<_>>();
 

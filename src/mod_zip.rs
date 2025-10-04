@@ -9,8 +9,6 @@ use image::{DynamicImage, GenericImageView};
 use zip::read::ZipFile;
 use zip::ZipArchive;
 
-use crate::types::api::ApiError;
-
 pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, ApiError> {
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)

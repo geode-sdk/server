@@ -113,8 +113,9 @@ impl GithubClient {
 
         if !res.status().is_success() {
             log::error!(
-                "GitHub OAuth device flow start request failed with code {}",
-                res.status()
+                "GitHub OAuth device flow failed to start. Error code: {}. Body: {}",
+                res.status(),
+                res.text().await.unwrap_or("No body received".into())
             );
             return Err(AuthenticationError::InternalError(
                 "Failed to start GitHub device flow".into(),
