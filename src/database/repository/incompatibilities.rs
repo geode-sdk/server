@@ -1,11 +1,13 @@
 use sqlx::PgConnection;
 
-use crate::types::{
-    api::ApiError,
-    mod_json::ModJson,
-    models::{
-        dependency::ModVersionCompare,
-        incompatibility::{FetchedIncompatibility, IncompatibilityImportance},
+use crate::{
+    database::DatabaseError,
+    types::{
+        mod_json::ModJson,
+        models::{
+            dependency::ModVersionCompare,
+            incompatibility::{FetchedIncompatibility, IncompatibilityImportance},
+        },
     },
 };
 
@@ -13,8 +15,12 @@ pub async fn create(
     mod_version_id: i32,
     json: &ModJson,
     conn: &mut PgConnection,
-) -> Result<Vec<FetchedIncompatibility>, ApiError> {
-    let incompats = json.prepare_incompatibilities_for_create()?;
+) -> Result<Vec<FetchedIncompatibility>, DatabaseError> {
+    let incompats = json.prepare_incompatibilities_for_create().map_err(|e| {
+        DatabaseError::InvalidInput(format!(
+            "Failed to parse incompatibilities from mod.json: {e}"
+        ))
+    })?;
     if incompats.is_empty() {
         return Ok(vec![]);
     }
@@ -58,11 +64,11 @@ pub async fn create(
     )
     .fetch_all(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to insert dependencies: {}", e))
-    .or(Err(ApiError::DbError))
+    .inspect_err(|e| log::error!("incompatibilities::create query failed: {e}"))
+    .map_err(|e| e.into())
 }
 
-pub async fn clear(id: i32, conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn clear(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM incompatibilities
             WHERE mod_id = $1",
@@ -70,8 +76,7 @@ pub async fn clear(id: i32, conn: &mut PgConnection) -> Result<(), ApiError> {
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to clear incompats: {}", e))
-    .or(Err(ApiError::DbError))?;
-
-    Ok(())
+    .inspect_err(|e| log::error!("incompatibilities::clear query failed: {e}"))
+    .map_err(|e| e.into())
+    .map(|_| ())
 }

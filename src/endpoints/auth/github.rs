@@ -99,10 +99,7 @@ pub async fn github_web_callback(
         .poll_github(&json.code, false, Some(data.front_url()))
         .await?;
 
-    let user = client
-        .get_user(&token)
-        .await
-        .map_err(|_| ApiError::InternalError)?;
+    let user = client.get_user(&token).await?;
 
     let mut tx = pool.begin().await?;
 

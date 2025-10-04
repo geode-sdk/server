@@ -8,15 +8,12 @@ use semver::Version;
 use serde::Deserialize;
 use zip::read::ZipFile;
 
-use crate::mod_zip;
+use crate::mod_zip::{self, ModZipError};
 
-use super::{
-    api::ApiError,
-    models::{
-        dependency::{DependencyCreate, DependencyImportance, ModVersionCompare},
-        incompatibility::{IncompatibilityCreate, IncompatibilityImportance},
-        mod_gd_version::DetailedGDVersion,
-    },
+use super::models::{
+    dependency::{DependencyCreate, DependencyImportance, ModVersionCompare},
+    incompatibility::{IncompatibilityCreate, IncompatibilityImportance},
+    mod_gd_version::DetailedGDVersion,
 };
 
 #[derive(Debug, Deserialize)]
@@ -129,18 +126,19 @@ impl ModJson {
         file: Bytes,
         download_url: &str,
         store_image: bool,
-    ) -> Result<ModJson, ApiError> {
+    ) -> Result<ModJson, ModZipError> {
         let slice: &[u8] = &file;
         let hash = sha256::digest(slice);
         let mut archive = mod_zip::bytes_to_ziparchive(file)?;
 
         let json_file = archive
             .by_name("mod.json")
-            .or(Err(ApiError::BadRequest("mod.json not found".into())))?;
+            .or(Err(ModZipError::InvalidModJson(
+                "No mod.json found in .geode file".into(),
+            )))?;
 
         let mut json = serde_json::from_reader::<ZipFile<Cursor<Bytes>>, ModJson>(json_file)
-            .inspect_err(|e| log::error!("Failed to parse mod.json: {}", e))
-            .or(Err(ApiError::BadRequest("Invalid mod.json".into())))?;
+            .inspect_err(|e| log::error!("Failed to parse mod.json: {e}"))?;
 
         json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
@@ -161,15 +159,23 @@ impl ModJson {
                 } else if file.name().ends_with(".android64.so") {
                     json.android64 = true;
                 } else if file.name().eq("about.md") {
-                    json.about = Some(parse_zip_entry_to_str(&mut file).map_err(|e| {
-                        log::error!("Failed to parse about.md for mod: {}", e);
-                        ApiError::InternalError
-                    })?);
+                    json.about = Some(
+                        parse_zip_entry_to_str(&mut file)
+                            .inspect_err(|e| log::error!("Failed to parse about.md for mod: {e}"))
+                            .map_err(|e| {
+                                ModZipError::InvalidModJson(format!("Failed to read about.md: {e}"))
+                            })?,
+                    );
                 } else if file.name().eq("changelog.md") {
-                    json.changelog = Some(parse_zip_entry_to_str(&mut file).map_err(|e| {
-                        log::error!("Failed to parse changelog.md for mod: {}", e);
-                        ApiError::InternalError
-                    })?);
+                    json.changelog = Some(
+                        parse_zip_entry_to_str(&mut file)
+                            .inspect_err(|e| log::error!("Failed to parse changelog.md: {e}"))
+                            .map_err(|e| {
+                                ModZipError::InvalidModJson(format!(
+                                    "Failed to read changelog.md: {e}"
+                                ))
+                            })?,
+                    );
                 } else if file.name() == "logo.png" {
                     if store_image {
                         json.logo = mod_zip::extract_mod_logo(&mut file)?;
@@ -182,7 +188,7 @@ impl ModJson {
         Ok(json)
     }
 
-    pub fn prepare_dependencies_for_create(&self) -> Result<Vec<DependencyCreate>, ApiError> {
+    pub fn prepare_dependencies_for_create(&self) -> Result<Vec<DependencyCreate>, ModZipError> {
         let deps = match self.dependencies.as_ref() {
             None => return Ok(vec![]),
             Some(d) => d,
@@ -208,7 +214,7 @@ impl ModJson {
                     }
                     let (dependency_ver, compare) = split_version_and_compare(&(i.version))
                         .map_err(|_| {
-                            ApiError::BadRequest(format!("Invalid semver {}", i.version))
+                            ModZipError::InvalidModJson(format!("Invalid semver {}", i.version))
                         })?;
                     ret.push(DependencyCreate {
                         dependency_id: i.id.clone(),
@@ -231,7 +237,10 @@ impl ModJson {
                         ModJsonDependencyType::Version(version) => {
                             let (dependency_ver, compare) = split_version_and_compare(version)
                                 .map_err(|_| {
-                                    ApiError::BadRequest(format!("Invalid semver {}", version))
+                                    ModZipError::InvalidModJson(format!(
+                                        "Invalid semver {}",
+                                        version
+                                    ))
                                 })?;
                             ret.push(DependencyCreate {
                                 dependency_id: id.clone(),
@@ -243,7 +252,7 @@ impl ModJson {
                         ModJsonDependencyType::Detailed(detailed) => {
                             let (dependency_ver, compare) =
                                 split_version_and_compare(&(detailed.version)).map_err(|_| {
-                                    ApiError::BadRequest(format!(
+                                    ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         detailed.version
                                     ))
@@ -264,7 +273,7 @@ impl ModJson {
 
     pub fn prepare_incompatibilities_for_create(
         &self,
-    ) -> Result<Vec<IncompatibilityCreate>, ApiError> {
+    ) -> Result<Vec<IncompatibilityCreate>, ModZipError> {
         let incompat = match self.incompatibilities.as_ref() {
             None => return Ok(vec![]),
             Some(d) => d,
@@ -290,7 +299,7 @@ impl ModJson {
                     }
 
                     let (ver, compare) = split_version_and_compare(&(i.version)).map_err(|_| {
-                        ApiError::BadRequest(format!("Invalid semver: {}", i.version))
+                        ModZipError::InvalidModJson(format!("Invalid semver: {}", i.version))
                     })?;
                     ret.push(IncompatibilityCreate {
                         incompatibility_id: i.id.clone(),
@@ -314,7 +323,10 @@ impl ModJson {
                         ModJsonIncompatibilityType::Version(version) => {
                             let (ver, compare) =
                                 split_version_and_compare(version).map_err(|_| {
-                                    ApiError::BadRequest(format!("Invalid semver {}", version))
+                                    ModZipError::InvalidModJson(format!(
+                                        "Invalid semver {}",
+                                        version
+                                    ))
                                 })?;
                             ret.push(IncompatibilityCreate {
                                 incompatibility_id: id.clone(),
@@ -326,7 +338,7 @@ impl ModJson {
                         ModJsonIncompatibilityType::Detailed(detailed) => {
                             let (ver, compare) = split_version_and_compare(&(detailed.version))
                                 .map_err(|_| {
-                                    ApiError::BadRequest(format!(
+                                    ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         detailed.version
                                     ))
@@ -346,37 +358,37 @@ impl ModJson {
         }
     }
 
-    pub fn validate(&self) -> Result<(), ApiError> {
+    pub fn validate(&self) -> Result<(), ModZipError> {
         let id_regex = Regex::new(r#"^[a-z0-9_\-]+\.[a-z0-9_\-]+$"#).unwrap();
         if !id_regex.is_match(&self.id) {
-            return Err(ApiError::BadRequest(format!(
+            return Err(ModZipError::InvalidModJson(format!(
                 "Invalid mod id {} (lowercase and numbers only, needs to look like 'dev.mod')",
                 self.id
             )));
         }
 
         if Version::parse(self.version.trim_start_matches('v')).is_err() {
-            return Err(ApiError::BadRequest(format!(
+            return Err(ModZipError::InvalidModJson(format!(
                 "Invalid mod.json mod version: {}",
                 self.version
             )));
         };
 
         if Version::parse(self.geode.trim_start_matches('v')).is_err() {
-            return Err(ApiError::BadRequest(format!(
+            return Err(ModZipError::InvalidModJson(format!(
                 "Invalid mod.json geode version: {}",
                 self.geode
             )));
         };
 
         if self.developer.is_none() && self.developers.is_none() {
-            return Err(ApiError::BadRequest(
+            return Err(ModZipError::InvalidModJson(
                 "No developer specified on mod.json".to_string(),
             ));
         }
 
         if self.id.len() > 64 {
-            return Err(ApiError::BadRequest(
+            return Err(ModZipError::InvalidModJson(
                 "Mod id too long (max 64 characters)".to_string(),
             ));
         }
@@ -384,7 +396,7 @@ impl ModJson {
         if let Some(l) = &self.links {
             if let Some(community) = &l.community {
                 if let Err(e) = Url::parse(community) {
-                    return Err(ApiError::BadRequest(format!(
+                    return Err(ModZipError::InvalidModJson(format!(
                         "Invalid community URL: {}. Reason: {}",
                         community, e
                     )));
@@ -392,7 +404,7 @@ impl ModJson {
             }
             if let Some(homepage) = &l.homepage {
                 if let Err(e) = Url::parse(homepage) {
-                    return Err(ApiError::BadRequest(format!(
+                    return Err(ModZipError::InvalidModJson(format!(
                         "Invalid homepage URL: {}. Reason: {}",
                         homepage, e
                     )));
@@ -400,7 +412,7 @@ impl ModJson {
             }
             if let Some(source) = &l.source {
                 if let Err(e) = Url::parse(source) {
-                    return Err(ApiError::BadRequest(format!(
+                    return Err(ModZipError::InvalidModJson(format!(
                         "Invalid source URL: {}. Reason: {}",
                         source, e
                     )));
@@ -453,12 +465,12 @@ fn parse_download_url(url: &str) -> String {
     String::from(url.trim_end_matches("\\/"))
 }
 
-fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), ApiError> {
+fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), ModZipError> {
     // 12 bytes is all we need
     let mut bytes: Vec<u8> = vec![0; 12];
     file.read_exact(&mut bytes).map_err(|e| {
         log::error!("Failed to read MacOS binary: {}", e);
-        ApiError::BadRequest("Invalid MacOS binary".into())
+        ModZipError::InvalidBinaries(format!("Failed to read macOS binary: {e}"))
     })?;
 
     // Information taken from: https://www.jviotti.com/2021/07/23/a-deep-dive-on-macos-universal-binaries.html and some simple xxd fuckery
@@ -492,12 +504,12 @@ fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), A
                 return Ok((true, false));
             } else {
                 // probably invalid
-                return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+                return Err(ModZipError::InvalidBinaries("Invalid macOS binary".into()));
             }
         } else if num_arches == 0x2 {
             return Ok((true, true));
         } else {
-            return Err(ApiError::BadRequest("Invalid MacOS binary".to_string()));
+            return Err(ModZipError::InvalidBinaries("Invalid macOS binary".into()));
         }
     } else if is_single_platform {
         let first = bytes[4];
@@ -510,5 +522,5 @@ fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), A
             return Ok((true, false));
         }
     }
-    Err(ApiError::BadRequest("Invalid MacOS binary".to_string()))
+    Err(ModZipError::InvalidBinaries("Invalid macOS binary".into()))
 }

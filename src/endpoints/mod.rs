@@ -1,5 +1,8 @@
+use crate::{
+    mod_zip::ModZipError,
+    types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
+};
 use actix_web::{http::StatusCode, HttpResponse};
-use crate::types::{api::ApiResponse, models::mod_gd_version::PlatformParseError};
 
 pub mod auth;
 pub mod developers;
@@ -18,7 +21,9 @@ pub enum ApiError {
     Authorization,
     #[error("{0}")]
     Database(#[from] crate::database::DatabaseError),
-    #[error("Unknown database error")]
+    #[error("{0}")]
+    ModZip(#[from] ModZipError),
+    #[error("Database error")]
     SqlxError(#[from] sqlx::Error),
     #[error("Failed to parse response data: {0}")]
     Json(#[from] serde_json::Error),

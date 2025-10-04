@@ -1,6 +1,6 @@
 use sqlx::PgConnection;
 
-use crate::types::{api::ApiError, models::mod_link::ModLinks};
+use crate::{database::DatabaseError, types::models::mod_link::ModLinks};
 
 pub async fn upsert(
     mod_id: &str,
@@ -8,7 +8,7 @@ pub async fn upsert(
     homepage: Option<String>,
     source: Option<String>,
     conn: &mut PgConnection,
-) -> Result<ModLinks, ApiError> {
+) -> Result<ModLinks, DatabaseError> {
     sqlx::query!(
         "INSERT INTO mod_links
             (mod_id, community, homepage, source)
@@ -26,8 +26,7 @@ pub async fn upsert(
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|x| log::error!("Failed to upsert mod_links for id {}: {}", mod_id, x))
-    .or(Err(ApiError::DbError))?;
+    .inspect_err(|x| log::error!("Failed to upsert mod_links for id {mod_id}: {x}"))?;
 
     Ok(ModLinks {
         mod_id: mod_id.into(),

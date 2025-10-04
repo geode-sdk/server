@@ -49,15 +49,19 @@ pub async fn get_one(
                         "Platform is required when a version alias is given".into(),
                     )
                 })?;
-                Some(GDVersionAlias::find(platform, i, &mut pool).await?)
+                GDVersionAlias::find(platform, i, &mut pool).await?
             }
         } else {
             None
         };
 
-        LoaderVersion::get_latest(gd, query.platform, query.prerelease, &mut pool).await?
+        LoaderVersion::get_latest(gd, query.platform, query.prerelease, &mut pool)
+            .await?
+            .ok_or(ApiError::NotFound("Latest version not found".into()))?
     } else {
-        LoaderVersion::get_one(&path.version, &mut pool).await?
+        LoaderVersion::get_one(&path.version, &mut pool)
+            .await?
+            .ok_or(ApiError::NotFound("Not found".into()))?
     };
 
     Ok(web::Json(ApiResponse {

@@ -7,10 +7,7 @@ use super::{
     tag::Tag,
 };
 use crate::{
-    database::{
-        repository::{developers, mods},
-        DatabaseError,
-    },
+    database::{repository::developers, DatabaseError},
     endpoints::ApiError,
 };
 use crate::{
@@ -604,25 +601,18 @@ impl Mod {
     }
 
     /// At the moment this is only used to set the mod to featured.
-    /// Checks if the mod exists.
+    /// DOES NOT check if the mod exists
     pub async fn update_mod(
         id: &str,
         featured: bool,
         pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        if !mods::exists(id, &mut *pool).await? {
-            return Err(ApiError::NotFound(format!("Mod {} doesn't exist", id)));
-        }
-
+    ) -> Result<(), DatabaseError> {
         sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
             .execute(&mut *pool)
             .await
-            .map_err(|e| {
-                log::error!("Failed to update mod {}: {}", id, e);
-                ApiError::DbError
-            })?;
-
-        Ok(())
+            .inspect_err(|e| log::error!("Failed to update mod {id}: {e}"))
+            .map_err(|e| e.into())
+            .map(|_| ())
     }
 
     pub async fn get_updates(
@@ -631,7 +621,7 @@ impl Mod {
         geode: &semver::Version,
         gd: GDVersionEnum,
         pool: &mut PgConnection,
-    ) -> Result<Vec<ModUpdate>, ApiError> {
+    ) -> Result<Vec<ModUpdate>, DatabaseError> {
         #[derive(sqlx::FromRow)]
         struct QueryResult {
             id: String,
@@ -691,8 +681,7 @@ impl Mod {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|x| log::error!("Failed to fetch mod updates: {}", x))
-        .or(Err(ApiError::DbError))?;
+        .inspect_err(|x| log::error!("Failed to fetch mod updates: {}", x))?;
 
         if result.is_empty() {
             return Ok(vec![]);

@@ -306,7 +306,10 @@ pub async fn create_version(
         let latest = versions.first().unwrap();
         let latest_version = semver::Version::parse(&latest.version)
             .inspect_err(|e| log::error!("Failed to parse locally stored version: {}", e))
-            .or(Err(ApiError::InternalError))?;
+            .or(Err(ApiError::InternalError(format!(
+                "Failed to parse semver for existing mod version: {}",
+                &latest.version
+            ))))?;
         let new_version = semver::Version::parse(json.version.trim_start_matches('v')).or(Err(
             ApiError::BadRequest(format!("Invalid mod.json version: {}", json.version)),
         ))?;
@@ -499,9 +502,9 @@ pub async fn update_version(
 
         let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)
             .await?
-            .ok_or(Err(ApiError::InternalError(
+            .ok_or(ApiError::InternalError(
                 "Couldn't find owner for mod".into(),
-            )))?;
+            ))?;
 
         if !is_update {
             NewModAcceptedEvent {

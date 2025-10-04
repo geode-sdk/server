@@ -250,8 +250,12 @@ pub async fn get_mod_updates(
         .map(String::from)
         .collect::<Vec<String>>();
 
-    let geode = semver::Version::parse(&query.geode)
-        .map_err(|e| ApiError::BadRequest("Invalid geode version semver".into()))?;
+    let geode = semver::Version::parse(&query.geode).map_err(|_| {
+        ApiError::BadRequest(format!(
+            "Invalid mod.json geode version semver: {}",
+            query.geode
+        ))
+    })?;
 
     let mut result: Vec<ModUpdate> =
         Mod::get_updates(&ids, query.platform, &geode, query.gd, &mut pool).await?;
@@ -326,9 +330,15 @@ pub async fn update_mod(
     let dev = auth.developer()?;
     auth.check_admin()?;
     let mut pool = data.db().acquire().await?;
-    let id = path.into_inner();
-    let featured = mods::is_featured(&id, &mut pool).await?;
     let mut tx = pool.begin().await?;
+
+    let id = path.into_inner();
+
+    if !mods::exists(&id, &mut tx).await? {
+        return Err(ApiError::NotFound("Mod not found".into()));
+    }
+
+    let featured = mods::is_featured(&id, &mut tx).await?;
 
     Mod::update_mod(&id, payload.featured, &mut tx).await?;
 

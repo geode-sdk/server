@@ -141,8 +141,7 @@ pub async fn create_from_json(
     sqlx::query!("SET CONSTRAINTS mod_versions_status_id_fkey DEFERRED")
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to update constraint: {e}"))
-        .map_err(|e| e.into())?;
+        .inspect_err(|e| log::error!("Failed to update constraint: {e}"))?;
 
     let geode = Version::parse(&json.geode).or(Err(DatabaseError::InvalidInput(
         "mod.json geode version is invalid semver".into(),

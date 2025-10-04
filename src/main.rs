@@ -17,7 +17,6 @@ mod jobs;
 mod mod_zip;
 mod types;
 mod webhook;
-mod integration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -1,6 +1,6 @@
-use sqlx::PgConnection;
 use crate::database::repository::{auth_tokens, refresh_tokens};
-use crate::types::api::ApiError;
+use crate::endpoints::ApiError;
+use sqlx::PgConnection;
 
 pub async fn token_cleanup(conn: &mut PgConnection) -> Result<(), ApiError> {
     auth_tokens::cleanup(conn).await?;
