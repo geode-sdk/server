@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n\t\t\t\tmac as \"mac: _\", win as \"win: _\", android as \"android: _\", ios as \"ios: _\",\n\t\t\t\ttag, created_at, commit_hash, prerelease\n\t\t\tFROM geode_versions\n\t\t\t\tWHERE tag = $1",
+  "query": "SELECT\n\t\t\t\t        mac as \"mac: _\", win as \"win: _\", android as \"android: _\", ios as \"ios: _\",\n\t\t\t\t        tag, created_at, commit_hash, prerelease\n\t\t\t      FROM geode_versions\n\t\t\t\t    WHERE tag = $1",
   "describe": {
     "columns": [
       {
@@ -136,5 +136,5 @@
       false
     ]
   },
-  "hash": "acd5392daf7d6e76a3f76bae9051502cc4d945731f5593b430e250019c7e8a3e"
+  "hash": "94a9f2bc14d5a6c21eb7f638e5d70bcdc7112d9ad0d153aaad6bf7b00e27d74a"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT mgv.id, mgv.mod_id, mgv.gd AS \"gd: _\", mgv.platform as \"platform: _\" FROM mod_gd_versions mgv WHERE mgv.mod_id = $1",
+  "query": "SELECT\n                id, mod_id, gd as \"gd: _\", platform as \"platform: _\"\n            FROM mod_gd_versions\n            WHERE mod_id = ANY($1)",
   "describe": {
     "columns": [
       {
@@ -59,7 +59,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int4"
+        "Int4Array"
       ]
     },
     "nullable": [
@@ -69,5 +69,5 @@
       false
     ]
   },
-  "hash": "70db4ee34c2c0a34c323d9bab8fb427328e9fae10c8e8ff3a12a53578f636c8a"
+  "hash": "a6c2a86e7f95612a9a2fdcc5168f9ab2485fc07b1b3d47f5327b91c6fcb9a653"
 }
