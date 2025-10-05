@@ -47,7 +47,20 @@ impl Auth {
     pub fn check_admin(&self) -> Result<(), ApiError> {
         self.check_auth()?;
 
-        match self.developer.as_ref().is_some_and(|dev| dev.admin) {
+        match self
+            .developer
+            .as_ref()
+            .is_some_and(|dev| dev.admin || dev.superadmin)
+        {
+            false => Err(ApiError::Authorization),
+            true => Ok(()),
+        }
+    }
+
+    pub fn check_superadmin(&self) -> Result<(), ApiError> {
+        self.check_auth()?;
+
+        match self.developer.as_ref().is_some_and(|dev| dev.superadmin) {
             false => Err(ApiError::Authorization),
             true => Ok(()),
         }

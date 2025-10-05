@@ -22,6 +22,7 @@ pub async fn index(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id
         FROM developers
         WHERE (
@@ -80,6 +81,7 @@ pub async fn fetch_or_insert_github(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id
         FROM developers
         WHERE github_user_id = $1",
@@ -109,6 +111,7 @@ async fn insert_github(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id",
         username,
         github_id
@@ -128,6 +131,7 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id
         FROM developers
         WHERE id = $1",
@@ -151,6 +155,7 @@ pub async fn get_one_by_username(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id
         FROM developers
         WHERE username = $1",
@@ -298,6 +303,7 @@ pub async fn get_owner_for_mod(
             dev.display_name,
             dev.verified,
             dev.admin,
+            dev.superadmin,
             github_user_id as github_id
         FROM developers dev
         INNER JOIN mods_developers md ON md.developer_id = dev.id
@@ -329,6 +335,7 @@ pub async fn update_status(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id",
         admin,
         verified,
@@ -356,6 +363,7 @@ pub async fn update_profile(
             display_name,
             verified,
             admin,
+            superadmin,
             github_user_id as github_id",
         display_name,
         dev_id
@@ -378,6 +386,7 @@ pub async fn find_by_refresh_token(
             d.username,
             d.display_name,
             d.admin,
+            d.superadmin,
             d.verified,
             d.github_user_id as github_id
         FROM developers d
@@ -405,6 +414,7 @@ pub async fn find_by_token(
             d.display_name,
             d.verified,
             d.admin,
+            d.superadmin,
             d.github_user_id as github_id
         FROM developers d
         INNER JOIN auth_tokens a ON d.id = a.developer_id
