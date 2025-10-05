@@ -114,6 +114,9 @@ impl VerPlatform {
 
         for x in s.split(',') {
             let x = x.trim();
+            if x.len() == 0 {
+                continue;
+            }
             let v = VerPlatform::from_str(x)
                 .map_err(|_| PlatformParseError::InvalidPlatform(x.into()))?;
 
