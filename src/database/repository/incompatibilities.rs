@@ -7,6 +7,7 @@ use crate::{
         models::{
             dependency::ModVersionCompare,
             incompatibility::{FetchedIncompatibility, IncompatibilityImportance},
+            mod_gd_version::VerPlatform,
         },
     },
 };
@@ -31,36 +32,93 @@ pub async fn create(
     let mut version: Vec<String> = Vec::with_capacity(len);
     let mut compare: Vec<ModVersionCompare> = Vec::with_capacity(len);
     let mut importance: Vec<IncompatibilityImportance> = Vec::with_capacity(len);
+    let mut windows: Vec<bool> = Vec::with_capacity(len);
+    let mut mac_intel: Vec<bool> = Vec::with_capacity(len);
+    let mut mac_arm: Vec<bool> = Vec::with_capacity(len);
+    let mut android32: Vec<bool> = Vec::with_capacity(len);
+    let mut android64: Vec<bool> = Vec::with_capacity(len);
+    let mut ios: Vec<bool> = Vec::with_capacity(len);
 
     for i in incompats {
         incompatibility_id.push(i.incompatibility_id);
         version.push(i.version);
         compare.push(i.compare);
         importance.push(i.importance);
+
+        windows.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Win)),
+        );
+        mac_intel.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::MacIntel)),
+        );
+        mac_arm.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::MacArm)),
+        );
+        android32.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Android32)),
+        );
+        android64.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Android64)),
+        );
+        ios.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Ios)),
+        );
     }
 
     sqlx::query_as!(
         FetchedIncompatibility,
         r#"INSERT INTO incompatibilities
-        (mod_id, incompatibility_id, version, compare, importance)
+        (mod_id, incompatibility_id, version,
+        compare, importance, windows, mac_intel, mac_arm,
+        android32, android64, ios)
         SELECT * FROM UNNEST(
             $1::int4[],
             $2::text[],
             $3::text[],
             $4::version_compare[],
-            $5::incompatibility_importance[]
+            $5::incompatibility_importance[],
+            $6::bool[],
+            $7::bool[],
+            $8::bool[],
+            $9::bool[],
+            $10::bool[],
+            $11::bool[]
         )
         RETURNING 
             mod_id,
             incompatibility_id,
             version,
             compare as "compare: _",
-            importance as "importance: _""#,
+            importance as "importance: _",
+            windows,
+            mac_intel,
+            mac_arm,
+            android32,
+            android64,
+            ios"#,
         &mod_id,
         &incompatibility_id,
         &version,
         &compare as &[ModVersionCompare],
-        &importance as &[IncompatibilityImportance]
+        &importance as &[IncompatibilityImportance],
+        &windows,
+        &mac_intel,
+        &mac_arm,
+        &android32,
+        &android64,
+        &ios
     )
     .fetch_all(conn)
     .await

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{
     dependency::ResponseDependency,
@@ -16,6 +16,12 @@ pub struct FetchedIncompatibility {
     pub incompatibility_id: String,
     pub compare: ModVersionCompare,
     pub importance: IncompatibilityImportance,
+    pub windows: bool,
+    pub mac_intel: bool,
+    pub mac_arm: bool,
+    pub android32: bool,
+    pub android64: bool,
+    pub ios: bool,
 }
 
 pub struct IncompatibilityCreate {
@@ -23,6 +29,7 @@ pub struct IncompatibilityCreate {
     pub version: String,
     pub compare: ModVersionCompare,
     pub importance: IncompatibilityImportance,
+    pub platforms: Option<HashSet<VerPlatform>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -54,10 +61,12 @@ pub struct ResponseIncompatibility {
     pub mod_id: String,
     pub version: String,
     pub importance: IncompatibilityImportance,
+    pub platforms: HashSet<VerPlatform>,
 }
 
 impl FetchedIncompatibility {
     pub fn into_response(self) -> ResponseIncompatibility {
+        let platforms = self.get_platform_hashset();
         ResponseIncompatibility {
             mod_id: self.incompatibility_id,
             version: {
@@ -68,6 +77,7 @@ impl FetchedIncompatibility {
                 }
             },
             importance: self.importance,
+            platforms,
         }
     }
 
@@ -82,7 +92,32 @@ impl FetchedIncompatibility {
                 }
             },
             importance: self.importance,
+            platforms: self.get_platform_hashset(),
         }
+    }
+
+    fn get_platform_hashset(&self) -> HashSet<VerPlatform> {
+        let mut platforms = HashSet::with_capacity(6);
+        if self.windows {
+            platforms.insert(VerPlatform::Win);
+        }
+        if self.mac_intel {
+            platforms.insert(VerPlatform::MacIntel);
+        }
+        if self.mac_arm {
+            platforms.insert(VerPlatform::MacArm);
+        }
+        if self.android32 {
+            platforms.insert(VerPlatform::Android32);
+        }
+        if self.android64 {
+            platforms.insert(VerPlatform::Android64);
+        }
+        if self.ios {
+            platforms.insert(VerPlatform::Ios);
+        }
+
+        platforms
     }
 }
 
@@ -94,8 +129,11 @@ impl Incompatibility {
         sqlx::query_as!(
             FetchedIncompatibility,
             r#"SELECT icp.compare as "compare: _",
-            icp.importance as "importance: _",
-            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
+                icp.importance as "importance: _",
+                icp.incompatibility_id, icp.mod_id, icp.version,
+                icp.windows, icp.android32, icp.android64,
+                icp.mac_intel, icp.mac_arm, icp.ios
+            FROM incompatibilities icp
             INNER JOIN mod_versions mv ON mv.id = icp.mod_id
             WHERE mv.id = $1"#,
             id
@@ -123,8 +161,11 @@ impl Incompatibility {
 
         let q = sqlx::query_as::<Postgres, FetchedIncompatibility>(
             r#"SELECT icp.compare,
-            icp.importance,
-            icp.incompatibility_id, icp.mod_id, icp.version FROM incompatibilities icp
+                icp.importance,
+                icp.incompatibility_id, icp.mod_id, icp.version,
+                icp.windows, icp.android32, icp.android64,
+                icp.mac_intel, icp.mac_arm, icp.ios
+            FROM incompatibilities icp
             INNER JOIN mod_versions mv ON mv.id = icp.mod_id
             INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
             WHERE mv.id = ANY($1)

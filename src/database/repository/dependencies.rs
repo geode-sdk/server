@@ -4,7 +4,10 @@ use crate::{
     database::DatabaseError,
     types::{
         mod_json::ModJson,
-        models::dependency::{DependencyImportance, FetchedDependency, ModVersionCompare},
+        models::{
+            dependency::{DependencyImportance, FetchedDependency, ModVersionCompare},
+            mod_gd_version::VerPlatform,
+        },
     },
 };
 
@@ -26,36 +29,93 @@ pub async fn create(
     let mut version: Vec<String> = Vec::with_capacity(len);
     let mut compare: Vec<ModVersionCompare> = Vec::with_capacity(len);
     let mut importance: Vec<DependencyImportance> = Vec::with_capacity(len);
+    let mut windows: Vec<bool> = Vec::with_capacity(len);
+    let mut mac_intel: Vec<bool> = Vec::with_capacity(len);
+    let mut mac_arm: Vec<bool> = Vec::with_capacity(len);
+    let mut android32: Vec<bool> = Vec::with_capacity(len);
+    let mut android64: Vec<bool> = Vec::with_capacity(len);
+    let mut ios: Vec<bool> = Vec::with_capacity(len);
 
     for i in dependencies {
         dependency_id.push(i.dependency_id);
         version.push(i.version);
         compare.push(i.compare);
         importance.push(i.importance);
+
+        windows.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Win)),
+        );
+        mac_intel.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::MacIntel)),
+        );
+        mac_arm.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::MacArm)),
+        );
+        android32.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Android32)),
+        );
+        android64.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Android64)),
+        );
+        ios.push(
+            i.platforms
+                .as_ref()
+                .is_none_or(|x| x.contains(&VerPlatform::Ios)),
+        );
     }
 
     sqlx::query_as!(
         FetchedDependency,
         r#"INSERT INTO dependencies 
-        (dependent_id, dependency_id, version, compare, importance)
+        (dependent_id, dependency_id, version,
+        compare, importance, windows, mac_intel, mac_arm,
+        android32, android64, ios)
         SELECT * FROM UNNEST(
             $1::int4[],
             $2::text[],
             $3::text[],
             $4::version_compare[],
-            $5::dependency_importance[]
+            $5::dependency_importance[],
+            $6::bool[],
+            $7::bool[],
+            $8::bool[],
+            $9::bool[],
+            $10::bool[],
+            $11::bool[]
         )
         RETURNING 
             dependent_id as mod_version_id,
             dependency_id,
             version,
             compare as "compare: _",
-            importance as "importance: _""#,
+            importance as "importance: _",
+            windows,
+            mac_intel,
+            mac_arm,
+            android32,
+            android64,
+            ios"#,
         &dependent_id,
         &dependency_id,
         &version,
         &compare as &[ModVersionCompare],
-        &importance as &[DependencyImportance]
+        &importance as &[DependencyImportance],
+        &windows,
+        &mac_intel,
+        &mac_arm,
+        &android32,
+        &android64,
+        &ios
     )
     .fetch_all(conn)
     .await

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
 use actix_web::web::Bytes;
@@ -9,6 +9,7 @@ use serde::Deserialize;
 use zip::read::ZipFile;
 
 use crate::mod_zip::{self, ModZipError};
+use crate::types::models::mod_gd_version::VerPlatform;
 
 use super::models::{
     dependency::{DependencyCreate, DependencyImportance, ModVersionCompare},
@@ -78,10 +79,30 @@ pub enum ModJsonDependencyType {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum ModJsonDependencyPlatform {
+    Desktop,
+    #[serde(rename = "win")]
+    Windows,
+    Mac,
+    #[serde(rename = "mac-intel")]
+    MacIntel,
+    #[serde(rename = "mac-arm")]
+    MacArm,
+    Mobile,
+    Android,
+    Android32,
+    Android64,
+    Ios,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct ModJsonDependency {
     version: String,
     #[serde(default)]
     importance: DependencyImportance,
+    #[serde(default)]
+    platforms: Option<Vec<ModJsonDependencyPlatform>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -90,6 +111,8 @@ pub struct OldModJsonDependency {
     pub version: String,
     #[serde(default)]
     pub importance: DependencyImportance,
+    #[serde(default)]
+    pub platforms: Option<Vec<ModJsonDependencyPlatform>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -111,6 +134,8 @@ pub struct ModJsonIncompatibility {
     version: String,
     #[serde(default)]
     pub importance: IncompatibilityImportance,
+    #[serde(default)]
+    pub platforms: Option<Vec<ModJsonDependencyPlatform>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -119,6 +144,8 @@ pub struct OldModJsonIncompatibility {
     pub version: String,
     #[serde(default)]
     pub importance: IncompatibilityImportance,
+    #[serde(default)]
+    pub platforms: Option<Vec<ModJsonDependencyPlatform>>,
 }
 
 impl ModJson {
@@ -209,6 +236,7 @@ impl ModJson {
                             version: "*".to_string(),
                             compare: ModVersionCompare::MoreEq,
                             importance: i.importance,
+                            platforms: i.platforms.as_ref().map(|x| parse_dependency_platforms(x)),
                         });
                         continue;
                     }
@@ -221,6 +249,7 @@ impl ModJson {
                         version: dependency_ver.to_string(),
                         compare,
                         importance: i.importance,
+                        platforms: i.platforms.as_ref().map(|x| parse_dependency_platforms(x)),
                     });
                 }
                 Ok(ret)
@@ -235,6 +264,17 @@ impl ModJson {
                 for (id, dep) in deps {
                     match dep {
                         ModJsonDependencyType::Version(version) => {
+                            if version == "*" {
+                                ret.push(DependencyCreate {
+                                    dependency_id: id.clone(),
+                                    version: '*'.into(),
+                                    compare: ModVersionCompare::MoreEq,
+                                    importance: DependencyImportance::default(),
+                                    platforms: None,
+                                });
+                                continue;
+                            }
+
                             let (dependency_ver, compare) = split_version_and_compare(version)
                                 .map_err(|_| {
                                     ModZipError::InvalidModJson(format!(
@@ -247,6 +287,7 @@ impl ModJson {
                                 version: dependency_ver.to_string(),
                                 compare,
                                 importance: DependencyImportance::default(),
+                                platforms: None,
                             });
                         }
                         ModJsonDependencyType::Detailed(detailed) => {
@@ -262,6 +303,10 @@ impl ModJson {
                                 version: dependency_ver.to_string(),
                                 compare,
                                 importance: detailed.importance,
+                                platforms: detailed
+                                    .platforms
+                                    .as_ref()
+                                    .map(|x| parse_dependency_platforms(x)),
                             });
                         }
                     }
@@ -294,6 +339,7 @@ impl ModJson {
                             version: "*".to_string(),
                             compare: ModVersionCompare::MoreEq,
                             importance: i.importance,
+                            platforms: i.platforms.as_ref().map(|x| parse_dependency_platforms(x)),
                         });
                         continue;
                     }
@@ -306,6 +352,7 @@ impl ModJson {
                         version: ver.to_string(),
                         compare,
                         importance: i.importance,
+                        platforms: i.platforms.as_ref().map(|x| parse_dependency_platforms(x)),
                     });
                 }
 
@@ -321,6 +368,17 @@ impl ModJson {
                 for (id, item) in map {
                     match item {
                         ModJsonIncompatibilityType::Version(version) => {
+                            if version == "*" {
+                                ret.push(IncompatibilityCreate {
+                                    incompatibility_id: id.clone(),
+                                    version: '*'.into(),
+                                    compare: ModVersionCompare::MoreEq,
+                                    importance: IncompatibilityImportance::default(),
+                                    platforms: None,
+                                });
+                                continue;
+                            }
+
                             let (ver, compare) =
                                 split_version_and_compare(version).map_err(|_| {
                                     ModZipError::InvalidModJson(format!(
@@ -333,6 +391,7 @@ impl ModJson {
                                 version: ver.to_string(),
                                 compare,
                                 importance: IncompatibilityImportance::default(),
+                                platforms: None,
                             });
                         }
                         ModJsonIncompatibilityType::Detailed(detailed) => {
@@ -348,6 +407,10 @@ impl ModJson {
                                 version: ver.to_string(),
                                 compare,
                                 importance: detailed.importance,
+                                platforms: detailed
+                                    .platforms
+                                    .as_ref()
+                                    .map(|x| parse_dependency_platforms(x)),
                             });
                         }
                     }
@@ -463,6 +526,63 @@ pub fn split_version_and_compare(ver: &str) -> Result<(Version, ModVersionCompar
 
 fn parse_download_url(url: &str) -> String {
     String::from(url.trim_end_matches("\\/"))
+}
+
+fn parse_dependency_platforms(platforms: &[ModJsonDependencyPlatform]) -> HashSet<VerPlatform> {
+    if platforms.is_empty() {
+        return HashSet::new();
+    }
+
+    let mut ret: HashSet<VerPlatform> = HashSet::with_capacity(platforms.len());
+
+    for i in platforms {
+        match i {
+            ModJsonDependencyPlatform::Desktop => {
+                ret.insert(VerPlatform::Win);
+                ret.insert(VerPlatform::MacArm);
+                ret.insert(VerPlatform::MacIntel);
+            }
+            ModJsonDependencyPlatform::Windows => {
+                ret.insert(VerPlatform::Win);
+                ()
+            }
+            ModJsonDependencyPlatform::Mac => {
+                ret.insert(VerPlatform::MacArm);
+                ret.insert(VerPlatform::MacIntel);
+            }
+            ModJsonDependencyPlatform::MacIntel => {
+                ret.insert(VerPlatform::MacIntel);
+                ()
+            }
+            ModJsonDependencyPlatform::MacArm => {
+                ret.insert(VerPlatform::MacArm);
+                ()
+            }
+            ModJsonDependencyPlatform::Mobile => {
+                ret.insert(VerPlatform::Android32);
+                ret.insert(VerPlatform::Android64);
+                ret.insert(VerPlatform::Ios);
+            }
+            ModJsonDependencyPlatform::Android => {
+                ret.insert(VerPlatform::Android32);
+                ret.insert(VerPlatform::Android64);
+            }
+            ModJsonDependencyPlatform::Android32 => {
+                ret.insert(VerPlatform::Android32);
+                ()
+            }
+            ModJsonDependencyPlatform::Android64 => {
+                ret.insert(VerPlatform::Android64);
+                ()
+            }
+            ModJsonDependencyPlatform::Ios => {
+                ret.insert(VerPlatform::Ios);
+                ()
+            }
+        };
+    }
+
+    ret
 }
 
 fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), ModZipError> {

@@ -1,8 +1,11 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
+use crate::database::DatabaseError;
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
-use crate::database::DatabaseError;
 
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
@@ -14,6 +17,7 @@ pub struct DependencyCreate {
     pub version: String,
     pub compare: ModVersionCompare,
     pub importance: DependencyImportance,
+    pub platforms: Option<HashSet<VerPlatform>>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -21,6 +25,7 @@ pub struct ResponseDependency {
     pub mod_id: String,
     pub version: String,
     pub importance: DependencyImportance,
+    pub platforms: HashSet<VerPlatform>,
 }
 
 #[derive(sqlx::FromRow, Clone, Debug)]
@@ -30,10 +35,18 @@ pub struct FetchedDependency {
     pub dependency_id: String,
     pub compare: ModVersionCompare,
     pub importance: DependencyImportance,
+    pub windows: bool,
+    pub mac_intel: bool,
+    pub mac_arm: bool,
+    pub android32: bool,
+    pub android64: bool,
+    pub ios: bool,
 }
 
 impl FetchedDependency {
     pub fn into_response(self) -> ResponseDependency {
+        let platforms = self.get_platform_hashset();
+
         ResponseDependency {
             mod_id: self.dependency_id,
             version: {
@@ -44,6 +57,7 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
+            platforms,
         }
     }
     pub fn to_response(&self) -> ResponseDependency {
@@ -57,7 +71,32 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
+            platforms: self.get_platform_hashset(),
         }
+    }
+
+    fn get_platform_hashset(&self) -> HashSet<VerPlatform> {
+        let mut platforms = HashSet::with_capacity(6);
+        if self.windows {
+            platforms.insert(VerPlatform::Win);
+        }
+        if self.mac_intel {
+            platforms.insert(VerPlatform::MacIntel);
+        }
+        if self.mac_arm {
+            platforms.insert(VerPlatform::MacArm);
+        }
+        if self.android32 {
+            platforms.insert(VerPlatform::Android32);
+        }
+        if self.android64 {
+            platforms.insert(VerPlatform::Android64);
+        }
+        if self.ios {
+            platforms.insert(VerPlatform::Ios);
+        }
+
+        platforms
     }
 }
 
@@ -103,6 +142,21 @@ pub enum DependencyImportance {
     Required,
 }
 
+#[derive(sqlx::FromRow)]
+struct QueryResult {
+    start_node: i32,
+    dependency_vid: i32,
+    dependency_version: String,
+    dependency: String,
+    importance: DependencyImportance,
+    windows: bool,
+    mac_intel: bool,
+    mac_arm: bool,
+    android32: bool,
+    android64: bool,
+    ios: bool,
+}
+
 impl Dependency {
     pub async fn get_for_mod_versions(
         ids: &Vec<i32>,
@@ -114,15 +168,6 @@ impl Dependency {
         // Fellow developer, I am sorry for what you're about to see :)
         // I present to you the ugly monster of the Geode index
         // The *GigaQuery™*
-
-        #[derive(sqlx::FromRow)]
-        struct QueryResult {
-            start_node: i32,
-            dependency_vid: i32,
-            dependency_version: String,
-            dependency: String,
-            importance: DependencyImportance,
-        }
 
         let geode_pre = geode.and_then(|x| {
             let pre = x.pre.to_string();
@@ -142,6 +187,12 @@ impl Dependency {
                         dp.importance as importance,
                         dp.version AS needs_version,
                         dp.dependency_id AS dependency,
+                        dp.windows as windows,
+                        dp.mac_intel as mac_intel,
+                        dp.mac_arm as mac_arm,
+                        dp.android32 as android32,
+                        dp.android64 as android64,
+                        dp.ios as ios,
                         dpcy_version.id AS dependency_vid,
                         dpcy_version.name AS depedency_name,
                         dpcy_version.version AS dependency_version,
@@ -201,6 +252,12 @@ impl Dependency {
                         dp2.importance as importance,
                         dp2.version AS needs_version,
                         dp2.dependency_id AS dependency,
+                        dp2.windows as windows,
+                        dp2.mac_intel as mac_intel,
+                        dp2.mac_arm as mac_arm,
+                        dp2.android32 as android32,
+                        dp2.android64 as android64,
+                        dp2.ios as ios,
                         dpcy_version2.id AS dependency_vid,
                         dpcy_version2.name AS depedency_name,
                         dpcy_version2.version AS dependency_version,
@@ -265,6 +322,12 @@ impl Dependency {
 
         let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
         for i in result {
+            if let Some(p) = &platform {
+                if should_skip_row(p, &i) {
+                    continue;
+                }
+            }
+
             ret.entry(i.start_node)
                 .or_default()
                 .push(FetchedDependency {
@@ -273,8 +336,27 @@ impl Dependency {
                     dependency_id: i.dependency,
                     compare: ModVersionCompare::Exact,
                     importance: i.importance,
+                    windows: i.windows,
+                    mac_intel: i.mac_intel,
+                    mac_arm: i.mac_arm,
+                    android32: i.android32,
+                    android64: i.android64,
+                    ios: i.ios,
                 });
         }
         Ok(ret)
+    }
+}
+
+fn should_skip_row(platform: &VerPlatform, row: &QueryResult) -> bool {
+    match platform {
+        VerPlatform::Win => row.windows,
+        VerPlatform::Android => row.android32 || row.android64,
+        VerPlatform::Android32 => row.android32,
+        VerPlatform::Android64 => row.android64,
+        VerPlatform::Ios => row.ios,
+        VerPlatform::Mac => row.mac_intel || row.mac_arm,
+        VerPlatform::MacArm => row.mac_arm,
+        VerPlatform::MacIntel => row.mac_intel,
     }
 }
