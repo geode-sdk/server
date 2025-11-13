@@ -17,7 +17,8 @@ use crate::mod_zip::{self, download_mod};
 use crate::types::models;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth, forum,
+    extractors::auth::Auth,
+    forum,
     types::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
