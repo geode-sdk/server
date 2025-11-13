@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 
-use crate::types::api::ApiError;
-use crate::types::models::dependency::ModVersionCompare;
-use serde::{Deserialize, Serialize};
-use sqlx::{PgConnection, Postgres, QueryBuilder};
-
 use super::{
     dependency::ResponseDependency,
     mod_gd_version::{GDVersionEnum, VerPlatform},
 };
+use crate::database::DatabaseError;
+use crate::types::models::dependency::ModVersionCompare;
+use serde::{Deserialize, Serialize};
+use sqlx::{PgConnection, Postgres};
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
@@ -27,12 +26,7 @@ pub struct IncompatibilityCreate {
 }
 
 #[derive(sqlx::FromRow)]
-pub struct Incompatibility {
-    pub mod_id: i32,
-    pub incompatibility_id: String,
-    pub compare: ModVersionCompare,
-    pub importance: IncompatibilityImportance,
-}
+pub struct Incompatibility {}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Replacement {
@@ -63,6 +57,20 @@ pub struct ResponseIncompatibility {
 }
 
 impl FetchedIncompatibility {
+    pub fn into_response(self) -> ResponseIncompatibility {
+        ResponseIncompatibility {
+            mod_id: self.incompatibility_id,
+            version: {
+                if self.version == "*" {
+                    "*".to_string()
+                } else {
+                    format!("{}{}", self.compare, self.version)
+                }
+            },
+            importance: self.importance,
+        }
+    }
+
     pub fn to_response(&self) -> ResponseIncompatibility {
         ResponseIncompatibility {
             mod_id: self.incompatibility_id.clone(),
@@ -79,63 +87,11 @@ impl FetchedIncompatibility {
 }
 
 impl Incompatibility {
-    pub async fn create_for_mod_version(
-        id: i32,
-        incompats: Vec<IncompatibilityCreate>,
-        pool: &mut PgConnection,
-    ) -> Result<(), ApiError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "INSERT INTO incompatibilities (mod_id, incompatibility_id, version, compare, importance) VALUES ",
-        );
-        for (index, i) in incompats.iter().enumerate() {
-            let mut separated = builder.separated(", ");
-            separated.push_unseparated("(");
-            separated.push_bind(id);
-            separated.push_bind(&i.incompatibility_id);
-            separated.push_bind(&i.version);
-            separated.push_bind(i.compare);
-            separated.push_bind(i.importance);
-            separated.push_unseparated(")");
-            if index != incompats.len() - 1 {
-                separated.push_unseparated(", ");
-            }
-        }
-
-        let result = builder.build().execute(&mut *pool).await;
-        if result.is_err() {
-            log::error!("{:?}", result.err().unwrap());
-            return Err(ApiError::DbError);
-        }
-
-        Ok(())
-    }
-
-    pub async fn clear_for_mod_version(
-        id: i32,
-        pool: &mut PgConnection
-    ) -> Result<(), ApiError> {
-        sqlx::query!(
-            "DELETE FROM incompatibilities
-            WHERE mod_id = $1",
-            id
-        )
-            .execute(&mut *pool)
-            .await
-            .map(|_| ())
-            .map_err(|err| {
-                log::error!(
-                    "Failed to remove incompatibilities for mod version {}: {}",
-                    id, err
-                );
-                ApiError::DbError
-            })
-    }
-
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,
-    ) -> Result<Vec<FetchedIncompatibility>, ApiError> {
-        match sqlx::query_as!(
+    ) -> Result<Vec<FetchedIncompatibility>, DatabaseError> {
+        sqlx::query_as!(
             FetchedIncompatibility,
             r#"SELECT icp.compare as "compare: _",
             icp.importance as "importance: _",
@@ -146,13 +102,8 @@ impl Incompatibility {
         )
         .fetch_all(&mut *pool)
         .await
-        {
-            Ok(d) => Ok(d),
-            Err(e) => {
-                log::error!("{}", e);
-                Err(ApiError::DbError)
-            }
-        }
+        .inspect_err(|e| log::error!("Failed to fetch incompatibilities for mod_version {id}: {e}"))
+        .map_err(|e| e.into())
     }
 
     pub async fn get_for_mod_versions(
@@ -161,7 +112,15 @@ impl Incompatibility {
         gd: Option<GDVersionEnum>,
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
-    ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, ApiError> {
+    ) -> Result<HashMap<i32, Vec<FetchedIncompatibility>>, DatabaseError> {
+        let geode_pre = geode.and_then(|x| {
+            if x.pre.is_empty() {
+                None
+            } else {
+                Some(x.pre.to_string())
+            }
+        });
+
         let q = sqlx::query_as::<Postgres, FetchedIncompatibility>(
             r#"SELECT icp.compare,
             icp.importance,
@@ -171,29 +130,37 @@ impl Incompatibility {
             WHERE mv.id = ANY($1)
             AND ($2 IS NULL OR mgv.gd = $2)
             AND ($3 IS NULL OR mgv.platform = $3)
-            AND ($4 IS NULL OR CASE
-                WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = mv.geode
-                ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(mv.geode, '.', 1)
-                    AND SPLIT_PART(mv.geode, '.', 2) <= SPLIT_PART($4, '.', 2)
-                    AND (
-                        SPLIT_PART(mv.geode, '-', 2) = '' 
-                        OR SPLIT_PART(mv.geode, '-', 2) >= SPLIT_PART($4, '-', 2)
-                    )
-            END)
+            AND ($4 IS NULL OR $4 = mv.geode_major)
+            AND ($5 IS NULL OR $5 >= mv.geode_minor)
+            AND (
+                ($7 IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')
+                OR (
+                    $7 ILIKE 'alpha%'
+                    AND $5 = mv.geode_minor
+                    AND $6 = mv.geode_patch
+                    AND $7 = mv.geode_meta
+                )
+                OR (
+                    mv.geode_meta IS NULL
+                    OR $5 > mv.geode_minor
+                    OR $6 > mv.geode_patch
+                    OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)
+                )
+            )
             "#,
         )
         .bind(ids)
         .bind(gd)
         .bind(platform)
-        .bind(geode.map(|x| x.to_string()));
+        .bind(geode.map(|x| i64::try_from(x.major).ok()))
+        .bind(geode.map(|x| i64::try_from(x.minor).ok()))
+        .bind(geode.map(|x| i64::try_from(x.patch).ok()))
+        .bind(geode_pre);
 
-        let result = match q.fetch_all(&mut *pool).await {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::DbError);
-            }
-        };
+        let result = q.fetch_all(&mut *pool).await.inspect_err(|e| {
+            log::error!("Failed to fetch incompatibilities for mod_versions: {e}")
+        })?;
+
         let mut ret: HashMap<i32, Vec<FetchedIncompatibility>> = HashMap::new();
 
         for i in result {
@@ -209,9 +176,14 @@ impl Incompatibility {
         gd: GDVersionEnum,
         geode: &semver::Version,
         pool: &mut PgConnection,
-    ) -> Result<HashMap<String, Replacement>, ApiError> {
+    ) -> Result<HashMap<String, Replacement>, DatabaseError> {
         let mut ret: HashMap<String, Replacement> = HashMap::new();
-        let r = match sqlx::query!(
+        let pre = if geode.pre.is_empty() {
+            None
+        } else {
+            Some(geode.pre.to_string())
+        };
+        let r = sqlx::query!(
             r#"
             SELECT 
                 q.replaced,
@@ -238,11 +210,23 @@ impl Incompatibility {
                 AND replaced.incompatibility_id = ANY($1)
                 AND (replacement_mgv.gd = $2 OR replacement_mgv.gd = '*')
                 AND replacement_mgv.platform = $3
-                AND CASE
-                    WHEN SPLIT_PART($4, '-', 2) ILIKE 'alpha%' THEN $4 = replacement.geode
-                    ELSE SPLIT_PART($4, '.', 1) = SPLIT_PART(replacement.geode, '.', 1)
-                        AND semver_compare(replacement.geode, $4) >= 0
-                END
+                AND ($4 = replacement.geode_major)
+                AND ($5 >= replacement.geode_minor)
+                AND (
+                    ($7::text IS NULL AND replacement.geode_meta NOT ILIKE 'alpha%')
+                    OR (
+                        $7 ILIKE 'alpha%'
+                        AND $5 = replacement.geode_minor
+                        AND $6 = replacement.geode_patch
+                        AND $7 = replacement.geode_meta
+                    )
+                    OR (
+                        replacement.geode_meta IS NULL
+                        OR $5 > replacement.geode_minor
+                        OR $6 > replacement.geode_patch
+                        OR (replacement.geode_meta NOT ILIKE 'alpha%' AND $7 >= replacement.geode_meta)
+                    )
+                )
                 ORDER BY replacement.id DESC, replacement.version DESC
             ) q
             WHERE q.rn = 1
@@ -250,17 +234,14 @@ impl Incompatibility {
             ids,
             gd as GDVersionEnum,
             platform as VerPlatform,
-            geode.to_string()
+            i32::try_from(geode.major).unwrap_or_default(),
+            i32::try_from(geode.minor).unwrap_or_default(),
+            i32::try_from(geode.patch).unwrap_or_default(),
+            pre
         )
         .fetch_all(&mut *pool)
         .await
-        {
-            Err(e) => {
-                log::error!("Failed to fetch supersedes. ERR: {}", e);
-                return Err(ApiError::DbError);
-            }
-            Ok(r) => r,
-        };
+        .inspect_err(|e| log::error!("Failed to fetch supersedes: {e}"))?;
 
         // Client doesn't actually use those, we might as well not return them yet
         // TODO: enable back when client supports then

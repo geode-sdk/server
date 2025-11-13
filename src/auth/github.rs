@@ -1,5 +1,5 @@
+use crate::auth::AuthenticationError;
 use crate::database::repository::github_login_attempts;
-use crate::types::api::ApiError;
 use crate::types::models::github_login_attempt::StoredLoginAttempt;
 use reqwest::{header::HeaderValue, Client};
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,40 @@ pub struct GithubStartAuth {
     verification_uri: String,
     expires_in: i32,
     interval: i32,
+}
+
+#[derive(Deserialize)]
+pub enum GithubDeviceFlowErrorString {
+    #[serde(rename(deserialize = "authorization_pending"))]
+    AuthorizationPending,
+    #[serde(rename(deserialize = "slow_down"))]
+    SlowDown,
+    #[serde(rename(deserialize = "expired_token"))]
+    ExpiredToken,
+    #[serde(rename(deserialize = "unsupported_grant_type"))]
+    UnsupportedGrantType,
+    #[serde(rename(deserialize = "incorrect_client_credentials"))]
+    IncorrectClientCredentials,
+    #[serde(rename(deserialize = "incorrect_device_code"))]
+    IncorrectDeviceCode,
+    #[serde(rename(deserialize = "access_denied"))]
+    AccessDenied,
+    #[serde(rename(deserialize = "device_flow_disabled"))]
+    DeviceFlowDisabled,
+    Unknown,
+}
+
+impl Default for GithubDeviceFlowErrorString {
+    fn default() -> Self {
+        GithubDeviceFlowErrorString::Unknown
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GithubErrorResponse {
+    error: GithubDeviceFlowErrorString,
+    error_description: String,
+    error_uri: String,
 }
 
 pub struct GithubClient {
@@ -55,7 +89,7 @@ impl GithubClient {
         &self,
         ip: IpNetwork,
         pool: &mut PgConnection,
-    ) -> Result<StoredLoginAttempt, ApiError> {
+    ) -> Result<StoredLoginAttempt, AuthenticationError> {
         if let Some(r) = github_login_attempts::get_one_by_ip(ip, pool).await? {
             if r.is_expired() {
                 let uuid = Uuid::parse_str(&r.uuid).unwrap();
@@ -74,28 +108,30 @@ impl GithubClient {
             }))
             .send()
             .await
-            .map_err(|e| {
-                log::error!("Failed to start OAuth device flow with GitHub: {}", e);
-                ApiError::InternalError
-            })?;
+            .inspect_err(|e| log::error!("Failed to start OAuth device flow with GitHub: {e}"))?;
 
         if !res.status().is_success() {
             log::error!(
-                "GitHub OAuth device flow start request failed with code {}",
-                res.status()
+                "GitHub OAuth device flow failed to start. Error code: {}. Body: {}",
+                res.status(),
+                res.text().await.unwrap_or("No body received".into())
             );
-            return Err(ApiError::InternalError);
+            return Err(AuthenticationError::InternalError(
+                "Failed to start GitHub device flow".into(),
+            ));
         }
 
-        let body = res.json::<GithubStartAuth>().await.map_err(|e| {
-            log::error!(
-                "Failed to parse OAuth device flow response from GitHub: {}",
-                e
-            );
-            ApiError::InternalError
-        })?;
+        let body = res
+            .json::<GithubStartAuth>()
+            .await
+            .inspect_err(|e| {
+                log::error!("Failed to parse OAuth device flow response from GitHub: {e}")
+            })
+            .or(Err(AuthenticationError::InternalError(
+                "Failed to parse response from GitHub".into(),
+            )))?;
 
-        Ok(github_login_attempts::create(
+        github_login_attempts::create(
             ip,
             body.device_code,
             body.interval,
@@ -104,7 +140,8 @@ impl GithubClient {
             &body.user_code,
             &mut *pool,
         )
-        .await?)
+        .await
+        .map_err(|e| e.into())
     }
 
     pub async fn poll_github(
@@ -112,7 +149,7 @@ impl GithubClient {
         code: &str,
         is_device: bool,
         redirect_uri: Option<&str>,
-    ) -> Result<String, ApiError> {
+    ) -> Result<String, AuthenticationError> {
         let json = {
             if is_device {
                 json!({
@@ -145,96 +182,115 @@ impl GithubClient {
             .json(&json)
             .send()
             .await
-            .map_err(|e| {
-                log::error!("Failed to poll GitHub for developer access token: {}", e);
-                ApiError::InternalError
+            .inspect_err(|e| {
+                log::error!("Failed to poll GitHub for developer access token: {e}")
             })?;
 
         Ok(resp
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| {
-                log::error!("Failed to decode GitHub response: {}", e);
-                ApiError::InternalError
-            })?
+            .inspect_err(|e| log::error!("Failed to decode GitHub response: {e}"))?
             .get("access_token")
-            .ok_or(ApiError::BadRequest("Request not accepted by user".into()))?
+            .ok_or(AuthenticationError::UserAuthPending)?
             .as_str()
             .ok_or_else(|| {
                 log::error!("Invalid access_token received from GitHub");
-                ApiError::InternalError
+                AuthenticationError::InternalError(
+                    "Failed to retrieve access token from GitHub".into(),
+                )
             })?
             .to_string())
     }
-
-    pub async fn get_user(&self, token: &str) -> Result<GitHubFetchedUser, ApiError> {
+    pub async fn get_user(&self, token: &str) -> Result<GitHubFetchedUser, AuthenticationError> {
         let resp = Client::new()
             .get("https://api.github.com/user")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")
             .bearer_auth(token)
             .send()
-            .await
-            .map_err(|e| {
-                log::error!("Request to https://api.github.com/user failed: {}", e);
-                ApiError::InternalError
-            })?;
+            .await?;
 
         if !resp.status().is_success() {
-            return Err(ApiError::InternalError);
+            log::error!(
+                "github::get_user: received non-2xx response: {}. Body: {}",
+                resp.status(),
+                resp.text().await.unwrap_or("No response body".into())
+            );
+            return Err(AuthenticationError::InternalError(
+                "Failed to fetch user from GitHub API, received non 2xx response".into(),
+            ));
         }
 
-        Ok(resp.json::<GitHubFetchedUser>().await.map_err(|e| {
-            log::error!("Failed to create GitHubFetchedUser: {}", e);
-            ApiError::InternalError
-        })?)
+        resp.json::<GitHubFetchedUser>()
+            .await
+            .inspect_err(|e| log::error!("github::get_user: failed to parse response: {e}"))
+            .or(Err(AuthenticationError::InternalError(
+                "Failed to parse user JSON received from GitHub".into(),
+            )))
     }
 
-    pub async fn get_installation(&self, token: &str) -> Result<GitHubFetchedUser, ApiError> {
+    pub async fn get_installation(
+        &self,
+        token: &str,
+    ) -> Result<GitHubFetchedUser, AuthenticationError> {
         let client = Client::new();
-        let resp = match client
+        let resp = client
             .get("https://api.github.com/installation/repositories")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")
             .bearer_auth(token)
             .send()
             .await
-        {
-            Err(e) => {
-                log::info!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(r) => r,
-        };
+            .inspect_err(|e| {
+                log::error!("github::get_installation: failed to fetch repositories: {e}")
+            })?;
 
         if !resp.status().is_success() {
-            return Err(ApiError::InternalError);
+            log::error!(
+                "github::get_installation: received non-2xx response: {}. Body: {}",
+                resp.status(),
+                resp.text().await.unwrap_or("No response body".into())
+            );
+            return Err(AuthenticationError::InternalError(
+                "Received non-2xx response from GitHub".into(),
+            ));
         }
 
-        let body = match resp.json::<serde_json::Value>().await {
-            Err(e) => {
-                log::error!("{}", e);
-                return Err(ApiError::InternalError);
-            }
-            Ok(b) => b,
-        };
+        let body = resp
+            .json::<serde_json::Value>()
+            .await
+            .inspect_err(|e| log::error!("github::get_installation: failed to parse response: {e}"))
+            .or(Err(AuthenticationError::InternalError(
+                "Failed to parse response from GitHub".into(),
+            )))?;
 
-        let repos = match body.get("repositories").and_then(|r| r.as_array()) {
-            None => {
-                return Err(ApiError::InternalError);
-            },
-            Some(r) => r,
-        };
+        let repos = body.get("repositories").and_then(|r| r.as_array()).ok_or(
+            AuthenticationError::InternalError(
+                "Failed to get repository array from GitHub response".into(),
+            ),
+        )?;
 
         if repos.len() != 1 {
-            return Err(ApiError::InternalError);
+            return Err(AuthenticationError::InternalError(
+                "Failed to get repository from GitHub: array size isn't 1".into(),
+            ));
         }
 
-        let owner = repos[0].get("owner").ok_or(ApiError::InternalError)?.clone();
+        let owner = repos[0]
+            .get("owner")
+            .ok_or(AuthenticationError::InternalError(
+                "Didn't find owner key on repository".into(),
+            ))?
+            .clone();
 
-        serde_json::from_value(owner).map_err(|e| {
-            log::error!("Failed to create GitHubFetchedUser: {}", e);
-            ApiError::InternalError
-        })
+        serde_json::from_value(owner)
+            .inspect_err(|e| {
+                log::error!(
+                    "github::get_installation: failed to extract owner from serde_json value: {e}"
+                )
+            })
+            .or(Err(AuthenticationError::InternalError(
+                "Failed to get GitHub user from installation".into(),
+            )))
     }
 }

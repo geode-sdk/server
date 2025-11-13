@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM mods_developers\n        WHERE mod_id = $1\n        AND developer_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "16469aa4a91fd0c6e55b56b3ae1bdbcd907942f510fe3f16683abd6f0429c86a"
+}

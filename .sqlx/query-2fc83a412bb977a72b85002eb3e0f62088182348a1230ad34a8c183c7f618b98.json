@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_version_statuses\n        SET status = $1,\n        admin_id = $2,\n        info = $3,\n        updated_at = NOW()\n        WHERE mod_version_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "Int4",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2fc83a412bb977a72b85002eb3e0f62088182348a1230ad34a8c183c7f618b98"
+}

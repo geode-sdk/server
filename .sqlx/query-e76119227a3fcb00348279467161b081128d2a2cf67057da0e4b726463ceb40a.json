@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            d.id,\n            d.username,\n            d.display_name,\n            d.verified,\n            d.admin,\n            d.github_user_id as github_id\n        FROM developers d\n        INNER JOIN auth_tokens a ON d.id = a.developer_id\n        WHERE a.token = $1\n        AND (\n            expires_at IS NULL\n            OR expires_at > NOW()\n        )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "admin",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e76119227a3fcb00348279467161b081128d2a2cf67057da0e4b726463ceb40a"
+}

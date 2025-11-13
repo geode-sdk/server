@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mods\n        SET created_at = NOW()\n        WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "17eda7d205664b0b48a50a9457658d0869c2ba8a8e80a9b6b3268572277b137c"
+}

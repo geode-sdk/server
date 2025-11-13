@@ -1,0 +1,80 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                q.id,\n                q.inner_version as version,\n                q.mod_version_id\n            FROM (\n                SELECT\n                    m.id,\n                    mv.id as mod_version_id,\n                    mv.version as inner_version,\n                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn\n                FROM mods m\n                INNER JOIN mod_versions mv ON mv.mod_id = m.id\n                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n                INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id\n                WHERE mvs.status = 'accepted'\n                AND mgv.platform = $1\n                AND (mgv.gd = ANY($2))\n                AND m.id = ANY($3)\n                AND $4 = mv.geode_major\n                AND $5 >= mv.geode_minor\n                AND (\n                    ($7::text IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')\n                    OR (\n                        $7 ILIKE 'alpha%'\n                        AND $5 = mv.geode_minor\n                        AND $6 = mv.geode_patch\n                        AND $7 = mv.geode_meta\n                    )\n                    OR (\n                        mv.geode_meta IS NULL\n                        OR $5 > mv.geode_minor\n                        OR $6 > mv.geode_patch\n                        OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)\n                    )\n                )\n            ) q\n            WHERE q.rn = 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "gd_ver_platform",
+            "kind": {
+              "Enum": [
+                "android32",
+                "android64",
+                "ios",
+                "mac-arm",
+                "mac-intel",
+                "win"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "gd_version[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "gd_version",
+                  "kind": {
+                    "Enum": [
+                      "*",
+                      "2.113",
+                      "2.200",
+                      "2.204",
+                      "2.205",
+                      "2.206",
+                      "2.207",
+                      "2.2071",
+                      "2.2072",
+                      "2.2073",
+                      "2.2074"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "TextArray",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7a5a6112407ccaae8d9e3589579710391ba9bc908ad45c65331794baf86e489a"
+}

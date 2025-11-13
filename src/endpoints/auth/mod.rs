@@ -1,7 +1,8 @@
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, refresh_tokens};
+use crate::endpoints::ApiError;
 use crate::extractors::auth::Auth;
-use crate::types::api::{ApiError, ApiResponse};
+use crate::types::api::ApiResponse;
 use actix_web::{post, web, Responder};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
@@ -31,11 +32,7 @@ pub async fn refresh_token(
     let refresh_token = Uuid::parse_str(&json.refresh_token)
         .or(Err(ApiError::BadRequest("Invalid refresh token".into())))?;
 
-    let mut conn = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut conn = data.db().acquire().await?;
 
     let found = developers::find_by_refresh_token(refresh_token, &mut conn)
         .await?
@@ -43,7 +40,7 @@ pub async fn refresh_token(
             "Invalid or expired refresh token".into(),
         ))?;
 
-    let mut tx = conn.begin().await.or(Err(ApiError::TransactionError))?;
+    let mut tx = conn.begin().await?;
 
     let new_auth = auth_tokens::generate_token(found.id, true, &mut tx).await?;
     let new_refresh = refresh_tokens::generate_token(found.id, &mut tx).await?;
@@ -53,7 +50,7 @@ pub async fn refresh_token(
     }
     refresh_tokens::remove_token(refresh_token, &mut tx).await?;
 
-    tx.commit().await.or(Err(ApiError::TransactionError))?;
+    tx.commit().await?;
 
     Ok(web::Json(ApiResponse {
         error: "".into(),

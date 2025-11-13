@@ -1,12 +1,13 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
+use super::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
 use crate::{
     extractors::auth::Auth,
     types::{
-        api::{ApiError, ApiResponse},
+        api::ApiResponse,
         models::{
             developer::ModDeveloper, mod_entity::Mod, mod_version_status::ModVersionStatusEnum,
         },
@@ -71,20 +72,16 @@ pub async fn developer_index(
     data: web::Data<AppData>,
     query: web::Query<DeveloperIndexQuery>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     let page: i64 = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 100);
 
-    let query = query.query.clone().unwrap_or_default();
+    let query = query.query.clone();
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: developers::index(&query, page, per_page, &mut pool).await?,
+        payload: developers::index(query.as_deref(), page, per_page, &mut pool).await?,
     }))
 }
 
@@ -96,17 +93,13 @@ pub async fn add_developer_to_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
     if !developers::owns_mod(dev.id, &path.id, &mut pool).await? {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::Authorization);
     }
 
     let target = developers::get_one_by_username(&json.username, &mut pool)
@@ -116,7 +109,7 @@ pub async fn add_developer_to_mod(
             json.username
         )))?;
 
-    Mod::assign_dev(&path.id, target.id, &mut pool).await?;
+    mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
 
     Ok(HttpResponse::NoContent())
 }
@@ -128,18 +121,14 @@ pub async fn remove_dev_from_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
 
     if !developers::owns_mod(dev.id, &path.id, &mut pool).await? {
-        return Err(ApiError::Forbidden);
+        return Err(ApiError::Authorization);
     }
 
     let target = developers::get_one_by_username(&path.username, &mut pool)
@@ -149,9 +138,23 @@ pub async fn remove_dev_from_mod(
             path.username
         )))?;
 
-    Mod::unassign_dev(&path.id, target.id, &mut pool).await?;
+    if target.id == dev.id {
+        return Ok(HttpResponse::Conflict().json(ApiResponse {
+            error: "Cannot remove self from mod developer list".into(),
+            payload: "",
+        }));
+    }
 
-    Ok(HttpResponse::NoContent())
+    if !developers::has_access_to_mod(target.id, &path.id, &mut pool).await? {
+        return Err(ApiError::NotFound(format!(
+            "{} is not a developer for this mod",
+            target.username
+        )));
+    }
+
+    mods::unassign_developer(&path.id, target.id, &mut pool).await?;
+
+    Ok(HttpResponse::NoContent().finish())
 }
 
 #[delete("v1/me/token")]
@@ -160,11 +163,7 @@ pub async fn delete_token(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let token = auth.token()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     auth_tokens::remove_token(token, &mut pool).await?;
 
@@ -177,11 +176,7 @@ pub async fn delete_tokens(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     auth_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
     refresh_tokens::remove_developer_tokens(dev.id, &mut pool).await?;
@@ -201,21 +196,21 @@ pub async fn update_profile(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
-    if !json.display_name.chars().all(char::is_alphanumeric) {
+    if !json
+        .display_name
+        .chars()
+        .all(|x| char::is_ascii_alphanumeric(&x))
+    {
         return Err(ApiError::BadRequest(
-            "Display name must contain only alphanumeric characters".into(),
+            "Display name must contain only ASCII alphanumeric characters".into(),
         ));
     }
 
     if json.display_name.len() < 2 {
         return Err(ApiError::BadRequest(
-            "Display name must have > 1 character".into(),
+            "Display name must have more than 1 character".into(),
         ));
     }
 
@@ -229,6 +224,8 @@ pub async fn update_profile(
 struct GetOwnModsQuery {
     #[serde(default = "default_own_mods_status")]
     status: ModVersionStatusEnum,
+    #[serde(default)]
+    only_owner: bool,
 }
 
 pub fn default_own_mods_status() -> ModVersionStatusEnum {
@@ -242,12 +239,9 @@ pub async fn get_own_mods(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
-    let mods: Vec<SimpleDevMod> = Mod::get_all_for_dev(dev.id, query.status, &mut pool).await?;
+    let mut pool = data.db().acquire().await?;
+    let mods: Vec<SimpleDevMod> =
+        Mod::get_all_for_dev(dev.id, query.status, query.only_owner, &mut pool).await?;
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
         payload: mods,
@@ -273,11 +267,7 @@ pub async fn get_developer(
     data: web::Data<AppData>,
     path: web::Path<GetDeveloperPath>,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
     let result = developers::get_one(path.id, &mut pool)
         .await?
         .ok_or(ApiError::NotFound("Developer not found".into()))?;
@@ -296,7 +286,7 @@ pub async fn update_developer(
     payload: web::Json<DeveloperUpdatePayload>,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    auth.admin()?;
+    auth.check_admin()?;
 
     if payload.admin.is_none() && payload.verified.is_none() {
         return Err(ApiError::BadRequest(
@@ -304,11 +294,7 @@ pub async fn update_developer(
         ));
     }
 
-    let mut pool = data
-        .db()
-        .acquire()
-        .await
-        .or(Err(ApiError::DbAcquireError))?;
+    let mut pool = data.db().acquire().await?;
 
     if payload.admin.is_some() && dev.id == path.id {
         return Err(ApiError::BadRequest(

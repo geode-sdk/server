@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO dependencies \n        (dependent_id, dependency_id, version, compare, importance)\n        SELECT * FROM UNNEST(\n            $1::int4[],\n            $2::text[],\n            $3::text[],\n            $4::version_compare[],\n            $5::dependency_importance[]\n        )\n        RETURNING \n            dependent_id as mod_version_id,\n            dependency_id,\n            version,\n            compare as \"compare: _\",\n            importance as \"importance: _\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "dependency_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "compare: _",
+        "type_info": {
+          "Custom": {
+            "name": "version_compare",
+            "kind": {
+              "Enum": [
+                "=",
+                ">",
+                "<",
+                ">=",
+                "<="
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "importance: _",
+        "type_info": {
+          "Custom": {
+            "name": "dependency_importance",
+            "kind": {
+              "Enum": [
+                "required",
+                "recommended",
+                "suggested"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4Array",
+        "TextArray",
+        "TextArray",
+        {
+          "Custom": {
+            "name": "version_compare[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "version_compare",
+                  "kind": {
+                    "Enum": [
+                      "=",
+                      ">",
+                      "<",
+                      ">=",
+                      "<="
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "dependency_importance[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "dependency_importance",
+                  "kind": {
+                    "Enum": [
+                      "required",
+                      "recommended",
+                      "suggested"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "25e42d6a179e920a58a6034b724700f96676190fca5b0a7e11eb036e523e33d5"
+}

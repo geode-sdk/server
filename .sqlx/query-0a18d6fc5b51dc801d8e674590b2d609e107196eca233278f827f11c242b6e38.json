@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(id) as id_count, SUM(download_count) as download_sum\n            FROM (\n                select m.id, m.download_count, row_number() over(partition by m.id) rn\n                FROM mods m\n                INNER JOIN mod_versions mv ON mv.mod_id = m.id\n                INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n                WHERE mvs.status = 'accepted'\n            ) q\n            WHERE q.rn = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "download_sum",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "0a18d6fc5b51dc801d8e674590b2d609e107196eca233278f827f11c242b6e38"
+}

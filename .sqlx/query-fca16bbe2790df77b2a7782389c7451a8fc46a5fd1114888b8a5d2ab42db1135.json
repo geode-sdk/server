@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_version_statuses\n        (mod_version_id, status, info, admin_id)\n        VALUES ($1, $2, $3, NULL)\n        RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fca16bbe2790df77b2a7782389c7451a8fc46a5fd1114888b8a5d2ab42db1135"
+}

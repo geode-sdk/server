@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                m.id, m.featured, m.download_count as mod_download_count,\n                mv.name, mv.version, mv.download_count as mod_version_download_count,\n                mvs.info, mvs.status as \"status: _\",\n                exists(\n                    select 1 from mod_version_statuses mvs_inner\n                    where mvs_inner.mod_version_id = mv.id and mvs_inner.status = 'accepted'\n                ) as \"validated!: _\"\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mods_developers md ON md.mod_id = m.id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE md.developer_id = $1\n            AND mvs.status = $2\n            AND ($3 = false OR md.is_owner = true)\n            ORDER BY m.created_at DESC, mv.id DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "featured",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "mod_download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "mod_version_download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "info",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "validated!: _",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      null
+    ]
+  },
+  "hash": "20cc5dba1dbe11790912ff32e24a757ad86edfe06094087b2654c9428a2469d6"
+}

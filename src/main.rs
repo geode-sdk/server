@@ -9,7 +9,6 @@ use forum::discord::{create_or_update_thread, get_threads};
 use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
-
 mod auth;
 mod cli;
 mod config;
@@ -18,6 +17,7 @@ mod endpoints;
 mod events;
 mod extractors;
 mod jobs;
+mod mod_zip;
 mod types;
 mod forum;
 mod webhook;
@@ -84,6 +84,9 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
+            .service(endpoints::loader::get_one)
+            .service(endpoints::loader::create_version)
+            .service(endpoints::loader::get_many)
             .service(endpoints::health::health)
     })
     .bind(("0.0.0.0", port))?;

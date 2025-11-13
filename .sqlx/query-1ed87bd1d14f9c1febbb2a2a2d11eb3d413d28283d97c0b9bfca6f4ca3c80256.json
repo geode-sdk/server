@@ -1,0 +1,54 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            id,\n            username,\n            display_name,\n            verified,\n            admin,\n            github_user_id as github_id\n        FROM developers\n        WHERE (\n            ($1::text IS NULL OR username = $1)\n            OR ($1::text IS NULL OR display_name ILIKE '%' || $1 || '%')\n        )\n        GROUP BY id\n        LIMIT $2\n        OFFSET $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "admin",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "github_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1ed87bd1d14f9c1febbb2a2a2d11eb3d413d28283d97c0b9bfca6f4ca3c80256"
+}
