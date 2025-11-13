@@ -192,7 +192,40 @@ pub async fn get_threads(data: &DiscordForumData) -> Vec<Value> {
         .collect::<Vec<Value>>()
 }
 
-pub async fn create_or_update_thread(
+pub fn create_or_update_thread(
+    data: DiscordForumData,
+    id: String,
+    ver: String,
+    admin: String,
+    base_url: String,
+    mut pool: sqlx::pool::PoolConnection<sqlx::Postgres>,
+) {
+    tokio::spawn(async move {
+        if !data.is_valid() {
+            log::error!("Discord configuration is not set up. Not creating forum threads.");
+            return;
+        }
+
+        let mod_res = Mod::get_one(&id, false, &mut pool).await.ok().flatten();
+        if mod_res.is_none() {
+            return;
+        }
+        let version_res = ModVersion::get_one(&id, &ver, true, false, &mut pool).await.ok().flatten();
+        if version_res.is_none() {
+            return;
+        }
+        create_or_update_thread_internal(
+            None,
+            &data,
+            &mod_res.unwrap(),
+            &version_res.unwrap(),
+            &admin,
+            &base_url
+        ).await;
+    });
+}
+
+pub async fn create_or_update_thread_internal(
     threads: Option<Vec<Value>>,
     data: &DiscordForumData,
     m: &Mod,

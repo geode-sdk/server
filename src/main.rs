@@ -5,7 +5,6 @@ use actix_web::{
     App, HttpServer,
 };
 use endpoints::mods::{IndexQueryParams, IndexSortType};
-use forum::discord::{create_or_update_thread, get_threads};
 use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
@@ -121,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
             return;
         }
 
-        let threads = get_threads(&app_data.discord()).await;
+        let threads = forum::discord::get_threads(&app_data.discord()).await;
         let threads_res = Some(threads);
         let mut mods = results.unwrap().data;
         mods.sort_by(|a, b| {
@@ -141,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
 
-            create_or_update_thread(
+            forum::discord::create_or_update_thread_internal(
                 threads_res.clone(),
                 &app_data.discord(),
                 m,

@@ -10,7 +10,7 @@ use crate::database::repository::mods;
 use crate::endpoints::ApiError;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
-use crate::forum::discord::create_or_update_thread;
+use crate::forum;
 use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiResponse};
 use crate::types::mod_json::ModJson;
@@ -222,29 +222,14 @@ pub async fn create(
         i.modify_metadata(data.app_url(), false);
     }
 
-    tokio::spawn(async move {
-        if !data.discord().is_valid() {
-            log::error!("Discord configuration is not set up. Not creating forum threads.");
-            return;
-        }
-
-        let mod_res = Mod::get_one(&json.id, false, &mut pool).await.ok().flatten();
-        if mod_res.is_none() {
-            return;
-        }
-        let version_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await.ok().flatten();
-        if version_res.is_none() {
-            return;
-        }
-        create_or_update_thread(
-            None,
-            &data.discord(),
-            &mod_res.unwrap(),
-            &version_res.unwrap(),
-            "",
-            &data.app_url()
-        ).await;
-    });
+    forum::discord::create_or_update_thread(
+        data.discord().clone(),
+        json.id,
+        json.version,
+        "".to_string(),
+        data.app_url().to_string(),
+        pool
+    );
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),

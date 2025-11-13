@@ -17,7 +17,7 @@ use crate::mod_zip::{self, download_mod};
 use crate::types::models;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth, forum::discord::create_or_update_thread,
+    extractors::auth::Auth, forum,
     types::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
@@ -401,29 +401,14 @@ pub async fn create_version(
     version.modify_metadata(data.app_url(), false);
 
     if !make_accepted {
-        tokio::spawn(async move {
-            if !data.discord().is_valid() {
-                log::error!("Discord configuration is not set up. Not creating forum threads.");
-                return;
-            }
-
-            let mod_res = Mod::get_one(&id, false, &mut pool).await.ok().flatten();
-            if mod_res.is_none() {
-                return;
-            }
-            let version_res = ModVersion::get_one(&id, &json_version, true, false, &mut pool).await.ok().flatten();
-            if version_res.is_none() {
-                return;
-            }
-            create_or_update_thread(
-                None,
-                &data.discord(),
-                &mod_res.unwrap(),
-                &version_res.unwrap(),
-                "",
-                &data.app_url()
-            ).await;
-        });
+        forum::discord::create_or_update_thread(
+            data.discord().clone(),
+            id,
+            json_version,
+            "".to_string(),
+            data.app_url().to_string(),
+            pool,
+        );
     }
 
     Ok(HttpResponse::Created().json(ApiResponse {
@@ -563,29 +548,14 @@ pub async fn update_version(
     }
 
     if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
-        tokio::spawn(async move {
-            if !data.discord().is_valid() {
-                log::error!("Discord configuration is not set up. Not creating forum threads.");
-                return;
-            }
-
-            let mod_res = Mod::get_one(&path.id, false, &mut pool).await.ok().flatten();
-            if mod_res.is_none() {
-                return;
-            }
-            let version_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await.ok().flatten();
-            if version_res.is_none() {
-                return;
-            }
-            create_or_update_thread(
-                None,
-                &data.discord(),
-                &mod_res.unwrap(),
-                &version_res.unwrap(),
-                &display_name,
-                &data.app_url()
-            ).await;
-        });
+        forum::discord::create_or_update_thread(
+            data.discord().clone(),
+            path.id.clone(),
+            path.version.clone(),
+            display_name,
+            data.app_url().to_string(),
+            pool
+        );
     }
 
     Ok(HttpResponse::NoContent())
