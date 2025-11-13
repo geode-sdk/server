@@ -47,9 +47,9 @@ fn mod_embed(m: &Mod, v: &ModVersion, base_url: &str) -> Value {
                 "name": "Developers",
                 "value": m.developers.clone().into_iter().map(|d| {
                     if d.is_owner {
-                        format!("**[{}](https://geode-sdk.org/mods?developer={})**", d.display_name, d.username)
+                        format!("**[{}](https://geode-sdk.org/developers/{})**", d.display_name, d.id)
                     } else {
-                        format!("[{}](https://geode-sdk.org/mods?developer={})", d.display_name, d.username)
+                        format!("[{}](https://geode-sdk.org/developers/{})", d.display_name, d.id)
                     }
                 }).collect::<Vec<String>>().join(", "),
                 "inline": true
@@ -227,34 +227,7 @@ pub async fn create_or_update_thread(
             .json(&json!({
                 "name": format!("🕓 {} ({}) {}", v.name, m.id, v.version),
                 "message": {
-                    "embeds": [mod_embed(m, v, base_url)],
-                    "components": [
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "style": 3,
-                                    "label": "Accept",
-                                    "emoji": {
-                                        "id": Value::Null,
-                                        "name": "✅"
-                                    },
-                                    "custom_id": "index/accept"
-                                },
-                                {
-                                    "type": 2,
-                                    "style": 4,
-                                    "label": "Reject",
-                                    "emoji": {
-                                        "id": Value::Null,
-                                        "name": "❌"
-                                    },
-                                    "custom_id": "index/reject"
-                                }
-                            ]
-                        }
-                    ]
+                    "embeds": [mod_embed(m, v, base_url)]
                 }
             }))
             .send()
@@ -285,7 +258,7 @@ pub async fn create_or_update_thread(
                 } else {
                     "".to_string()
                 }, if v.info.is_some() && !v.info.clone().unwrap().is_empty() {
-                    format!(": `{}`", v.info.clone().unwrap())
+                    format!("\n```\n{}\n```", v.info.clone().unwrap())
                 } else {
                     "".to_string()
                 }),
