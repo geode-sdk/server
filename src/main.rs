@@ -131,8 +131,8 @@ async fn main() -> anyhow::Result<()> {
         });
         for i in 0..mods.len() {
             let m = &mods[i];
-            let version_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await;
-            if version_res.is_err() {
+            let version_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await.ok().flatten();
+            if version_res.is_none() {
                 continue;
             }
 

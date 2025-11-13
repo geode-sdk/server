@@ -232,8 +232,8 @@ pub async fn create(
         if mod_res.is_none() {
             return;
         }
-        let version_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await;
-        if version_res.is_err() {
+        let version_res = ModVersion::get_one(&json.id, &json.version, true, false, &mut pool).await.ok().flatten();
+        if version_res.is_none() {
             return;
         }
         create_or_update_thread(

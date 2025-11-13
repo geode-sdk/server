@@ -21,6 +21,7 @@ use crate::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
         models::{
+            mod_entity::Mod,
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,
@@ -354,6 +355,8 @@ pub async fn create_version(
             .collect(),
     );
 
+    let json_version = json.version.clone();
+
     if make_accepted {
         if let Some(links) = json.links.clone() {
             mod_links::upsert(
@@ -392,29 +395,35 @@ pub async fn create_version(
         }
         .to_discord_webhook()
         .send(&data.webhook_url());
-    } else {
+    }
+
+    version.modify_metadata(data.app_url(), false);
+
+    if !make_accepted {
         tokio::spawn(async move {
             if !data.discord().is_valid() {
                 log::error!("Discord configuration is not set up. Not creating forum threads.");
                 return;
             }
 
-            let version_res = ModVersion::get_one(&path.id, &json.version, true, false, &mut pool).await;
-            if version_res.is_err() {
+            let mod_res = Mod::get_one(&id, false, &mut pool).await.ok().flatten();
+            if mod_res.is_none() {
+                return;
+            }
+            let version_res = ModVersion::get_one(&id, &json_version, true, false, &mut pool).await.ok().flatten();
+            if version_res.is_none() {
                 return;
             }
             create_or_update_thread(
                 None,
                 &data.discord(),
-                &fetched_mod.unwrap(),
+                &mod_res.unwrap(),
                 &version_res.unwrap(),
                 "",
                 &data.app_url()
             ).await;
         });
     }
-
-    version.modify_metadata(data.app_url(), false);
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -516,6 +525,8 @@ pub async fn update_version(
 
     tx.commit().await?;
 
+    let display_name = dev.display_name.clone();
+
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
@@ -531,7 +542,7 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified_by: dev.clone(),
+                verified_by: dev,
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
@@ -542,7 +553,7 @@ pub async fn update_version(
                 name: version.name.clone(),
                 version: version.version.clone(),
                 owner,
-                verified: NewModVersionVerification::Admin(dev.clone()),
+                verified: NewModVersionVerification::Admin(dev),
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
@@ -561,8 +572,8 @@ pub async fn update_version(
             if mod_res.is_none() {
                 return;
             }
-            let version_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await;
-            if version_res.is_err() {
+            let version_res = ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await.ok().flatten();
+            if version_res.is_none() {
                 return;
             }
             create_or_update_thread(
@@ -570,7 +581,7 @@ pub async fn update_version(
                 &data.discord(),
                 &mod_res.unwrap(),
                 &version_res.unwrap(),
-                &dev.display_name,
+                &display_name,
                 &data.app_url()
             ).await;
         });
