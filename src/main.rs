@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(data.clone()))
+            .app_data(web::Data::new(app_data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .wrap(
                 Cors::default()
@@ -91,13 +91,13 @@ async fn main() -> anyhow::Result<()> {
     .bind(("0.0.0.0", port))?;
 
     tokio::spawn(async move {
-        if !app_data.discord().is_valid() {
+        if !data.discord().is_valid() {
             log::error!("Discord configuration is not set up. Not creating forum threads.");
             return;
         }
 
         log::info!("Starting forum thread creation job");
-        let pool_res = app_data.db().acquire().await;
+        let pool_res = data.db().acquire().await;
         if pool_res.is_err() {
             return;
         }
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
             return;
         }
 
-        let threads = forum::discord::get_threads(&app_data.discord()).await;
+        let threads = forum::discord::get_threads(&data.discord()).await;
         let threads_res = Some(threads);
         let mut mods = results.unwrap().data;
         mods.sort_by(|a, b| {
@@ -142,11 +142,11 @@ async fn main() -> anyhow::Result<()> {
 
             forum::discord::create_or_update_thread_internal(
                 threads_res.clone(),
-                &app_data.discord(),
+                &data.discord(),
                 m,
                 &version_res.unwrap(),
                 "",
-                &app_data.app_url()
+                &data.app_url()
             ).await;
         }
 
