@@ -17,7 +17,8 @@ use crate::mod_zip::{self, download_mod};
 use crate::types::models;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth, forum::discord::create_or_update_thread, types::{
+    extractors::auth::Auth, forum::discord::create_or_update_thread,
+    types::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
         models::{
@@ -394,7 +395,7 @@ pub async fn create_version(
             base_url: data.app_url().to_string(),
         }
         .to_discord_webhook()
-        .send(&data.webhook_url());
+        .send(data.webhook_url());
     }
 
     version.modify_metadata(data.app_url(), false);
