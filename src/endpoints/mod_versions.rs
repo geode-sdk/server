@@ -22,7 +22,6 @@ use crate::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
         models::{
-            mod_entity::Mod,
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
             mod_version_status::ModVersionStatusEnum,

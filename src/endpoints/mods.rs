@@ -19,7 +19,6 @@ use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_link::ModLinks;
-use crate::types::models::mod_version::ModVersion;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{get, post, put, web, HttpResponse, Responder};
