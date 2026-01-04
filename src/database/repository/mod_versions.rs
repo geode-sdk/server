@@ -95,13 +95,9 @@ pub async fn get_for_mod(
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
 ) -> Result<Vec<ModVersion>, DatabaseError> {
-    let unlisted = {
-        if let Some(s) = statuses {
-            ModVersionStatusEnum::get_unlisted_mod_filter_for_array(s)
-        } else {
-            None
-        }
-    };
+    let unlisted = statuses
+        .map(|x| ModVersionStatusEnum::get_unlisted_mod_filter_for_array(x))
+        .flatten();
 
     sqlx::query_as!(
         ModVersionRow,
@@ -135,13 +131,9 @@ pub async fn get_latest_for_mod(
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
 ) -> Result<Option<ModVersion>, DatabaseError> {
-    let unlisted = {
-        if let Some(s) = statuses {
-            ModVersionStatusEnum::get_unlisted_mod_filter_for_array(s)
-        } else {
-            None
-        }
-    };
+    let unlisted = statuses
+        .map(|x| ModVersionStatusEnum::get_unlisted_mod_filter_for_array(x))
+        .flatten();
 
     sqlx::query_as!(
         ModVersionRow,
