@@ -12,3 +12,4 @@ pub mod mod_version_statuses;
 pub mod mod_versions;
 pub mod mods;
 pub mod refresh_tokens;
+pub mod mod_unlist_history;

@@ -5,6 +5,7 @@ use crate::database::repository::incompatibilities;
 use crate::database::repository::mod_gd_versions;
 use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
+use crate::database::repository::mod_unlist_history;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::endpoints::ApiError;
@@ -317,7 +318,9 @@ pub async fn get_logo(
 
 #[derive(Deserialize)]
 struct UpdateModPayload {
-    featured: bool,
+    featured: Option<bool>,
+    unlisted: Option<bool>,
+    details: Option<String>
 }
 
 #[put("/v1/mods/{id}")]
@@ -328,42 +331,98 @@ pub async fn update_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    auth.check_admin()?;
+    // Check admin only if featured flag is set
+    if payload.featured.is_some() {
+        auth.check_admin()?;
+    }
     let mut pool = data.db().acquire().await?;
     let mut tx = pool.begin().await?;
 
     let id = path.into_inner();
 
-    if !mods::exists(&id, &mut tx).await? {
+    let the_mod = mods::get_one(&id, false, &mut tx).await?;
+
+    if the_mod.is_none() {
         return Err(ApiError::NotFound("Mod not found".into()));
     }
 
-    let featured = mods::is_featured(&id, &mut tx).await?;
+    let the_mod = the_mod.unwrap();
 
-    Mod::update_mod(&id, payload.featured, &mut tx).await?;
+    if let Some(unlisted) = payload.unlisted {
+        // Check if we actually can do this
+        if !dev.admin {
+            if !developers::has_access_to_mod(dev.id, &the_mod.id, &mut tx).await? {
+                return Err(ApiError::Authorization);
+            }
 
-    tx.commit().await?;
+            if let Some(last_update) =
+                mod_unlist_history::get_last_for_mod(&the_mod.id, &mut tx).await?
+            {
+                let modified_by = developers::get_one(last_update.modified_by, &mut tx).await?;
 
-    if featured != payload.featured {
-        let item = Mod::get_one(&id, true, &mut pool).await?;
-        if let Some(item) = item {
-            if let Some(owner) = developers::get_owner_for_mod(&id, &mut pool).await? {
-                let first_ver = item.versions.first();
-                if let Some(ver) = first_ver {
-                    ModFeaturedEvent {
-                        id: item.id,
-                        name: ver.name.clone(),
-                        owner,
-                        admin: dev,
-                        base_url: data.app_url().to_string(),
-                        featured: payload.featured,
-                    }
-                    .to_discord_webhook()
-                    .send(data.webhook_url());
+                // If the mod was unlisted by an admin, it can only be relisted by an admin
+                if modified_by.is_some_and(|x| x.admin && last_update.unlisted == true && unlisted == false) {
+                    return Err(ApiError::Authorization);
                 }
             }
         }
     }
 
-    Ok(HttpResponse::NoContent())
+    if payload.featured.is_none() && payload.unlisted.is_none() {
+        return Err(ApiError::BadRequest("No fields sent".into()));
+    }
+
+    let previous_mod = the_mod.clone();
+    let the_mod = mods::user_update(the_mod, payload.featured, payload.unlisted, &mut tx).await?;
+
+    let response = Ok(HttpResponse::NoContent());
+
+    // If unlisted was updated, add it to the audit table
+    if the_mod.unlisted != previous_mod.unlisted {
+        mod_unlist_history::create(
+            &the_mod.id,
+            the_mod.unlisted,
+            payload.details.clone(),
+            dev.id,
+            &mut tx
+        ).await?;
+    }
+
+    tx.commit().await?;
+
+    if let Some(featured) = payload.featured {
+        if the_mod.featured == previous_mod.featured {
+            return response;
+        }
+
+        let latest_version = mod_versions::get_latest_for_mod(
+            &the_mod.id,
+            Some(&[ModVersionStatusEnum::Accepted]),
+            &mut pool,
+        )
+        .await?;
+        if latest_version.is_none() {
+            return response;
+        }
+        let latest_version = latest_version.unwrap();
+
+        let owner = developers::get_owner_for_mod(&id, &mut pool).await?;
+        if owner.is_none() {
+            return response;
+        }
+        let owner = owner.unwrap();
+
+        ModFeaturedEvent {
+            id: the_mod.id,
+            name: latest_version.name,
+            owner,
+            admin: dev,
+            base_url: data.app_url().to_string(),
+            featured,
+        }
+        .to_discord_webhook()
+        .send(data.webhook_url());
+    }
+
+    response
 }

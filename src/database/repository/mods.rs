@@ -3,13 +3,14 @@ use crate::{
     types::{mod_json::ModJson, models::mod_entity::Mod},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
-use sqlx::PgConnection;
+use sqlx::{PgConnection, Postgres, QueryBuilder};
 
 #[derive(sqlx::FromRow)]
 struct ModRecordGetOne {
     id: String,
     repository: Option<String>,
     featured: bool,
+    unlisted: bool,
     download_count: i32,
     #[sqlx(default)]
     about: Option<String>,
@@ -25,6 +26,7 @@ impl ModRecordGetOne {
             id: self.id,
             repository: self.repository,
             featured: self.featured,
+            unlisted: self.unlisted,
             download_count: self.download_count,
             versions: Default::default(),
             tags: Default::default(),
@@ -50,7 +52,7 @@ pub async fn get_one(
         sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
-                m.id, m.repository, m.about, m.changelog, m.featured,
+                m.id, m.repository, m.about, m.changelog, m.featured, m.unlisted,
                 m.download_count, m.created_at, m.updated_at
             FROM mods m
             WHERE id = $1",
@@ -65,7 +67,7 @@ pub async fn get_one(
         sqlx::query_as!(
             ModRecordGetOne,
             "SELECT
-            m.id, m.repository, NULL as about, NULL as changelog, m.featured,
+            m.id, m.repository, NULL as about, NULL as changelog, m.featured, m.unlisted,
             m.download_count, m.created_at, m.updated_at
         FROM mods m
         WHERE id = $1",
@@ -92,7 +94,7 @@ pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, Data
         ) VALUES ($1, $2, $3, $4, $5)
         RETURNING
             id, repository, about,
-            changelog, featured,
+            changelog, featured, unlisted,
             download_count, created_at,
             updated_at",
         &json.id,
@@ -234,11 +236,13 @@ pub async fn update_with_json(
         about = $2,
         changelog = $3,
         image = $4,
-        updated_at = NOW()",
+        updated_at = NOW()
+        WHERE id = $5",
         json.repository,
         json.about,
         json.changelog,
-        json.logo
+        json.logo,
+        the_mod.id
     )
     .execute(conn)
     .await
@@ -277,6 +281,48 @@ pub async fn update_with_json_moved(
     the_mod.repository = json.repository;
     the_mod.about = json.about;
     the_mod.changelog = json.changelog;
+
+    Ok(the_mod)
+}
+
+pub async fn user_update(
+    mut the_mod: Mod,
+    featured: Option<bool>,
+    unlisted: Option<bool>,
+    pool: &mut PgConnection,
+) -> Result<Mod, DatabaseError> {
+    if featured.is_none() && unlisted.is_none() {
+        return Err(DatabaseError::InvalidInput(
+            "No new fields were supplied".into(),
+        ));
+    }
+
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE mods SET ");
+    let mut split = builder.separated(", ");
+
+    if let Some(featured) = featured {
+        split.push("featured = ");
+        split.push_bind(featured);
+    }
+
+    if let Some(unlisted) = unlisted {
+        split.push("unlisted = ");
+        split.push_bind(unlisted);
+    }
+
+    builder
+        .build()
+        .execute(&mut *pool)
+        .await
+        .inspect_err(|e| log::error!("Failed to update mod {}: {e}", the_mod.id))
+        .map(|_| ())?;
+
+    if let Some(featured) = featured {
+        the_mod.featured = featured;
+    }
+    if let Some(unlisted) = unlisted {
+        the_mod.unlisted = unlisted;
+    }
 
     Ok(the_mod)
 }

@@ -11,3 +11,4 @@ pub mod stats;
 pub mod tag;
 pub mod loader_version;
 pub mod gd_version_alias;
+pub mod mod_unlist_history;

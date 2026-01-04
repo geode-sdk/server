@@ -155,6 +155,7 @@ impl ModVersion {
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
             mv.early_load, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
             FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             "#,
@@ -163,6 +164,7 @@ impl ModVersion {
             r#"
             SELECT COUNT(DISTINCT mv.id)
             FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
             "#,
@@ -177,6 +179,13 @@ impl ModVersion {
         counter_q.push(sql);
         q.push_bind(query.status);
         counter_q.push_bind(query.status);
+        q.push(" ");
+        counter_q.push(" ");
+        let sql = " AND m.unlisted = ";
+        q.push(sql);
+        counter_q.push(sql);
+        q.push_bind(query.status == ModVersionStatusEnum::Unlisted);
+        counter_q.push_bind(query.status == ModVersionStatusEnum::Unlisted);
         q.push(" ");
         counter_q.push(" ");
         if let Some(gd) = query.gd {
@@ -513,7 +522,8 @@ impl ModVersion {
             INNER JOIN mods m ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE mv.mod_id = $1 AND mv.version = $2
-                AND (mvs.status = 'accepted' OR $3 = false)"#,
+                AND (mvs.status = 'accepted' OR $3 = false)
+                AND (m.unlisted = true OR $3 = false)"#,
             id,
             version,
             fetch_only_accepted
@@ -557,8 +567,10 @@ impl ModVersion {
         sqlx::query_scalar!(
             "SELECT COUNT(*)
             FROM mod_versions mv
+            INNER JOIN mods m ON mv.mod_id = m.id
             INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
             WHERE mvs.status = 'accepted'
+            AND m.unlisted = false
             AND mv.mod_id = $1",
             mod_id
         )

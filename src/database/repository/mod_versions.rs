@@ -95,6 +95,54 @@ pub async fn get_for_mod(
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
 ) -> Result<Vec<ModVersion>, DatabaseError> {
+    let unlisted = {
+        if let Some(s) = statuses {
+            ModVersionStatusEnum::get_unlisted_mod_filter_for_array(s)
+        } else {
+            None
+        }
+    };
+
+    sqlx::query_as!(
+        ModVersionRow,
+        r#"SELECT
+            mv.id, mv.name, mv.description, mv.version,
+            mv.download_link, mv.download_count, mv.hash,
+            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
+            mv.early_load, mv.api, mv.mod_id,
+            mv.created_at, mv.updated_at,
+            mvs.status as "status: _", mvs.info
+        FROM mod_versions mv
+        INNER JOIN mods m ON mv.mod_id = m.id
+        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+        WHERE mv.mod_id = $1
+        AND ($2::mod_version_status[] IS NULL OR mvs.status = ANY($2))
+        AND ($3::bool IS NULL OR m.unlisted = $3)
+        ORDER BY mv.id DESC"#,
+        mod_id,
+        statuses as Option<&[ModVersionStatusEnum]>,
+        unlisted
+    )
+        .fetch_all(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to get mod_versions for mod {mod_id}: {e}"))
+        .map_err(|e| e.into())
+        .map(|opt: Vec<ModVersionRow>| opt.into_iter().map(|x| x.into_mod_version()).collect())
+}
+
+pub async fn get_latest_for_mod(
+    mod_id: &str,
+    statuses: Option<&[ModVersionStatusEnum]>,
+    conn: &mut PgConnection,
+) -> Result<Option<ModVersion>, DatabaseError> {
+    let unlisted = {
+        if let Some(s) = statuses {
+            ModVersionStatusEnum::get_unlisted_mod_filter_for_array(s)
+        } else {
+            None
+        }
+    };
+
     sqlx::query_as!(
         ModVersionRow,
         r#"SELECT
@@ -106,17 +154,21 @@ pub async fn get_for_mod(
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
         INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+        INNER JOIN mods m ON mv.mod_id = m.id
         WHERE mv.mod_id = $1
         AND ($2::mod_version_status[] IS NULL OR mvs.status = ANY($2))
-        ORDER BY mv.id DESC"#,
+        AND ($3::bool IS NOT NULL OR m.unlisted = $3)
+        ORDER BY mv.id DESC
+        LIMIT 1"#,
         mod_id,
-        statuses as Option<&[ModVersionStatusEnum]>
+        statuses as Option<&[ModVersionStatusEnum]>,
+        unlisted
     )
-        .fetch_all(conn)
+        .fetch_optional(conn)
         .await
-        .inspect_err(|e| log::error!("Failed to get mod_versions for mod {mod_id}: {e}"))
+        .inspect_err(|e| log::error!("Failed to get latest mod_version for mod {mod_id}: {e}"))
         .map_err(|e| e.into())
-        .map(|opt: Vec<ModVersionRow>| opt.into_iter().map(|x| x.into_mod_version()).collect())
+        .map(|opt| opt.map(|x| x.into_mod_version()))
 }
 
 pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {

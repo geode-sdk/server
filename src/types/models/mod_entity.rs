@@ -29,11 +29,12 @@ use sqlx::{
 };
 use std::collections::HashMap;
 
-#[derive(Serialize, Debug, sqlx::FromRow)]
+#[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct Mod {
     pub id: String,
     pub repository: Option<String>,
     pub featured: bool,
+    pub unlisted: bool,
     pub download_count: i32,
     pub developers: Vec<ModDeveloper>,
     pub versions: Vec<ModVersion>,
@@ -64,6 +65,7 @@ struct ModRecord {
     repository: Option<String>,
     download_count: i32,
     featured: bool,
+    unlisted: bool,
     about: Option<String>,
     changelog: Option<String>,
     created_at: DateTime<Utc>,
@@ -75,6 +77,7 @@ struct ModRecordGetOne {
     id: String,
     repository: Option<String>,
     featured: bool,
+    unlisted: bool,
     version_id: i32,
     mod_download_count: i32,
     name: String,
@@ -113,6 +116,7 @@ impl Mod {
                 INNER JOIN mod_versions mv ON mv.mod_id = m.id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 WHERE mvs.status = 'accepted'
+                AND m.unlisted = false
             ) q
             WHERE q.rn = 1
         "
@@ -154,6 +158,7 @@ impl Mod {
             .map(|p| VerPlatform::parse_query_string(&p))
             .transpose()?;
         let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
+        let unlisted = status == ModVersionStatusEnum::Unlisted;
 
         let developer = match query.developer {
             Some(d) => match developers::get_one_by_username(&d, pool).await? {
@@ -221,6 +226,7 @@ impl Mod {
             AND ($2 IS NULL OR m.featured = $2)
             AND ($3 IS NULL OR md.developer_id = $3)
             AND ($13 IS NULL OR mvs.status = $13)
+            AND m.unlisted = $14
             AND ($4 IS NULL OR $4 = mv.geode_major)
             AND ($5 IS NULL OR $5 >= mv.geode_minor)
             AND (
@@ -245,10 +251,10 @@ impl Mod {
 
         let records: Vec<ModRecord> = sqlx::query_as(&format!(
             "SELECT q.id, q.repository, q.about, q.changelog,
-                q.download_count, q.featured, q.created_at, q.updated_at
+                q.download_count, q.featured, q.unlisted, q.created_at, q.updated_at
             FROM (
                 SELECT m.id, mv.name, m.repository, m.about, m.changelog,
-                    m.download_count, m.featured, m.created_at, m.updated_at,
+                    m.download_count, m.featured, m.unlisted, m.created_at, m.updated_at,
                     ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
                 FROM mods m
                 {}
@@ -273,6 +279,7 @@ impl Mod {
         .bind(limit)
         .bind(offset)
         .bind(status)
+        .bind(unlisted)
         .fetch_all(&mut *pool)
         .await
         .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))?;
@@ -296,6 +303,7 @@ impl Mod {
         .bind(limit)
         .bind(offset)
         .bind(status)
+        .bind(unlisted)
         .fetch_optional(&mut *pool)
         .await
         .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))?
@@ -346,6 +354,7 @@ impl Mod {
                     repository: x.repository,
                     download_count: x.download_count,
                     featured: x.featured,
+                    unlisted: x.unlisted,
                     versions: vec![version],
                     tags,
                     developers: devs,
@@ -393,6 +402,7 @@ impl Mod {
                     repository: x.repository.clone(),
                     download_count: x.download_count,
                     featured: x.featured,
+                    unlisted: x.unlisted,
                     versions: version,
                     tags,
                     developers: devs,
@@ -429,6 +439,8 @@ impl Mod {
             info: Option<String>,
         }
 
+        let include_global_unlisted = status == ModVersionStatusEnum::Unlisted;
+
         let records = sqlx::query_as!(
             Record,
             r#"SELECT
@@ -445,12 +457,14 @@ impl Mod {
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE md.developer_id = $1
             AND mvs.status = $2
+            AND m.unlisted = $4
             AND ($3 = false OR md.is_owner = true)
             ORDER BY m.created_at DESC, mv.id DESC
             "#,
             id,
             status as ModVersionStatusEnum,
-            only_owner
+            only_owner,
+            include_global_unlisted
         )
         .fetch_all(&mut *pool)
         .await
@@ -505,7 +519,8 @@ impl Mod {
         let records = sqlx::query_as!(
             ModRecordGetOne,
             r#"SELECT
-                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
+                m.id, m.repository, m.about, m.changelog, m.featured, m.unlisted, m.download_count as mod_download_count,
+                m.created_at, m.updated_at,
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
                 mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
                 mv.hash,
@@ -515,7 +530,7 @@ impl Mod {
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             WHERE m.id = $1
-            AND ($2 = false OR mvs.status = 'accepted')
+            AND ($2 = false OR (mvs.status = 'accepted' AND m.unlisted = false))
             ORDER BY mv.id DESC"#,
             id,
             only_accepted
@@ -583,6 +598,7 @@ impl Mod {
             id: records[0].id.clone(),
             repository: records[0].repository.clone(),
             featured: records[0].featured,
+            unlisted: records[0].unlisted,
             download_count: records[0].mod_download_count,
             versions,
             tags,
@@ -598,21 +614,6 @@ impl Mod {
             links,
         };
         Ok(Some(mod_entity))
-    }
-
-    /// At the moment this is only used to set the mod to featured.
-    /// DOES NOT check if the mod exists
-    pub async fn update_mod(
-        id: &str,
-        featured: bool,
-        pool: &mut PgConnection,
-    ) -> Result<(), DatabaseError> {
-        sqlx::query!("UPDATE mods SET featured = $1 WHERE id = $2", featured, id)
-            .execute(&mut *pool)
-            .await
-            .inspect_err(|e| log::error!("Failed to update mod {id}: {e}"))
-            .map_err(|e| e.into())
-            .map(|_| ())
     }
 
     pub async fn get_updates(
@@ -649,6 +650,7 @@ impl Mod {
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 INNER JOIN mod_gd_versions mgv ON mv.id = mgv.mod_id
                 WHERE mvs.status = 'accepted'
+                AND m.unlisted = false
                 AND mgv.platform = $1
                 AND (mgv.gd = ANY($2))
                 AND m.id = ANY($3)
