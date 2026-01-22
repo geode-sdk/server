@@ -1,7 +1,7 @@
 [package]
 name = "geode-index"
 version = "0.48.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 image = { version = "0.25", features = ["png"] }
@@ -20,14 +20,11 @@ sqlx = { version = "0.8", features = [
     "ipnetwork",
 ] }
 tokio = { version = "1.44", features = ["rt", "macros", "rt-multi-thread"] }
-reqwest = { version = "0.12", default-features = false, features = [
-    "json",
-    "gzip",
-    "rustls-tls",
-] }
-url = { version = "2" }
+reqwest = { version = "0.13", default-features = false, features = ["json", "gzip", "rustls", "query"] }
 uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
-zip = "4.2.0"
+zip = { version = "7.2.0" }
+# Required for zip crate to compile properly
+lzma-rust2 = "0.15.7"
 sha256 = "1.5"
 semver = "1.0"
 clap = { version = "4.5", features = ["derive"] }
@@ -42,5 +39,4 @@ log4rs = { version = "1.3.0", features = [
     "default",
     "threshold_filter",
 ] }
-ring = "0.17.12"
 thiserror = "2.0.12"
