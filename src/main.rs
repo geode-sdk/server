@@ -4,6 +4,8 @@ use actix_web::{
     web::{self, QueryConfig},
     App, HttpServer,
 };
+use endpoints::mods::{IndexQueryParams, IndexSortType};
+use types::models::{mod_entity::Mod, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum};
 
 use crate::types::api;
 mod auth;
@@ -16,6 +18,7 @@ mod extractors;
 mod jobs;
 mod mod_zip;
 mod types;
+mod forum;
 mod webhook;
 
 #[tokio::main]
@@ -34,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     let port = app_data.port();
     let debug = app_data.debug();
+    let data = app_data.clone();
 
     log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
@@ -85,6 +89,69 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::health::health)
     })
     .bind(("0.0.0.0", port))?;
+
+    tokio::spawn(async move {
+        if !data.discord().is_valid() {
+            log::error!("Discord configuration is not set up. Not creating forum threads.");
+            return;
+        }
+
+        log::info!("Starting forum thread creation job");
+        let pool_res = data.db().acquire().await;
+        if pool_res.is_err() {
+            return;
+        }
+        let mut pool = pool_res.unwrap();
+        let query = IndexQueryParams {
+            page: None,
+            per_page: Some(100),
+            query: None,
+            gd: None,
+            platforms: None,
+            sort: IndexSortType::Downloads,
+            geode: None,
+            developer: None,
+            tags: None,
+            featured: None,
+            status: Some(ModVersionStatusEnum::Pending),
+        };
+        let results = Mod::get_index(&mut pool, query).await;
+        if results.is_err() {
+            return;
+        }
+
+        let threads = forum::discord::get_threads(&data.discord()).await;
+        let threads_res = Some(threads);
+        let mut mods = results.unwrap().data;
+        mods.sort_by(|a, b| {
+            let a = &a.versions[0];
+            let b = &b.versions[0];
+            a.created_at.cmp(&b.created_at)
+        });
+        for i in 0..mods.len() {
+            let m = &mods[i];
+            let version_res = ModVersion::get_one(&m.id, &m.versions[0].version, true, false, &mut pool).await.ok().flatten();
+            if version_res.is_none() {
+                continue;
+            }
+
+            if i != 0 && i % 10 == 0 {
+                log::info!("Created {i} threads, sleeping for 10 seconds");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            }
+
+            forum::discord::create_or_update_thread_internal(
+                threads_res.clone(),
+                &data.discord(),
+                m,
+                &version_res.unwrap(),
+                "",
+                &data.app_url()
+            ).await;
+        }
+
+        log::info!("Finished creating forum threads");
+    });
 
     if debug {
         log::info!("Running in debug mode, using 1 thread.");

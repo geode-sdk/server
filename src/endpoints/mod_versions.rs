@@ -18,6 +18,7 @@ use crate::types::models;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
+    forum,
     types::{
         api::ApiResponse,
         mod_json::{split_version_and_compare, ModJson},
@@ -355,6 +356,8 @@ pub async fn create_version(
             .collect(),
     );
 
+    let json_version = json.version.clone();
+
     if make_accepted {
         if let Some(links) = json.links.clone() {
             mod_links::upsert(
@@ -396,6 +399,17 @@ pub async fn create_version(
     }
 
     version.modify_metadata(data.app_url(), false);
+
+    if !make_accepted {
+        forum::discord::create_or_update_thread(
+            data.discord().clone(),
+            id,
+            json_version,
+            "".to_string(),
+            data.app_url().to_string(),
+            pool,
+        );
+    }
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -497,6 +511,8 @@ pub async fn update_version(
 
     tx.commit().await?;
 
+    let display_name = dev.display_name.clone();
+
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
 
@@ -529,6 +545,17 @@ pub async fn update_version(
             .to_discord_webhook()
             .send(data.webhook_url());
         }
+    }
+
+    if payload.status == ModVersionStatusEnum::Accepted || payload.status == ModVersionStatusEnum::Rejected {
+        forum::discord::create_or_update_thread(
+            data.discord().clone(),
+            path.id.clone(),
+            path.version.clone(),
+            display_name,
+            data.app_url().to_string(),
+            pool
+        );
     }
 
     Ok(HttpResponse::NoContent())
