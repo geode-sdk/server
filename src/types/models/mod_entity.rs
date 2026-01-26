@@ -158,16 +158,8 @@ impl Mod {
         let developer = match query.developer {
             Some(d) => match developers::get_one_by_username(&d, pool).await? {
                 Some(d) => Some(d),
-                None => {
-                    return Ok(PaginatedData {
-                        data: vec![],
-                        count: 0,
-                    })
-                }
-            },
-            None =>
-                match query.developer {
-                    Some(d) => match developers::get_one_by_display_name(&d, pool).await? {
+                None =>
+                    match developers::get_one_by_display_name(&d, pool).await? {
                         Some(d) => Some(d),
                         None => {
                             return Ok(PaginatedData {
@@ -175,9 +167,9 @@ impl Mod {
                                 count: 0,
                             })
                         }
-                    },
-                    None => None,
-                }
+                    }
+            },
+            None => None
         };
 
         let order = match query.sort {
