@@ -153,35 +153,19 @@ pub async fn get_one_by_username(
             admin,
             github_user_id as github_id
         FROM developers
-        WHERE username = $1",
+        WHERE username = $1
+        OR ( display_name ILIKE '%' || $1 || '%' OR username ILIKE '%' || $1 || '%' )
+        ORDER BY
+            CASE
+                WHEN username = $1 then 1
+                else 0
+            END DESC
+        LIMIT 1",
         username
     )
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to fetch developer by username {username}: {e}"))
-    .map_err(|x| x.into())
-}
-
-pub async fn get_one_by_display_name(
-    display_name: &str,
-    conn: &mut PgConnection,
-) -> Result<Option<Developer>, DatabaseError> {
-    sqlx::query_as!(
-        Developer,
-        "SELECT
-            id,
-            username,
-            display_name,
-            verified,
-            admin,
-            github_user_id as github_id
-        FROM developers
-        WHERE display_name ILIKE $1",
-        display_name
-    )
-    .fetch_optional(&mut *conn)
-    .await
-    .inspect_err(|e| log::error!("Failed to fetch developer by display name {display_name}: {e}"))
+    .inspect_err(|e| log::error!("Failed to fetch developer {username}: {e}"))
     .map_err(|x| x.into())
 }
 
