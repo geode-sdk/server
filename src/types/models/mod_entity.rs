@@ -165,7 +165,19 @@ impl Mod {
                     })
                 }
             },
-            None => None,
+            None =>
+                match query.developer {
+                    Some(d) => match developers::get_one_by_display_name(&d, pool).await? {
+                        Some(d) => Some(d),
+                        None => {
+                            return Ok(PaginatedData {
+                                data: vec![],
+                                count: 0,
+                            })
+                        }
+                    },
+                    None => None,
+                }
         };
 
         let order = match query.sort {
