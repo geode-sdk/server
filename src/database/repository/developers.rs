@@ -153,7 +153,14 @@ pub async fn get_one_by_username(
             admin,
             github_user_id as github_id
         FROM developers
-        WHERE username = $1",
+        WHERE username = $1
+        OR ( display_name ILIKE '%' || $1 || '%' OR username ILIKE '%' || $1 || '%' )
+        ORDER BY
+            CASE
+                WHEN username = $1 then 1
+                else 0
+            END DESC
+        LIMIT 1",
         username
     )
     .fetch_optional(&mut *conn)

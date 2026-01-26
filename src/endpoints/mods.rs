@@ -79,6 +79,7 @@ pub async fn index(
             j.modify_metadata(data.app_url(), false);
         }
     }
+
     Ok(web::Json(ApiResponse {
         error: "".into(),
         payload: result,

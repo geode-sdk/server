@@ -165,7 +165,7 @@ impl Mod {
                     })
                 }
             },
-            None => None,
+            None => None
         };
 
         let order = match query.sort {
