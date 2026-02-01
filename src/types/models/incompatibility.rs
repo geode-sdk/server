@@ -54,6 +54,7 @@ pub struct ResponseIncompatibility {
     pub mod_id: String,
     pub version: String,
     pub importance: IncompatibilityImportance,
+    pub breaking: bool,
 }
 
 impl FetchedIncompatibility {
@@ -68,6 +69,7 @@ impl FetchedIncompatibility {
                 }
             },
             importance: self.importance,
+            breaking: self.importance == IncompatibilityImportance::Breaking,
         }
     }
 
@@ -82,6 +84,7 @@ impl FetchedIncompatibility {
                 }
             },
             importance: self.importance,
+            breaking: self.importance == IncompatibilityImportance::Breaking,
         }
     }
 }

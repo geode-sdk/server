@@ -21,6 +21,7 @@ pub struct ResponseDependency {
     pub mod_id: String,
     pub version: String,
     pub importance: DependencyImportance,
+    pub required: bool,
 }
 
 #[derive(sqlx::FromRow, Clone, Debug)]
@@ -44,6 +45,7 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
+            required: self.importance == DependencyImportance::Required
         }
     }
     pub fn to_response(&self) -> ResponseDependency {
@@ -57,6 +59,7 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
+            required: self.importance == DependencyImportance::Required
         }
     }
 }
@@ -93,7 +96,7 @@ impl Display for ModVersionCompare {
     }
 }
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Default)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq)]
 #[sqlx(type_name = "dependency_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyImportance {
