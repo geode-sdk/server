@@ -78,10 +78,28 @@ pub enum ModJsonDependencyType {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ModJsonDependency {
+pub struct ModJsonDependencyOnlyVersion {
     version: String,
-    #[serde(default)]
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonDependencyWithImportance {
+    version: String,
     importance: DependencyImportance,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonDependencyWithRequired {
+    version: String,
+    required: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum ModJsonDependency {
+    WithImportance(ModJsonDependencyWithImportance),
+    WithRequired(ModJsonDependencyWithRequired),
+    OnlyVersion(ModJsonDependencyOnlyVersion),
 }
 
 #[derive(Deserialize, Debug)]
@@ -107,10 +125,27 @@ pub enum ModJsonIncompatibilityType {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ModJsonIncompatibility {
+pub struct ModJsonIncompatibilityOnlyVersion {
     version: String,
-    #[serde(default)]
-    pub importance: IncompatibilityImportance,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonIncompatibilityWithImportance {
+    version: String,
+    importance: IncompatibilityImportance,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ModJsonIncompatibilityWithBreaking {
+    version: String,
+    breaking: bool,
+}
+
+#[derive(Deserialize, Debug)]
+pub enum ModJsonIncompatibility {
+    WithImportance(ModJsonIncompatibilityWithImportance),
+    WithBreaking(ModJsonIncompatibilityWithBreaking),
+    OnlyVersion(ModJsonIncompatibilityOnlyVersion),
 }
 
 #[derive(Deserialize, Debug)]
@@ -250,18 +285,33 @@ impl ModJson {
                             });
                         }
                         ModJsonDependencyType::Detailed(detailed) => {
-                            let (dependency_ver, compare) =
-                                split_version_and_compare(&(detailed.version)).map_err(|_| {
+                            let (dep_ver, importance) = match detailed {
+                                ModJsonDependency::OnlyVersion(data) => {
+                                    (&data.version, DependencyImportance::default())
+                                }
+                                ModJsonDependency::WithRequired(data) => (
+                                    &data.version,
+                                    match data.required {
+                                        true => DependencyImportance::Required,
+                                        false => DependencyImportance::Recommended,
+                                    },
+                                ),
+                                ModJsonDependency::WithImportance(data) => {
+                                    (&data.version, data.importance)
+                                }
+                            };
+                            let (dependency_ver, compare) = split_version_and_compare(dep_ver)
+                                .map_err(|_| {
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
-                                        detailed.version
+                                        dep_ver
                                     ))
                                 })?;
                             ret.push(DependencyCreate {
                                 dependency_id: id.clone(),
                                 version: dependency_ver.to_string(),
                                 compare,
-                                importance: detailed.importance,
+                                importance,
                             });
                         }
                     }
@@ -336,18 +386,33 @@ impl ModJson {
                             });
                         }
                         ModJsonIncompatibilityType::Detailed(detailed) => {
-                            let (ver, compare) = split_version_and_compare(&(detailed.version))
-                                .map_err(|_| {
+                            let (inc_ver, importance) = match detailed {
+                                ModJsonIncompatibility::OnlyVersion(data) => {
+                                    (&data.version, IncompatibilityImportance::default())
+                                }
+                                ModJsonIncompatibility::WithBreaking(data) => (
+                                    &data.version,
+                                    match data.breaking {
+                                        true => IncompatibilityImportance::Breaking,
+                                        false => IncompatibilityImportance::Conflicting,
+                                    },
+                                ),
+                                ModJsonIncompatibility::WithImportance(data) => {
+                                    (&data.version, data.importance)
+                                }
+                            };
+                            let (ver, compare) =
+                                split_version_and_compare(inc_ver).map_err(|_| {
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
-                                        detailed.version
+                                        inc_ver
                                     ))
                                 })?;
                             ret.push(IncompatibilityCreate {
                                 incompatibility_id: id.clone(),
                                 version: ver.to_string(),
                                 compare,
-                                importance: detailed.importance,
+                                importance,
                             });
                         }
                     }
@@ -390,6 +455,28 @@ impl ModJson {
         if self.id.len() > 64 {
             return Err(ModZipError::InvalidModJson(
                 "Mod id too long (max 64 characters)".to_string(),
+            ));
+        }
+
+        let v5: bool = {
+            let geode = Version::parse(self.geode.trim_start_matches('v'))
+                .map_err(|_| ModZipError::InvalidModJson("Invalid geode version".into()))?;
+            geode.major >= 5
+        };
+
+        // Don't allow array syntax for geode >= v5
+        if let Some(ModJsonDependencies::Old(_)) = &self.dependencies
+            && v5
+        {
+            return Err(ModZipError::InvalidModJson(
+                "Invalid dependencies key: should be an object".into(),
+            ));
+        }
+        if let Some(ModJsonIncompatibilities::Old(_)) = &self.incompatibilities
+            && v5
+        {
+            return Err(ModZipError::InvalidModJson(
+                "Invalid incompatibilities key: should be an object".into(),
             ));
         }
 
