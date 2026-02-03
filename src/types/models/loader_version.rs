@@ -107,7 +107,7 @@ impl LoaderVersion {
                 query_builder.push(" WHERE 1=1");
             }
             (None, Some(g)) => {
-                query_builder.push(" WHERE android=");
+                query_builder.push(" WHERE (android=");
                 query_builder.push_bind(g);
                 query_builder.push(" or mac=");
                 query_builder.push_bind(g);
@@ -115,15 +115,16 @@ impl LoaderVersion {
                 query_builder.push_bind(g);
                 query_builder.push(" or ios=");
                 query_builder.push_bind(g);
+                query_builder.push(')');
             }
             (None, None) => {
                 // if gd version isn't specifed, select whatever versions have the latest gd version
                 query_builder.push(
                     r#" WHERE
-                    android=enum_last(NULL::gd_version) OR
+                    (android=enum_last(NULL::gd_version) OR
                     win=enum_last(NULL::gd_version) OR
                     mac=enum_last(NULL::gd_version) OR
-                    ios=enum_last(NULL::gd_version)
+                    ios=enum_last(NULL::gd_version))
                     "#,
                 );
             }
@@ -252,7 +253,7 @@ impl LoaderVersion {
                 };
             }
             (None, Some(g)) => {
-                query_builder.push(" WHERE android=");
+                query_builder.push(" WHERE (((((((((android=");
                 query_builder.push_bind(g);
                 query_builder.push(" or mac=");
                 query_builder.push_bind(g);
@@ -260,6 +261,7 @@ impl LoaderVersion {
                 query_builder.push_bind(g);
                 query_builder.push(" or ios=");
                 query_builder.push_bind(g);
+                query_builder.push(')');
             }
             _ => {
                 query_builder.push(" WHERE 1=1");
