@@ -10,6 +10,7 @@ use crate::database::repository::mods;
 use crate::endpoints::ApiError;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
+use crate::forum;
 use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiResponse};
 use crate::types::mod_json::ModJson;
@@ -220,6 +221,15 @@ pub async fn create(
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), false);
     }
+
+    forum::discord::create_or_update_thread(
+        data.discord().clone(),
+        json.id,
+        json.version,
+        "".to_string(),
+        data.app_url().to_string(),
+        pool
+    );
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
