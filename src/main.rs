@@ -60,6 +60,8 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
+            .service(endpoints::deprecations::check_mod_deprecation)
+            .service(endpoints::deprecations::deprecate_mod)
             .service(endpoints::auth::github::start_github_web_login)
             .service(endpoints::auth::refresh_token)
             .service(endpoints::auth::github::github_web_callback)
