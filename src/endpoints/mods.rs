@@ -14,6 +14,7 @@ use crate::mod_zip;
 use crate::types::api::{create_download_link, ApiResponse};
 use crate::types::mod_json::ModJson;
 use crate::types::models;
+use crate::types::models::deprecations::Deprecation;
 use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
@@ -22,6 +23,7 @@ use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
+use serde::Serialize;
 use sqlx::Acquire;
 
 #[derive(Deserialize, Default)]
@@ -234,6 +236,16 @@ struct UpdateQueryParams {
     platform: VerPlatform,
     geode: String,
 }
+#[derive(Serialize)]
+#[serde(untagged)]
+enum UpdateQueryResponse {
+    V4(Vec<ModUpdate>),
+    V5 {
+        updates: Vec<ModUpdate>,
+        deprecations: Vec<Deprecation>,
+    }
+}
+
 #[get("/v1/mods/updates")]
 pub async fn get_mod_updates(
     data: web::Data<AppData>,
@@ -258,40 +270,24 @@ pub async fn get_mod_updates(
         ))
     })?;
 
-    let mut result: Vec<ModUpdate> =
+    let result: Vec<ModUpdate> =
         Mod::get_updates(&ids, query.platform, &geode, query.gd, &mut pool).await?;
-    let mut replacements =
-        Incompatibility::get_supersedes_for(&ids, query.platform, query.gd, &geode, &mut pool)
-            .await?;
-
-    for i in &mut result {
-        if let Some(replacement) = replacements.get(&i.id) {
-            let mut clone = replacement.clone();
-            clone.download_link = create_download_link(data.app_url(), &clone.id, &clone.version);
-            i.replacement = Some(clone);
-            replacements.remove_entry(&i.id);
-        }
-        i.download_link = create_download_link(data.app_url(), &i.id, &i.version);
-    }
-
-    for i in replacements {
-        let mut replacement = i.1.clone();
-        replacement.download_link =
-            create_download_link(data.app_url(), &replacement.id, &replacement.version);
-        result.push(ModUpdate {
-            id: i.0.clone(),
-            version: "1.0.0".to_string(),
-            mod_version_id: 0,
-            download_link: replacement.download_link.clone(),
-            replacement: Some(replacement),
-            dependencies: vec![],
-            incompatibilities: vec![],
-        });
+    
+    // On v5, we return deprecations as a separate array
+    if geode.major >= 5 {
+        let deprecations = Deprecation::get_deprecations_for(&mut pool, &ids).await?;
+        return Ok(web::Json(ApiResponse {
+            error: "".into(),
+            payload: UpdateQueryResponse::V5 {
+                updates: result,
+                deprecations,
+            }
+        }));
     }
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: result,
+        payload: UpdateQueryResponse::V4(result),
     }))
 }
 

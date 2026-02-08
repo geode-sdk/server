@@ -12,6 +12,7 @@ pub mod mod_versions;
 pub mod mods;
 pub mod stats;
 pub mod tags;
+pub mod deprecations;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
