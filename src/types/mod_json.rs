@@ -142,6 +142,7 @@ pub struct ModJsonIncompatibilityWithBreaking {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(untagged)]
 pub enum ModJsonIncompatibility {
     WithImportance(ModJsonIncompatibilityWithImportance),
     WithBreaking(ModJsonIncompatibilityWithBreaking),
