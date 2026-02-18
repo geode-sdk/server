@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE deprecations SET\n                updated_at = NOW(),\n                updated_by = $1\n            WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "279e884df4a091231e78c3b39efdf20dfe1636beab0dc888cc3a6292c335c328"
+}

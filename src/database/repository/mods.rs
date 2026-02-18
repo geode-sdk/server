@@ -4,6 +4,7 @@ use crate::{
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::PgConnection;
+use std::collections::HashSet;
 
 #[derive(sqlx::FromRow)]
 struct ModRecordGetOne {
@@ -181,6 +182,35 @@ pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseE
         .is_some())
 }
 
+/// Checks if multiple ids exist in the database.
+///
+/// Returns a tuple with (existing ids, missing ids).
+pub async fn exists_multiple(
+    ids: &[String],
+    conn: &mut PgConnection,
+) -> Result<(Vec<String>, Vec<String>), DatabaseError> {
+    let mods: HashSet<String> = sqlx::query!("SELECT id FROM mods WHERE id = ANY($1)", ids)
+        .fetch_all(&mut *conn)
+        .await
+        .inspect_err(|e| log::error!("mods::exists_multiple failed: {e}"))?
+        .into_iter()
+        .map(|x| x.id)
+        .collect();
+
+    let (mut existing, mut missing): (Vec<String>, Vec<String>) =
+        (Vec::with_capacity(ids.len()), vec![]);
+
+    for id in ids {
+        if mods.contains(id) {
+            existing.push(id.clone());
+        } else {
+            missing.push(id.clone());
+        }
+    }
+
+    Ok((existing, missing))
+}
+
 pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, DatabaseError> {
     struct QueryResult {
         image: Option<Vec<u8>>,
@@ -234,11 +264,13 @@ pub async fn update_with_json(
         about = $2,
         changelog = $3,
         image = $4,
-        updated_at = NOW()",
+        updated_at = NOW()
+        WHERE id = $5",
         json.repository,
         json.about,
         json.changelog,
-        json.logo
+        json.logo,
+        the_mod.id
     )
     .execute(conn)
     .await
