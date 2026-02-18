@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM deprecated_by\n            WHERE deprecation_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f1441f51a810a7a50c8a056e2cd89c15e74bedf4e179cd39e494176f56e5655e"
+}

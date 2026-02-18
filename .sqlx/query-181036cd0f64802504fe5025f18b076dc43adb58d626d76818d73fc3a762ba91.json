@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            id,\n            mod_id,\n            reason\n        FROM deprecations\n        WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "reason",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "181036cd0f64802504fe5025f18b076dc43adb58d626d76818d73fc3a762ba91"
+}

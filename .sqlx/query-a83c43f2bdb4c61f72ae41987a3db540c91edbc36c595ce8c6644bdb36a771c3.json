@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT by_mod_id\n        FROM deprecated_by\n        WHERE deprecation_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "by_mod_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a83c43f2bdb4c61f72ae41987a3db540c91edbc36c595ce8c6644bdb36a771c3"
+}
