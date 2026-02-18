@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::{
     database::DatabaseError,
     types::{mod_json::ModJson, models::mod_entity::Mod},
@@ -179,6 +180,34 @@ pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseE
         .await
         .inspect_err(|e| log::error!("Failed to check if mod {} exists: {}", id, e))?
         .is_some())
+}
+
+/// Checks if multiple ids exist in the database.
+///
+/// Returns a tuple with (existing ids, missing ids).
+pub async fn exists_multiple(
+    ids: &[String],
+    conn: &mut PgConnection,
+) -> Result<(Vec<String>, Vec<String>), DatabaseError> {
+    let mods: HashSet<String> = sqlx::query!("SELECT id FROM mods WHERE id = ANY($1)", ids)
+        .fetch_all(&mut *conn)
+        .await
+        .inspect_err(|e| log::error!("mods::exists_multiple failed: {e}"))?
+        .into_iter()
+        .map(|x| x.id)
+        .collect();
+
+    let (mut existing, mut missing): (Vec<String>, Vec<String>) = (Vec::with_capacity(ids.len()), vec![]);
+
+    for id in ids {
+        if mods.contains(id) {
+            existing.push(id.clone());
+        } else {
+            missing.push(id.clone());
+        }
+    }
+
+    Ok((existing, missing))
 }
 
 pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, DatabaseError> {

@@ -1,8 +1,8 @@
 use actix_cors::Cors;
 use actix_web::{
+    App, HttpServer,
     middleware::Logger,
     web::{self, QueryConfig},
-    App, HttpServer,
 };
 
 use crate::types::api;
@@ -60,8 +60,11 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
-            .service(endpoints::deprecations::check_mod_deprecation)
-            .service(endpoints::deprecations::deprecate_mod)
+            .service(endpoints::deprecations::index)
+            .service(endpoints::deprecations::store)
+            .service(endpoints::deprecations::update)
+            .service(endpoints::deprecations::clear_all)
+            .service(endpoints::deprecations::delete)
             .service(endpoints::auth::github::start_github_web_login)
             .service(endpoints::auth::refresh_token)
             .service(endpoints::auth::github::github_web_callback)

@@ -1,5 +1,4 @@
 use crate::config::AppData;
-use crate::database::repository::dependencies;
 use crate::database::repository::developers;
 use crate::database::repository::incompatibilities;
 use crate::database::repository::mod_gd_versions;
@@ -7,21 +6,21 @@ use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
+use crate::database::repository::{dependencies, deprecations};
 use crate::endpoints::ApiError;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
 use crate::mod_zip;
-use crate::types::api::{create_download_link, ApiResponse};
+use crate::types::api::ApiResponse;
 use crate::types::mod_json::ModJson;
 use crate::types::models;
 use crate::types::models::deprecations::Deprecation;
-use crate::types::models::incompatibility::Incompatibility;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_link::ModLinks;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
-use actix_web::{get, post, put, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
@@ -243,7 +242,7 @@ enum UpdateQueryResponse {
     V5 {
         updates: Vec<ModUpdate>,
         deprecations: Vec<Deprecation>,
-    }
+    },
 }
 
 #[get("/v1/mods/updates")]
@@ -272,16 +271,16 @@ pub async fn get_mod_updates(
 
     let result: Vec<ModUpdate> =
         Mod::get_updates(&ids, query.platform, &geode, query.gd, &mut pool).await?;
-    
+
     // On v5, we return deprecations as a separate array
     if geode.major >= 5 {
-        let deprecations = Deprecation::get_deprecations_for(&mut pool, &ids).await?;
+        let deprecations = deprecations::get_for_mods(&ids, &mut pool).await?;
         return Ok(web::Json(ApiResponse {
             error: "".into(),
             payload: UpdateQueryResponse::V5 {
                 updates: result,
                 deprecations,
-            }
+            },
         }));
     }
 
