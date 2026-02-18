@@ -1,5 +1,6 @@
 use crate::database::DatabaseError;
 use crate::types::models::deprecations::Deprecation;
+use crate::types::models::developer::Developer;
 use sqlx::PgConnection;
 
 pub async fn get_for_mods(
@@ -85,14 +86,16 @@ pub async fn create(
     mod_id: &str,
     by: &[String],
     reason: &str,
+    updated_by: &Developer,
     conn: &mut PgConnection,
 ) -> Result<Deprecation, DatabaseError> {
     let id = sqlx::query!(
-        "INSERT INTO deprecations(mod_id, reason)
-            VALUES ($1, $2)
+        "INSERT INTO deprecations(mod_id, reason, updated_by)
+            VALUES ($1, $2, $3)
             RETURNING id",
         mod_id,
-        reason
+        reason,
+        updated_by.id
     )
     .fetch_one(&mut *conn)
     .await
@@ -115,6 +118,7 @@ pub async fn update(
     mut deprecation: Deprecation,
     by: Option<&[String]>,
     reason: Option<&str>,
+    updated_by: &Developer,
     conn: &mut PgConnection,
 ) -> Result<Deprecation, DatabaseError> {
     if by.is_none() && reason.is_none() {
@@ -127,9 +131,11 @@ pub async fn update(
         sqlx::query!(
             "UPDATE deprecations SET
                 reason = $1,
-                updated_at = NOW()
-            WHERE id = $2",
+                updated_at = NOW(),
+                updated_by = $2
+            WHERE id = $3",
             reason,
+            updated_by.id,
             deprecation.id
         )
         .execute(&mut *conn)
@@ -159,8 +165,10 @@ pub async fn update(
     if !updated_timestamp {
         sqlx::query!(
             "UPDATE deprecations SET
-                updated_at = NOW()
-            WHERE id = $1",
+                updated_at = NOW(),
+                updated_by = $1
+            WHERE id = $2",
+            updated_by.id,
             deprecation.id
         )
         .execute(&mut *conn)

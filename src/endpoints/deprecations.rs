@@ -81,7 +81,7 @@ pub async fn store(
 
     check_existing_mods(&json.by, &mut tx).await?;
 
-    let deprecation = deprecations::create(&path.id, &json.by, &json.reason, &mut tx).await?;
+    let deprecation = deprecations::create(&path.id, &json.by, &json.reason, &dev, &mut tx).await?;
 
     tx.commit().await?;
     Ok(HttpResponse::Created().json(ApiResponse {
@@ -133,6 +133,7 @@ pub async fn update(
         deprecation,
         json.by.as_deref(),
         json.reason.as_deref(),
+        &dev,
         &mut tx,
     )
     .await?;
