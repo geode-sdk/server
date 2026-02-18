@@ -1,10 +1,10 @@
-use std::collections::HashSet;
 use crate::{
     database::DatabaseError,
     types::{mod_json::ModJson, models::mod_entity::Mod},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use sqlx::PgConnection;
+use std::collections::HashSet;
 
 #[derive(sqlx::FromRow)]
 struct ModRecordGetOne {
@@ -197,7 +197,8 @@ pub async fn exists_multiple(
         .map(|x| x.id)
         .collect();
 
-    let (mut existing, mut missing): (Vec<String>, Vec<String>) = (Vec::with_capacity(ids.len()), vec![]);
+    let (mut existing, mut missing): (Vec<String>, Vec<String>) =
+        (Vec::with_capacity(ids.len()), vec![]);
 
     for id in ids {
         if mods.contains(id) {
@@ -263,11 +264,13 @@ pub async fn update_with_json(
         about = $2,
         changelog = $3,
         image = $4,
-        updated_at = NOW()",
+        updated_at = NOW()
+        WHERE id = $5",
         json.repository,
         json.about,
         json.changelog,
-        json.logo
+        json.logo,
+        the_mod.id
     )
     .execute(conn)
     .await
