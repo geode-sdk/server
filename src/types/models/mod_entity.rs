@@ -85,6 +85,7 @@ struct ModRecordGetOne {
     hash: String,
     geode: String,
     early_load: bool,
+    requires_patching: bool,
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
@@ -154,6 +155,8 @@ impl Mod {
             .map(|p| VerPlatform::parse_query_string(&p))
             .transpose()?;
         let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
+        // We only want to filter anything if jitless is true
+        let requires_patching = query.jitless.filter(|&j| j).map(|_| false);
 
         let developer = match query.developer {
             Some(d) => match developers::get_one_by_username(&d, pool).await? {
@@ -221,6 +224,7 @@ impl Mod {
             AND ($2 IS NULL OR m.featured = $2)
             AND ($3 IS NULL OR md.developer_id = $3)
             AND ($13 IS NULL OR mvs.status = $13)
+            AND ($14 IS NULL OR mv.requires_patching = $14)
             AND ($4 IS NULL OR $4 = mv.geode_major)
             AND ($5 IS NULL OR $5 >= mv.geode_minor)
             AND (
@@ -273,6 +277,7 @@ impl Mod {
         .bind(limit)
         .bind(offset)
         .bind(status)
+        .bind(requires_patching)
         .fetch_all(&mut *pool)
         .await
         .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))?;
@@ -296,6 +301,7 @@ impl Mod {
         .bind(limit)
         .bind(offset)
         .bind(status)
+        .bind(requires_patching)
         .fetch_optional(&mut *pool)
         .await
         .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))?
@@ -319,6 +325,7 @@ impl Mod {
             query.gd,
             platforms.as_deref(),
             geode.as_ref(),
+            requires_patching
         )
         .await?;
         let mut developers = developers::get_all_for_mods(&ids, pool).await?;
@@ -510,7 +517,7 @@ impl Mod {
                 mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
                 mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-                mv.early_load, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
+                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -540,6 +547,7 @@ impl Mod {
                 hash: x.hash.clone(),
                 geode: x.geode.clone(),
                 early_load: x.early_load,
+                requires_patching: x.requires_patching,
                 api: x.api,
                 status: x.status,
                 mod_id: x.mod_id.clone(),

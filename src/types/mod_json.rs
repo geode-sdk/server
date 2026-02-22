@@ -45,6 +45,8 @@ pub struct ModJson {
     pub hash: String,
     #[serde(default, rename = "early-load")]
     pub early_load: bool,
+    #[serde(default, rename = "requires-patching")]
+    pub requires_patching: bool,
     pub api: Option<serde_json::Value>,
     pub gd: DetailedGDVersion,
     #[serde(skip_deserializing, skip_serializing)]

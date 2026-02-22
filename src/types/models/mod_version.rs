@@ -30,6 +30,7 @@ pub struct ModVersion {
     pub geode: String,
     pub download_count: i32,
     pub early_load: bool,
+    pub requires_patching: bool,
     pub api: bool,
     pub mod_id: String,
     pub gd: DetailedGDVersion,
@@ -65,6 +66,7 @@ struct ModVersionGetOne {
     hash: String,
     geode: String,
     early_load: bool,
+    requires_patching: bool,
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
@@ -95,6 +97,7 @@ impl ModVersionGetOne {
             hash: self.hash.clone(),
             geode: self.geode.clone(),
             early_load: self.early_load,
+            requires_patching: self.requires_patching,
             download_count: self.download_count,
             api: self.api,
             mod_id: self.mod_id.clone(),
@@ -153,7 +156,7 @@ impl ModVersion {
             SELECT mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
-            mv.early_load, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
+            mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
             INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
@@ -297,6 +300,7 @@ impl ModVersion {
         gd: Option<GDVersionEnum>,
         platforms: Option<&[VerPlatform]>,
         geode: Option<&semver::Version>,
+        requires_patching: Option<bool>
     ) -> Result<HashMap<String, ModVersion>, DatabaseError> {
         if ids.is_empty() {
             return Ok(Default::default());
@@ -308,14 +312,14 @@ impl ModVersion {
             "SELECT
                 q.name, q.id, q.description, q.version,
                 q.download_link, q.hash, q.geode,
-                q.download_count, q.early_load, q.api, q.mod_id,
+                q.download_count, q.early_load, q.requires_patching, q.api, q.mod_id,
                 'accepted'::mod_version_status as status,
                 q.created_at, q.updated_at
             FROM (
                 SELECT
                     mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
-                    mv.download_count, mv.early_load, mv.api, mv.mod_id, mv.created_at,
+                    mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at,
                     mv.updated_at,
                     ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
                 FROM mods m
@@ -326,6 +330,7 @@ impl ModVersion {
                 AND ($1 IS NULL OR mgv.gd = ANY($1))
                 AND ($2 IS NULL OR mgv.platform = ANY($2))
                 AND m.id = ANY($3)
+                AND ($8 IS NULL OR mv.requires_patching = $8)
                 AND ($4 IS NULL OR $4 = mv.geode_major)
                 AND ($5 IS NULL OR $5 >= mv.geode_minor)
                 AND (
@@ -358,6 +363,7 @@ impl ModVersion {
                 Some(x.pre.to_string())
             }
         }))
+        .bind(requires_patching)
         .fetch_all(&mut *pool)
         .await
         .inspect_err(|x| log::error!("Failed to fetch latest versions for mods: {}", x))
@@ -382,7 +388,7 @@ impl ModVersion {
             r#"SELECT DISTINCT
                 mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-                mv.download_count, mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
+                mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                 'pending'::mod_version_status as "status!: _", NULL as info
             FROM mod_versions mv
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -415,14 +421,14 @@ impl ModVersion {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT q.name, q.id, q.description, q.version, q.download_link,
                 q.hash, q.geode, q.download_count,
-                q.early_load, q.api, q.mod_id, q.status,
+                q.early_load, q.requires_patching, q.api, q.mod_id, q.status,
                 q.created_at, q.updated_at
             FROM (
                 SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link,
                     mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
                     mv.download_count, mvs.status,
-                    mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
+                    mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                     row_number() over (partition by m.id order by mv.id desc) rn
                 FROM mods m
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
@@ -507,7 +513,7 @@ impl ModVersion {
                 mv.download_link, mv.download_count,
                 mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-                mv.early_load, mv.api,
+                mv.early_load, mv.requires_patching, mv.api,
                 mv.created_at, mv.updated_at,
                 mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mod_versions mv

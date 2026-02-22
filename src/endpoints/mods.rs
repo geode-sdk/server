@@ -52,6 +52,7 @@ pub struct IndexQueryParams {
     pub developer: Option<String>,
     pub tags: Option<String>,
     pub featured: Option<bool>,
+    pub jitless: Option<bool>,
     pub status: Option<ModVersionStatusEnum>,
 }
 

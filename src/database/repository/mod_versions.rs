@@ -21,6 +21,7 @@ struct ModVersionRow {
     hash: String,
     geode: String,
     early_load: bool,
+    requires_patching: bool,
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
@@ -41,6 +42,7 @@ impl ModVersionRow {
             hash: self.hash,
             geode: self.geode,
             early_load: self.early_load,
+            requires_patching: self.requires_patching,
             download_count: self.download_count,
             api: self.api,
             mod_id: self.mod_id,
@@ -73,7 +75,7 @@ pub async fn get_by_version_str(
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-            mv.early_load, mv.api, mv.mod_id,
+            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
@@ -101,7 +103,7 @@ pub async fn get_for_mod(
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-            mv.early_load, mv.api, mv.mod_id,
+            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
@@ -157,14 +159,14 @@ pub async fn create_from_json(
         "INSERT INTO mod_versions
         (name, version, description, download_link,
         hash, geode_major, geode_minor, geode_patch, geode_meta,
-        early_load, api, mod_id, status_id,
+        early_load, api, mod_id, status_id, requires_patching,
         created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13,
         NOW(), NOW())
         RETURNING
             id, name, version, description,
             download_link, hash,
-            early_load, api, mod_id,
+            early_load, requires_patching, api, mod_id,
             created_at, updated_at",
         json.name,
         json.version,
@@ -177,7 +179,8 @@ pub async fn create_from_json(
         meta,
         json.early_load,
         json.api.is_some(),
-        json.id
+        json.id,
+        json.requires_patching
     )
     .fetch_one(&mut *conn)
     .await
@@ -215,6 +218,7 @@ pub async fn create_from_json(
         geode: geode.to_string(),
         download_count: 0,
         early_load: row.early_load,
+        requires_patching: row.requires_patching,
         api: row.api,
         mod_id: row.mod_id,
         gd: Default::default(),
@@ -275,6 +279,7 @@ pub async fn update_pending_version(
             download_count,
             hash,
             early_load,
+            requires_patching,
             api,
             status_id,
             description,
@@ -326,6 +331,7 @@ pub async fn update_pending_version(
         geode: geode.to_string(),
         download_count: row.download_count,
         early_load: row.early_load,
+        requires_patching: row.requires_patching,
         api: row.api,
         mod_id: row.mod_id,
         gd: Default::default(),
