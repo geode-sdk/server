@@ -3,7 +3,6 @@ use crate::{
     types::models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
 };
 
-use chrono::serde::ts_seconds;
 use serde::Serialize;
 
 use sqlx::{
@@ -29,7 +28,6 @@ pub struct LoaderVersion {
     pub gd: DetailedGDVersion,
     pub prerelease: bool,
     pub commit_hash: String,
-    #[serde(with = "ts_seconds")]
     pub created_at: DateTime<Utc>,
 }
 

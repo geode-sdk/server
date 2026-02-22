@@ -20,7 +20,6 @@ use crate::{
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
     },
 };
-use chrono::serde::ts_seconds;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
@@ -40,9 +39,7 @@ pub struct Mod {
     pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
-    #[serde(with = "ts_seconds")]
     pub created_at: DateTime<Utc>,
-    #[serde(with = "ts_seconds")]
     pub updated_at: DateTime<Utc>,
     pub links: Option<ModLinks>,
 }

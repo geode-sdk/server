@@ -6,7 +6,6 @@ use super::{
     mod_version_status::ModVersionStatusEnum,
     tag::Tag,
 };
-use chrono::serde::ts_seconds_option;
 use crate::database::DatabaseError;
 use crate::database::repository::developers;
 use crate::types::api::{PaginatedData, create_download_link};
@@ -43,9 +42,7 @@ pub struct ModVersion {
     pub developers: Option<Vec<ModDeveloper>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-    #[serde(with = "ts_seconds_option")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(with = "ts_seconds_option")]
     pub updated_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Reason given to status
