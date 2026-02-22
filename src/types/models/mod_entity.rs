@@ -7,7 +7,7 @@ use super::{
     tag::Tag,
 };
 use crate::{
-    database::{repository::developers, DatabaseError},
+    database::{DatabaseError, repository::developers},
     endpoints::ApiError,
 };
 use crate::{
@@ -20,12 +20,12 @@ use crate::{
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
     },
 };
-use chrono::SecondsFormat;
+use chrono::serde::ts_seconds;
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
-    types::chrono::{DateTime, Utc},
     PgConnection,
+    types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
 
@@ -40,8 +40,10 @@ pub struct Mod {
     pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(with = "ts_seconds")]
+    pub created_at: DateTime<Utc>,
+    #[serde(with = "ts_seconds")]
+    pub updated_at: DateTime<Utc>,
     pub links: Option<ModLinks>,
 }
 
@@ -165,10 +167,10 @@ impl Mod {
                     return Ok(PaginatedData {
                         data: vec![],
                         count: 0,
-                    })
+                    });
                 }
             },
-            None => None
+            None => None,
         };
 
         let order = match query.sort {
@@ -325,7 +327,7 @@ impl Mod {
             query.gd,
             platforms.as_deref(),
             geode.as_ref(),
-            requires_patching
+            requires_patching,
         )
         .await?;
         let mut developers = developers::get_all_for_mods(&ids, pool).await?;
@@ -356,8 +358,8 @@ impl Mod {
                     versions: vec![version],
                     tags,
                     developers: devs,
-                    created_at: x.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    created_at: x.created_at,
+                    updated_at: x.updated_at,
                     about: None,
                     changelog: None,
                     links,
@@ -403,8 +405,8 @@ impl Mod {
                     versions: version,
                     tags,
                     developers: devs,
-                    created_at: x.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    updated_at: x.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    created_at: x.created_at,
+                    updated_at: x.updated_at,
                     about: x.about,
                     changelog: x.changelog,
                     links,
@@ -565,12 +567,8 @@ impl Mod {
                 tags: None,
                 dependencies: None,
                 incompatibilities: None,
-                created_at: x
-                    .mod_version_created_at
-                    .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-                updated_at: x
-                    .mod_version_updated_at
-                    .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+                created_at: x.mod_version_created_at,
+                updated_at: x.mod_version_updated_at,
                 direct_download_link: Some(x.download_link.clone()),
                 info: x.info.clone(),
             })
@@ -595,12 +593,8 @@ impl Mod {
             versions,
             tags,
             developers: devs,
-            created_at: records[0]
-                .created_at
-                .to_rfc3339_opts(SecondsFormat::Secs, true),
-            updated_at: records[0]
-                .updated_at
-                .to_rfc3339_opts(SecondsFormat::Secs, true),
+            created_at: records[0].created_at,
+            updated_at: records[0].updated_at,
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
             links,

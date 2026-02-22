@@ -6,7 +6,7 @@ use crate::types::{
         developer::Developer, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
     },
 };
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use semver::Version;
 use sqlx::PgConnection;
 
@@ -54,12 +54,8 @@ impl ModVersionRow {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
-            created_at: self
-                .created_at
-                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-            updated_at: self
-                .updated_at
-                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         }
     }
 }
@@ -227,12 +223,8 @@ pub async fn create_from_json(
         incompatibilities: Default::default(),
         developers: Default::default(),
         tags: Default::default(),
-        created_at: row
-            .created_at
-            .map(|i| i.to_rfc3339_opts(SecondsFormat::Secs, true)),
-        updated_at: row
-            .updated_at
-            .map(|i| i.to_rfc3339_opts(SecondsFormat::Secs, true)),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
         info: None,
         direct_download_link: None,
     })
@@ -343,12 +335,8 @@ pub async fn update_pending_version(
         incompatibilities: Default::default(),
         developers: Default::default(),
         tags: Default::default(),
-        created_at: row
-            .created_at
-            .map(|i| i.to_rfc3339_opts(SecondsFormat::Secs, true)),
-        updated_at: row
-            .updated_at
-            .map(|i| i.to_rfc3339_opts(SecondsFormat::Secs, true)),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
         info: None,
         direct_download_link: None,
     })

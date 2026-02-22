@@ -1,14 +1,3 @@
-use crate::database::repository::developers;
-use crate::database::DatabaseError;
-use crate::types::api::{create_download_link, PaginatedData};
-use chrono::SecondsFormat;
-use serde::Serialize;
-use sqlx::{
-    types::chrono::{DateTime, Utc},
-    PgConnection, Postgres, QueryBuilder,
-};
-use std::collections::HashMap;
-use semver::Version;
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
     developer::ModDeveloper,
@@ -17,6 +6,17 @@ use super::{
     mod_version_status::ModVersionStatusEnum,
     tag::Tag,
 };
+use chrono::serde::ts_seconds_option;
+use crate::database::DatabaseError;
+use crate::database::repository::developers;
+use crate::types::api::{PaginatedData, create_download_link};
+use semver::Version;
+use serde::Serialize;
+use sqlx::{
+    PgConnection, Postgres, QueryBuilder,
+    types::chrono::{DateTime, Utc},
+};
+use std::collections::HashMap;
 
 #[derive(Serialize, Debug, sqlx::FromRow, Clone)]
 pub struct ModVersion {
@@ -43,10 +43,10 @@ pub struct ModVersion {
     pub developers: Option<Vec<ModDeveloper>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-
+    #[serde(with = "ts_seconds_option")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(with = "ts_seconds_option")]
+    pub updated_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Reason given to status
     pub info: Option<String>,
@@ -118,12 +118,8 @@ impl ModVersionGetOne {
             incompatibilities: None,
             info: self.info,
             direct_download_link: None,
-            created_at: self
-                .created_at
-                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
-            updated_at: self
-                .updated_at
-                .map(|x| x.to_rfc3339_opts(SecondsFormat::Secs, true)),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         }
     }
 }
@@ -300,7 +296,7 @@ impl ModVersion {
         gd: Option<GDVersionEnum>,
         platforms: Option<&[VerPlatform]>,
         geode: Option<&semver::Version>,
-        requires_patching: Option<bool>
+        requires_patching: Option<bool>,
     ) -> Result<HashMap<String, ModVersion>, DatabaseError> {
         if ids.is_empty() {
             return Ok(Default::default());

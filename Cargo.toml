@@ -29,7 +29,7 @@ sha256 = "1.5"
 semver = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 regex = "1.10"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["default", "serde"] }
 actix-cors = "0.7"
 log4rs = { version = "1.3.0", features = [
     "console_appender",

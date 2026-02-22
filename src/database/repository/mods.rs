@@ -2,7 +2,7 @@ use crate::{
     database::DatabaseError,
     types::{mod_json::ModJson, models::mod_entity::Mod},
 };
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use std::collections::HashSet;
 
@@ -30,8 +30,8 @@ impl ModRecordGetOne {
             versions: Default::default(),
             tags: Default::default(),
             developers: Default::default(),
-            created_at: self.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
-            updated_at: self.updated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
             about: self.about.clone(),
             changelog: self.changelog.clone(),
             links: None,

@@ -3,12 +3,12 @@ use crate::{
     types::models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
 };
 
-use chrono::SecondsFormat;
+use chrono::serde::ts_seconds;
 use serde::Serialize;
 
 use sqlx::{
-    types::chrono::{DateTime, Utc},
     PgConnection, Postgres, QueryBuilder,
+    types::chrono::{DateTime, Utc},
 };
 
 #[derive(Debug)]
@@ -29,7 +29,8 @@ pub struct LoaderVersion {
     pub gd: DetailedGDVersion,
     pub prerelease: bool,
     pub commit_hash: String,
-    pub created_at: String,
+    #[serde(with = "ts_seconds")]
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -56,7 +57,7 @@ impl LoaderVersionGetOne {
             tag: format!("v{}", self.tag),
             version: self.tag,
             prerelease: self.prerelease,
-            created_at: self.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+            created_at: self.created_at,
             commit_hash: self.commit_hash,
             gd: DetailedGDVersion {
                 win: self.win,
