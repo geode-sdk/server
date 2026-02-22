@@ -114,10 +114,6 @@ impl Dependency {
         geode: Option<&semver::Version>,
         pool: &mut PgConnection,
     ) -> Result<HashMap<i32, Vec<FetchedDependency>>, DatabaseError> {
-        // Fellow developer, I am sorry for what you're about to see :)
-        // I present to you the ugly monster of the Geode index
-        // The *GigaQuery™*
-
         #[derive(sqlx::FromRow)]
         struct QueryResult {
             start_node: i32,
@@ -134,126 +130,56 @@ impl Dependency {
 
         let result: Vec<QueryResult> = sqlx::query_as(
             r#"
-            WITH RECURSIVE dep_tree AS (
-                SELECT * FROM (
-                    SELECT 
-                        m.id AS id,
-                        mv.id AS mod_version_id,
-                        mv.name AS name,
-                        mv.version AS version,
-                        dp.compare as compare,
-                        dp.importance as importance,
-                        dp.version AS needs_version,
-                        dp.dependency_id AS dependency,
-                        dpcy_version.id AS dependency_vid,
-                        dpcy_version.name AS depedency_name,
-                        dpcy_version.version AS dependency_version,
-                        mv.id AS start_node,
-                        ROW_NUMBER() OVER(
-                            PARTITION BY dp.dependency_id, mv.id 
-                            ORDER BY dpcy_version.id DESC, mv.id DESC
-                        ) rn 
-                    FROM mod_versions mv
-                    INNER JOIN mods m ON mv.mod_id = m.id
-                    INNER JOIN dependencies dp ON dp.dependent_id = mv.id
-                    INNER JOIN mods dpcy ON dp.dependency_id = dpcy.id
-                    INNER JOIN mod_versions dpcy_version ON dpcy_version.mod_id = dpcy.id
-                    INNER JOIN mod_gd_versions dpcy_mgv ON dpcy_version.id = dpcy_mgv.mod_id
-                    INNER JOIN mod_version_statuses dpcy_status ON dpcy_version.status_id = dpcy_status.id
-                    WHERE dpcy_status.status = 'accepted'
-                    AND mv.id = ANY($1)
-                    AND ($2 IS NULL OR dpcy_mgv.gd = $2 OR dpcy_mgv.gd = '*')
-                    AND ($3 IS NULL OR dpcy_mgv.platform = $3)
-                    AND ($4 IS NULL OR $4 = dpcy_version.geode_major)
-                    AND ($5 IS NULL OR $5 >= dpcy_version.geode_minor)
-                    AND (
-                        ($7 IS NULL AND dpcy_version.geode_meta NOT ILIKE 'alpha%')
-                        OR (
-                            $7 ILIKE 'alpha%'
-                            AND $5 = dpcy_version.geode_minor
-                            AND $6 = dpcy_version.geode_patch
-                            AND $7 = dpcy_version.geode_meta
-                        )
-                        OR (
-                            dpcy_version.geode_meta IS NULL
-                            OR $5 > dpcy_version.geode_minor
-                            OR $6 > dpcy_version.geode_patch
-                            OR (dpcy_version.geode_meta NOT ILIKE 'alpha%' AND $7 >= dpcy_version.geode_meta)
-                        )
+            SELECT * FROM (
+                SELECT
+                    mv.id AS start_node,
+                    dpcy_version.id AS dependency_vid,
+                    dpcy_version.version AS dependency_version,
+                    dp.dependency_id AS dependency,
+                    dp.importance as importance,
+                    ROW_NUMBER() OVER(
+                        PARTITION BY dp.dependency_id, mv.id
+                        ORDER BY dpcy_version.id DESC, mv.id DESC
+                    ) rn
+                FROM mod_versions mv
+                INNER JOIN dependencies dp ON dp.dependent_id = mv.id
+                INNER JOIN mods dpcy ON dp.dependency_id = dpcy.id
+                INNER JOIN mod_versions dpcy_version ON dpcy_version.mod_id = dpcy.id
+                INNER JOIN mod_gd_versions dpcy_mgv ON dpcy_version.id = dpcy_mgv.mod_id
+                INNER JOIN mod_version_statuses dpcy_status ON dpcy_version.status_id = dpcy_status.id
+                WHERE dpcy_status.status = 'accepted'
+                AND mv.id = ANY($1)
+                AND ($2 IS NULL OR dpcy_mgv.gd = $2 OR dpcy_mgv.gd = '*')
+                AND ($3 IS NULL OR dpcy_mgv.platform = $3)
+                AND ($4 IS NULL OR $4 = dpcy_version.geode_major)
+                AND ($5 IS NULL OR $5 >= dpcy_version.geode_minor)
+                AND (
+                    ($7 IS NULL AND dpcy_version.geode_meta NOT ILIKE 'alpha%')
+                    OR (
+                        $7 ILIKE 'alpha%'
+                        AND $5 = dpcy_version.geode_minor
+                        AND $6 = dpcy_version.geode_patch
+                        AND $7 = dpcy_version.geode_meta
                     )
-                    AND SPLIT_PART(dpcy_version.version, '.', 1) = SPLIT_PART(dp.version, '.', 1)
-                    AND CASE
-                        WHEN dp.version = '*' THEN true
-                        WHEN dp.compare = '<' THEN semver_compare(dpcy_version.version, dp.version) = -1
-                        WHEN dp.compare = '>' THEN semver_compare(dpcy_version.version, dp.version) = 1
-                        WHEN dp.compare = '<=' THEN semver_compare(dpcy_version.version, dp.version) <= 0
-                        WHEN dp.compare = '>=' THEN semver_compare(dpcy_version.version, dp.version) >= 0
-                        WHEN dp.compare = '=' THEN semver_compare(dpcy_version.version, dp.version) = 0
-                        ELSE false
-                    END
-                ) as q
-                WHERE q.rn = 1
-                UNION
-                SELECT * FROM (
-                    SELECT 
-                        m2.id AS id,
-                        mv2.id AS mod_version_id,
-                        mv2.name AS name,
-                        mv2.version AS version,
-                        dp2.compare AS needs_compare,
-                        dp2.importance as importance,
-                        dp2.version AS needs_version,
-                        dp2.dependency_id AS dependency,
-                        dpcy_version2.id AS dependency_vid,
-                        dpcy_version2.name AS depedency_name,
-                        dpcy_version2.version AS dependency_version,
-                        dt.start_node AS start_node,
-                        ROW_NUMBER() OVER(
-                            PARTITION BY dp2.dependency_id, mv2.id 
-                            ORDER BY dpcy_version2.id DESC, mv2.id DESC
-                        ) rn 
-                    FROM mod_versions mv2
-                    INNER JOIN mods m2 ON mv2.mod_id = m2.id
-                    INNER JOIN dependencies dp2 ON dp2.dependent_id = mv2.id
-                    INNER JOIN mods dpcy2 ON dp2.dependency_id = dpcy2.id
-                    INNER JOIN mod_versions dpcy_version2 ON dpcy_version2.mod_id = dpcy2.id
-                    INNER JOIN mod_gd_versions dpcy_mgv2 ON dpcy_version2.id = dpcy_mgv2.mod_id
-                    INNER JOIN mod_version_statuses dpcy_status2 ON dpcy_version2.status_id = dpcy_status2.id
-                    INNER JOIN dep_tree dt ON dt.dependency_vid = mv2.id
-                    WHERE dpcy_status2.status = 'accepted'
-                    AND ($2 IS NULL OR dpcy_mgv2.gd = $2 OR dpcy_mgv2.gd = '*')
-                    AND ($3 IS NULL OR dpcy_mgv2.platform = $3)
-                    AND ($4 IS NULL OR $4 = dpcy_version2.geode_major)
-                    AND ($5 IS NULL OR $5 >= dpcy_version2.geode_minor)
-                    AND (
-                        ($7 IS NULL AND dpcy_version2.geode_meta NOT ILIKE 'alpha%')
-                        OR (
-                            $7 ILIKE 'alpha%'
-                            AND $5 = dpcy_version2.geode_minor
-                            AND $6 = dpcy_version2.geode_patch
-                            AND $7 = dpcy_version2.geode_meta
-                        )
-                        OR (
-                            dpcy_version2.geode_meta IS NULL
-                            OR $5 > dpcy_version2.geode_minor
-                            OR $6 > dpcy_version2.geode_patch
-                            OR (dpcy_version2.geode_meta NOT ILIKE 'alpha%' AND $7 >= dpcy_version2.geode_meta)
-                        )
+                    OR (
+                        dpcy_version.geode_meta IS NULL
+                        OR $5 > dpcy_version.geode_minor
+                        OR $6 > dpcy_version.geode_patch
+                        OR (dpcy_version.geode_meta NOT ILIKE 'alpha%' AND $7 >= dpcy_version.geode_meta)
                     )
-                    AND SPLIT_PART(dpcy_version2.version, '.', 1) = SPLIT_PART(dp2.version, '.', 1)
-                    AND CASE
-                        WHEN dp2.version = '*' THEN true
-                        WHEN dp2.compare = '<' THEN semver_compare(dpcy_version2.version, dp2.version) = -1
-                        WHEN dp2.compare = '>' THEN semver_compare(dpcy_version2.version, dp2.version) = 1
-                        WHEN dp2.compare = '<=' THEN semver_compare(dpcy_version2.version, dp2.version) <= 0
-                        WHEN dp2.compare = '>=' THEN semver_compare(dpcy_version2.version, dp2.version) >= 0
-                        WHEN dp2.compare = '=' THEN semver_compare(dpcy_version2.version, dp2.version) = 0
-                        ELSE false
-                    END
-                ) as q2
-                WHERE q2.rn = 1
-            )
-            SELECT * FROM dep_tree;
+                )
+                AND SPLIT_PART(dpcy_version.version, '.', 1) = SPLIT_PART(dp.version, '.', 1)
+                AND CASE
+                    WHEN dp.version = '*' THEN true
+                    WHEN dp.compare = '<' THEN semver_compare(dpcy_version.version, dp.version) = -1
+                    WHEN dp.compare = '>' THEN semver_compare(dpcy_version.version, dp.version) = 1
+                    WHEN dp.compare = '<=' THEN semver_compare(dpcy_version.version, dp.version) <= 0
+                    WHEN dp.compare = '>=' THEN semver_compare(dpcy_version.version, dp.version) >= 0
+                    WHEN dp.compare = '=' THEN semver_compare(dpcy_version.version, dp.version) = 0
+                    ELSE false
+                END
+            ) as q
+            WHERE q.rn = 1
             "#,
         ).bind(ids)
         .bind(gd)
