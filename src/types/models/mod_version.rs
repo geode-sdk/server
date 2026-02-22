@@ -8,7 +8,7 @@ use sqlx::{
     PgConnection, Postgres, QueryBuilder,
 };
 use std::collections::HashMap;
-
+use semver::Version;
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
     developer::ModDeveloper,
@@ -470,8 +470,9 @@ impl ModVersion {
 
         let ids: Vec<i32> = vec![version.id];
         version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
+        let geode = major.map(|major| Version::new(major.into(), 0, 0));
         version.dependencies = Some(
-            Dependency::get_for_mod_versions(&ids, None, None, None, pool)
+            Dependency::get_for_mod_versions(&ids, None, gd, geode.as_ref(), pool)
                 .await?
                 .get(&version.id)
                 .cloned()
