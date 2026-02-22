@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,\n                mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.early_load, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1\n            AND ($2 = false OR mvs.status = 'accepted')\n            ORDER BY mv.id DESC",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,\n                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,\n                mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1\n            AND ($2 = false OR mvs.status = 'accepted')\n            ORDER BY mv.id DESC",
   "describe": {
     "columns": [
       {
@@ -100,16 +100,21 @@
       },
       {
         "ordinal": 19,
-        "name": "api",
+        "name": "requires_patching",
         "type_info": "Bool"
       },
       {
         "ordinal": 20,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 21,
         "name": "mod_id",
         "type_info": "Text"
       },
       {
-        "ordinal": 21,
+        "ordinal": 22,
         "name": "status: _",
         "type_info": {
           "Custom": {
@@ -126,7 +131,7 @@
         }
       },
       {
-        "ordinal": 22,
+        "ordinal": 23,
         "name": "info",
         "type_info": "Text"
       }
@@ -160,8 +165,9 @@
       false,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "e94cd14f1e45bee623f55247b3ea4a95130aba83e5f5a661c9b45b63277f3da2"
+  "hash": "905ee0c060aad711f949eef40c3d1c5c88c27e43b9e0f19b8ed13d150bcd67d8"
 }

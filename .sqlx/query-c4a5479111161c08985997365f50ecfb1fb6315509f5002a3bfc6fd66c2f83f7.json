@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE mod_versions mv\n            SET name = $1,\n            version = $2,\n            download_link = $3,\n            hash = $4,\n            geode_major = $5,\n            geode_minor = $6,\n            geode_patch = $7,\n            geode_meta = $8,\n            early_load = $9,\n            api = $10,\n            description = $11,\n            updated_at = NOW()\n        FROM mod_version_statuses mvs\n        WHERE mv.status_id = mvs.id\n        AND mvs.status = 'pending'\n        AND mv.id = $12\n        RETURNING mv.id,\n            name,\n            version,\n            download_link,\n            download_count,\n            hash,\n            early_load,\n            api,\n            status_id,\n            description,\n            mod_id,\n            mv.created_at,\n            mv.updated_at",
+  "query": "UPDATE mod_versions mv\n            SET name = $1,\n            version = $2,\n            download_link = $3,\n            hash = $4,\n            geode_major = $5,\n            geode_minor = $6,\n            geode_patch = $7,\n            geode_meta = $8,\n            early_load = $9,\n            api = $10,\n            description = $11,\n            updated_at = NOW()\n        FROM mod_version_statuses mvs\n        WHERE mv.status_id = mvs.id\n        AND mvs.status = 'pending'\n        AND mv.id = $12\n        RETURNING mv.id,\n            name,\n            version,\n            download_link,\n            download_count,\n            hash,\n            early_load,\n            requires_patching,\n            api,\n            status_id,\n            description,\n            mod_id,\n            mv.created_at,\n            mv.updated_at",
   "describe": {
     "columns": [
       {
@@ -40,31 +40,36 @@
       },
       {
         "ordinal": 7,
-        "name": "api",
+        "name": "requires_patching",
         "type_info": "Bool"
       },
       {
         "ordinal": 8,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
         "name": "status_id",
         "type_info": "Int4"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "description",
         "type_info": "Text"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "mod_id",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -95,11 +100,12 @@
       false,
       false,
       false,
+      false,
       true,
       false,
       true,
       true
     ]
   },
-  "hash": "6dc571939cf6ee0f780b945a0f65c1ab876a75edd7a8fd5ee56bc30ecffe7443"
+  "hash": "c4a5479111161c08985997365f50ecfb1fb6315509f5002a3bfc6fd66c2f83f7"
 }

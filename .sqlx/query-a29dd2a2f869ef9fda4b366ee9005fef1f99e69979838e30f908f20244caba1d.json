@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version,\n            mv.download_link, mv.download_count, mv.hash,\n            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n            mv.early_load, mv.api, mv.mod_id,\n            mv.created_at, mv.updated_at,\n            mvs.status as \"status: _\", mvs.info\n        FROM mod_versions mv\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE mv.mod_id = $1\n        AND ($2::mod_version_status[] IS NULL OR mvs.status = ANY($2))\n        ORDER BY mv.id DESC",
+  "query": "SELECT mv.id, mv.name, mv.description, mv.version,\n                mv.download_link, mv.download_count,\n                mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.early_load, mv.requires_patching, mv.api,\n                mv.created_at, mv.updated_at,\n                mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mod_versions mv\n            INNER JOIN mods m ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mv.mod_id = $1 AND mv.version = $2\n                AND (mvs.status = 'accepted' OR $3 = false)",
   "describe": {
     "columns": [
       {
@@ -50,13 +50,13 @@
       },
       {
         "ordinal": 9,
-        "name": "api",
+        "name": "requires_patching",
         "type_info": "Bool"
       },
       {
         "ordinal": 10,
-        "name": "mod_id",
-        "type_info": "Text"
+        "name": "api",
+        "type_info": "Bool"
       },
       {
         "ordinal": 11,
@@ -70,6 +70,11 @@
       },
       {
         "ordinal": 13,
+        "name": "mod_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
         "name": "status: _",
         "type_info": {
           "Custom": {
@@ -86,7 +91,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "info",
         "type_info": "Text"
       }
@@ -94,26 +99,8 @@
     "parameters": {
       "Left": [
         "Text",
-        {
-          "Custom": {
-            "name": "mod_version_status[]",
-            "kind": {
-              "Array": {
-                "Custom": {
-                  "name": "mod_version_status",
-                  "kind": {
-                    "Enum": [
-                      "pending",
-                      "rejected",
-                      "accepted",
-                      "unlisted"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        }
+        "Text",
+        "Bool"
       ]
     },
     "nullable": [
@@ -131,8 +118,9 @@
       true,
       true,
       false,
+      false,
       true
     ]
   },
-  "hash": "ccc686014894f6a3f649b4c556566a6d53d32fe3f251d60e1d48d1642464cbd2"
+  "hash": "a29dd2a2f869ef9fda4b366ee9005fef1f99e69979838e30f908f20244caba1d"
 }

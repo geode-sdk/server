@@ -1,17 +1,17 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT DISTINCT\n                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.download_count, mv.early_load, mv.api, mv.mod_id, mv.created_at, mv.updated_at,\n                'pending'::mod_version_status as \"status!: _\", NULL as info\n            FROM mod_versions mv\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mvs.status = 'pending'\n            AND mv.mod_id = ANY($1)\n            ORDER BY mv.id DESC",
+  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version,\n            mv.download_link, mv.download_count, mv.hash,\n            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,\n            mv.created_at, mv.updated_at,\n            mvs.status as \"status: _\", mvs.info\n        FROM mod_versions mv\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE mv.mod_id = $1\n        AND mv.version = $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "name",
-        "type_info": "Text"
+        "name": "id",
+        "type_info": "Int4"
       },
       {
         "ordinal": 1,
-        "name": "id",
-        "type_info": "Int4"
+        "name": "name",
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -30,18 +30,18 @@
       },
       {
         "ordinal": 5,
+        "name": "download_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
         "name": "hash",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "geode!: _",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 7,
-        "name": "download_count",
-        "type_info": "Int4"
       },
       {
         "ordinal": 8,
@@ -50,27 +50,32 @@
       },
       {
         "ordinal": 9,
-        "name": "api",
+        "name": "requires_patching",
         "type_info": "Bool"
       },
       {
         "ordinal": 10,
+        "name": "api",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
         "name": "mod_id",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
-        "name": "status!: _",
+        "ordinal": 14,
+        "name": "status: _",
         "type_info": {
           "Custom": {
             "name": "mod_version_status",
@@ -86,14 +91,15 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "info",
         "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "TextArray"
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
@@ -103,6 +109,7 @@
       false,
       false,
       false,
+      false,
       null,
       false,
       false,
@@ -110,9 +117,9 @@
       false,
       true,
       true,
-      null,
-      null
+      false,
+      true
     ]
   },
-  "hash": "e3f31899201fa6b9ce4da995474486e2965c5bdcdc2bc06942ad78219c9b2339"
+  "hash": "b520ba987e3979c769e9dab052e42f6ee3f09ca365893cd95ff3821e1bb3a43b"
 }
