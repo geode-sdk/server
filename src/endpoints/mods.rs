@@ -274,7 +274,9 @@ pub async fn get_mod_updates(
         Mod::get_updates(&ids, query.platform, &geode, query.gd, &mut pool).await?;
 
     // On v5, we return deprecations as a separate array
-    if geode.major >= 5 {
+    // v5 prereleases had a matjson bug that broke updates, so return the < v5 response for them
+    let is_v5_pre = geode.major == 5 && !geode.pre.is_empty();
+    if geode.major >= 5 && !is_v5_pre {
         let deprecations = deprecations::get_for_mods(&ids, &mut pool).await?;
         return Ok(web::Json(ApiResponse {
             error: "".into(),
