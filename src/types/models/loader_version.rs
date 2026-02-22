@@ -1,6 +1,9 @@
 use crate::{
     database::DatabaseError,
-    types::models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
+    types::{
+        models::mod_gd_version::{DetailedGDVersion, GDVersionEnum, VerPlatform},
+        serde::chrono_dt_secs,
+    },
 };
 
 use serde::Serialize;
@@ -28,6 +31,7 @@ pub struct LoaderVersion {
     pub gd: DetailedGDVersion,
     pub prerelease: bool,
     pub commit_hash: String,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
 }
 

@@ -18,6 +18,7 @@ use crate::{
     types::{
         api::PaginatedData,
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
+        serde::chrono_dt_secs,
     },
 };
 use semver::Version;
@@ -39,7 +40,9 @@ pub struct Mod {
     pub tags: Vec<String>,
     pub about: Option<String>,
     pub changelog: Option<String>,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "chrono_dt_secs")]
     pub updated_at: DateTime<Utc>,
     pub links: Option<ModLinks>,
 }

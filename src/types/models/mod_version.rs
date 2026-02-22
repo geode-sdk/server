@@ -8,7 +8,10 @@ use super::{
 };
 use crate::database::DatabaseError;
 use crate::database::repository::developers;
-use crate::types::api::{PaginatedData, create_download_link};
+use crate::types::{
+    api::{PaginatedData, create_download_link},
+    serde::chrono_dt_secs,
+};
 use semver::Version;
 use serde::Serialize;
 use sqlx::{
@@ -42,7 +45,9 @@ pub struct ModVersion {
     pub developers: Option<Vec<ModDeveloper>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    #[serde(with = "chrono_dt_secs::option")]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(with = "chrono_dt_secs::option")]
     pub updated_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Admin/developer only - Reason given to status
