@@ -24,10 +24,10 @@ jobs:
         shell: bash
         id: build
         run: |
-          cargo build --release --target aarch64-unknown-linux-gnu
+          cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: geode-index
-          path: ./target/aarch64-unknown-linux-gnu/release/geode-index
+          path: ./target/x86_64-unknown-linux-gnu/release/geode-index

@@ -22,7 +22,7 @@ jobs:
         shell: bash
         id: build
         run: |
-          cargo build --release --target aarch64-unknown-linux-gnu
+          cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Create ssh key
         run: |
@@ -34,7 +34,7 @@ jobs:
       - name: Upload target to server
         id: upload
         run: |
-          rsync -avz ./target/aarch64-unknown-linux-gnu/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avz ./target/x86_64-unknown-linux-gnu/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
           rsync -avzr ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
         if: steps.build.outcome == 'success'
 
