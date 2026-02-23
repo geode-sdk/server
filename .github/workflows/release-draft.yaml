@@ -24,6 +24,7 @@ jobs:
 
     name: build (${{ matrix.target.arch }} ${{ matrix.target.name }})
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository }}/ubuntu-aarch64:24.04
 
     steps:
       - name: Checkout repository

@@ -10,11 +10,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install ARM cross-compilation tools
-      shell: bash
-      if: inputs.install-arm == 'true'
-      run: sudo apt-get update && sudo apt-get install --assume-yes --no-install-recommends g++-aarch64-linux-gnu
-
     - name: Install rust
       shell: bash
       run: |
