@@ -252,7 +252,7 @@ pub async fn create_version(
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", &id)))?;
 
-    if !(developers::has_access_to_mod(dev.id, &the_mod.id, &mut pool).await?) {
+    if !developers::has_access_to_mod(dev.id, &the_mod.id, &mut pool).await? {
         return Err(ApiError::Authorization);
     }
 
@@ -297,6 +297,13 @@ pub async fn create_version(
     }
 
     json.validate()?;
+
+    if versions.iter().any(|v| v.version == json.version) {
+        return Err(ApiError::BadRequest(format!(
+            "Version {} already exists",
+            json.version
+        )));
+    }
 
     let mut tx = pool.begin().await?;
 
