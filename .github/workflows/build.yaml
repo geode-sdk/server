@@ -26,6 +26,8 @@ jobs:
 
       - name: Setup rust
         uses: ./.github/actions/setup-rust
+        with:
+          install-arm: ${{ matrix.target.arch == 'aarch64' }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v2

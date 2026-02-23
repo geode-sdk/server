@@ -31,6 +31,8 @@ jobs:
 
       - name: Setup rust
         uses: ./.github/actions/setup-rust
+        with:
+          install-arm: ${{ matrix.target.arch == 'aarch64' }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v2
@@ -83,7 +85,7 @@ jobs:
           name: ${{ inputs.release_name || inputs.tag }}
           draft: true
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             release-assets/geode-index-${{ inputs.tag }}-linux-x86_64
             release-assets/geode-index-${{ inputs.tag }}-linux-aarch64
