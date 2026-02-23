@@ -3,13 +3,20 @@ name: Build Index
 on:
   push:
     branches:
-      - "**"
+      - "main"
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target:
+          - arch: x86_64
+            name: x86_64-unknown-linux-gnu
+          - arch: aarch64
+            name: aarch64-unknown-linux-gnu
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,15 +26,16 @@ jobs:
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target.arch }}
 
-      - name: Build
+      - name: Build ${{ matrix.target.arch }}
         shell: bash
-        id: build
         run: |
-          cargo build --release --target x86_64-unknown-linux-gnu
+          cargo build --release --target ${{ matrix.target.name }}
 
-      - name: Upload artifact
+      - name: Upload ${{ matrix.target.arch }} artifact
         uses: actions/upload-artifact@v4
         with:
-          name: geode-index
-          path: ./target/x86_64-unknown-linux-gnu/release/geode-index
+          name: geode-index-${{ matrix.target.arch }}
+          path: ./target/${{ matrix.target.name }}/release/geode-index

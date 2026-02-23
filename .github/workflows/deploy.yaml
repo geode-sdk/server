@@ -8,6 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target:
+          - arch: x86_64
+            name: x86_64-unknown-linux-gnu
+          - arch: aarch64
+            name: aarch64-unknown-linux-gnu
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,28 +24,52 @@ jobs:
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target.arch }}
 
-      - name: Build
+      - name: Build ${{ matrix.target.arch }}
         shell: bash
-        id: build
         run: |
-          cargo build --release --target x86_64-unknown-linux-gnu
+          cargo build --release --target ${{ matrix.target.name }}
+
+      - name: Upload ${{ matrix.target.arch }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geode-index-${{ matrix.target.arch }}
+          path: ./target/${{ matrix.target.name }}/release/geode-index
+
+  deploy:
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: geode-index-x86_64
+          path: ./artifacts/x86_64
+
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: geode-index-aarch64
+          path: ./artifacts/aarch64
 
       - name: Create ssh key
         run: |
           install -m 600 -D /dev/null ~/.ssh/id_rsa
           echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.INDEX_SERVER }} > ~/.ssh/known_hosts
-        if: steps.build.outcome == 'success'
 
       - name: Upload target to server
         id: upload
         run: |
-          rsync -avz ./target/x86_64-unknown-linux-gnu/release/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
-          rsync -avzr ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
-        if: steps.build.outcome == 'success'
+          rsync -avz -e "ssh -p ${{secrets.INDEX_SSH_PORT}} -i ~/.ssh/id_rsa" ./artifacts/x86_64/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avzr -e "ssh -p ${{secrets.INDEX_SSH_PORT}} -i ~/.ssh/id_rsa" ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
 
       - name: Run update script
         run: |
           ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "cd ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }} && ./update.sh"
-        if: steps.build.outcome == 'success' && steps.upload.outcome == 'success'
+        if: steps.upload.outcome == 'success'
