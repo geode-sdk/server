@@ -33,6 +33,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target.arch }}
+          shared-key: "build"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build ${{ matrix.target.arch }}
         shell: bash

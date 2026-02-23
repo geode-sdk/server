@@ -38,6 +38,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target.arch }}
+          shared-key: "build"
 
       - name: Build ${{ matrix.target.arch }}
         shell: bash
