@@ -6,59 +6,37 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        target:
-          - arch: x86_64
-            name: x86_64-unknown-linux-gnu
-          - arch: aarch64
-            name: aarch64-unknown-linux-gnu
-
-    name: build (${{ matrix.target.arch }} ${{ matrix.target.name }})
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target.arch }}
-
-      - name: Build ${{ matrix.target.arch }}
-        shell: bash
-        run: |
-          cargo build --release --target ${{ matrix.target.name }}
-
-      - name: Upload ${{ matrix.target.arch }} artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: geode-index-${{ matrix.target.arch }}
-          path: ./target/${{ matrix.target.name }}/release/geode-index
-
   deploy:
     runs-on: ubuntu-22.04
-    needs: build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download x86_64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: geode-index-x86_64
-          path: ./artifacts/x86_64
+      - name: Get release tag
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            # For workflow_dispatch, get the latest release tag
+            echo "tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Download aarch64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: geode-index-aarch64
-          path: ./artifacts/aarch64
+      - name: Download release assets
+        run: |
+          mkdir -p ./artifacts/x86_64 ./artifacts/aarch64
+          gh release download ${{ steps.get_tag.outputs.tag }} \
+            --pattern "geode-index-${{ steps.get_tag.outputs.tag }}-linux-x86_64" \
+            --dir ./artifacts/x86_64
+          gh release download ${{ steps.get_tag.outputs.tag }} \
+            --pattern "geode-index-${{ steps.get_tag.outputs.tag }}-linux-aarch64" \
+            --dir ./artifacts/aarch64
+          chmod +x ./artifacts/x86_64/geode-index-${{ steps.get_tag.outputs.tag }}-linux-x86_64
+          chmod +x ./artifacts/aarch64/geode-index-${{ steps.get_tag.outputs.tag }}-linux-aarch64
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Create ssh key
         run: |
@@ -69,8 +47,8 @@ jobs:
       - name: Upload target to server
         id: upload
         run: |
-          rsync -avz -e "ssh -p ${{secrets.INDEX_SSH_PORT}} -i ~/.ssh/id_rsa" ./artifacts/x86_64/geode-index ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
-          rsync -avzr -e "ssh -p ${{secrets.INDEX_SSH_PORT}} -i ~/.ssh/id_rsa" ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
+          rsync -avz -e "ssh -p ${{ secrets.INDEX_SSH_PORT }} -i ~/.ssh/id_rsa" --owner --group --chmod=775 --chown=${{ secrets.INDEX_RUN_USER }}:${{ secrets.INDEX_RUN_GROUP }} ./artifacts/x86_64/geode-index-${{ steps.get_tag.outputs.tag }}-linux-x86_64 ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
+          rsync -avzr -e "ssh -p ${{ secrets.INDEX_SSH_PORT }} -i ~/.ssh/id_rsa" --owner --group --chmod=775 --chown=${{ secrets.INDEX_RUN_USER }}:${{ secrets.INDEX_RUN_GROUP }} ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
 
       - name: Run update script
         run: |
