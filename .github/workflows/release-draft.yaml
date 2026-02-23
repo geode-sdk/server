@@ -86,6 +86,11 @@ jobs:
           draft: true
           prerelease: false
           generate_release_notes: false
+          body: |
+            TODO before publishing:
+             - mark if pre-release
+             - add changelog
+             - remove this
           files: |
             release-assets/geode-index-${{ inputs.tag }}-linux-x86_64
             release-assets/geode-index-${{ inputs.tag }}-linux-aarch64
