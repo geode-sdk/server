@@ -231,7 +231,7 @@ impl ModVersion {
             counter_q.push(sql);
         }
 
-        let sql = "GROUP BY mv.id, mvs.status ORDER BY mv.id DESC LIMIT ";
+        let sql = " GROUP BY mv.id, mvs.status ORDER BY mv.id DESC LIMIT ";
         q.push(sql);
         q.push_bind(limit);
         let sql = " OFFSET ";
