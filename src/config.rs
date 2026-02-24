@@ -34,8 +34,10 @@ pub struct GitHubClientData {
 pub async fn build_config() -> anyhow::Result<AppData> {
     let env_url = dotenvy::var("DATABASE_URL")?;
 
+    let pg_connections = dotenvy::var("DATABASE_CONNECTIONS").map_or(10, |x: String| x.parse::<u32>().unwrap_or(10));
+
     let pool = sqlx::postgres::PgPoolOptions::default()
-        .max_connections(10)
+        .max_connections(pg_connections)
         .connect(&env_url)
         .await?;
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
