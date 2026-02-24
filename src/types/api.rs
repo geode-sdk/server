@@ -1,15 +1,15 @@
-use actix_web::{error::QueryPayloadError, HttpRequest};
+use actix_web::{HttpRequest, error::QueryPayloadError};
 use serde::{Deserialize, Serialize};
 
 use crate::endpoints::ApiError;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PaginatedData<T> {
     pub data: Vec<T>,
     pub count: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiResponse<T> {
     pub error: String,
     pub payload: T,

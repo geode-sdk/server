@@ -29,7 +29,7 @@ use sqlx::{
 };
 use std::collections::HashMap;
 
-#[derive(Serialize, Debug, sqlx::FromRow)]
+#[derive(Serialize, Debug, Clone, sqlx::FromRow)]
 pub struct Mod {
     pub id: String,
     pub repository: Option<String>,
@@ -141,10 +141,10 @@ impl Mod {
 
     pub async fn get_index(
         pool: &mut PgConnection,
-        query: IndexQueryParams,
+        query: &IndexQueryParams,
     ) -> Result<PaginatedData<Mod>, ApiError> {
-        let tags = match query.tags {
-            Some(t) => Some(Tag::parse_tags(&t, pool).await?),
+        let tags = match &query.tags {
+            Some(t) => Some(Tag::parse_tags(t, pool).await?),
             None => None,
         };
         let page: i64 = query.page.unwrap_or(1).max(1);
@@ -154,14 +154,15 @@ impl Mod {
         let offset = (page - 1) * per_page;
         let platforms = query
             .platforms
-            .map(|p| VerPlatform::parse_query_string(&p))
+            .as_ref()
+            .map(|p| VerPlatform::parse_query_string(p))
             .transpose()?;
         let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
         // We only want to filter anything if jitless is true
         let requires_patching = query.jitless.filter(|&j| j).map(|_| false);
 
-        let developer = match query.developer {
-            Some(d) => match developers::get_one_by_username(&d, pool).await? {
+        let developer = match &query.developer {
+            Some(d) => match developers::get_one_by_username(d, pool).await? {
                 Some(d) => Some(d),
                 None => {
                     return Ok(PaginatedData {
@@ -184,7 +185,8 @@ impl Mod {
 
         let geode = query
             .geode
-            .map(|x| Version::parse(&x))
+            .as_ref()
+            .map(|x| Version::parse(x))
             .transpose()
             .or(Err(ApiError::BadRequest("Invalid geode version".into())))?;
 

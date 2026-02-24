@@ -5,7 +5,7 @@ use sqlx::PgConnection;
 
 use crate::{database::DatabaseError, types::mod_json::ModJson};
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Hash, PartialEq, Eq)]
 #[sqlx(type_name = "gd_version")]
 pub enum GDVersionEnum {
     #[serde(rename = "*")]

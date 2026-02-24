@@ -25,7 +25,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Hash, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexSortType {
     #[default]
@@ -37,7 +37,7 @@ pub enum IndexSortType {
     NameReverse,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Hash, Eq, PartialEq)]
 pub struct IndexQueryParams {
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -67,25 +67,32 @@ pub async fn index(
     query: web::Query<IndexQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let mut pool = data.db().acquire().await?;
-
-    if let Some(s) = query.status {
-        if s == ModVersionStatusEnum::Rejected {
-            auth.check_admin()?;
-        }
+    if let Some(s) = query.status
+        && s == ModVersionStatusEnum::Rejected
+    {
+        auth.check_admin()?;
     }
 
-    let mut result = Mod::get_index(&mut pool, query.0).await?;
+    if let Some(cached) = data.mods_cache().get(&query.0).await {
+        return Ok(web::Json(cached));
+    }
+
+    let mut pool = data.db().acquire().await?;
+
+    let mut result = Mod::get_index(&mut pool, &query.0).await?;
     for i in &mut result.data {
         for j in &mut i.versions {
             j.modify_metadata(data.app_url(), false);
         }
     }
-
-    Ok(web::Json(ApiResponse {
+    let resp = ApiResponse {
         error: "".into(),
-        payload: result,
-    }))
+        payload: result.clone(),
+    };
+
+    data.mods_cache().insert(query.0, resp.clone()).await;
+
+    Ok(web::Json(resp))
 }
 
 #[get("/v1/mods/{id}")]

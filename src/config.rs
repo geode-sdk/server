@@ -1,3 +1,15 @@
+use std::time::Duration;
+
+use moka::future::Cache;
+
+use crate::{
+    endpoints::mods::IndexQueryParams,
+    types::{
+        api::{ApiResponse, PaginatedData},
+        models::mod_entity::Mod,
+    },
+};
+
 #[derive(Clone)]
 pub struct AppData {
     db: sqlx::postgres::PgPool,
@@ -9,6 +21,8 @@ pub struct AppData {
     max_download_mb: u32,
     port: u16,
     debug: bool,
+
+    mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
 }
 
 #[derive(Clone)]
@@ -37,6 +51,11 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .unwrap_or("250".to_string())
         .parse::<u32>()
         .unwrap_or(250);
+    let mods_cache = Cache::builder()
+        .max_capacity(128)
+        .time_to_idle(Duration::from_mins(5))
+        .time_to_live(Duration::from_mins(10))
+        .build();
 
     Ok(AppData {
         db: pool,
@@ -51,6 +70,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         max_download_mb,
         port,
         debug,
+        mods_cache,
     })
 }
 
@@ -99,5 +119,9 @@ impl AppData {
 
     pub fn debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {
+        &self.mods_cache
     }
 }
