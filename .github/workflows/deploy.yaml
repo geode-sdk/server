@@ -48,7 +48,7 @@ jobs:
         id: upload
         run: |
           rsync -avz -e "ssh -p ${{ secrets.INDEX_SSH_PORT }} -i ~/.ssh/id_rsa" --owner --group --chmod=775 --chown=${{ secrets.INDEX_RUN_USER }}:${{ secrets.INDEX_RUN_GROUP }} ./artifacts/${{ secrets.INDEX_DEPLOY_ARCH }}/geode-index-${{ steps.get_tag.outputs.tag }}-linux-${{ secrets.INDEX_DEPLOY_ARCH }} ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.INDEX_COPY_LOCATION }}
-          rsync -avzr -e "ssh -p ${{ secrets.INDEX_SSH_PORT }} -i ~/.ssh/id_rsa" --owner --group --chmod=775 --chown=${{ secrets.INDEX_RUN_USER }}:${{ secrets.INDEX_RUN_GROUP }} ./migrations ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
+          rsync -avz -e "ssh -p ${{ secrets.INDEX_SSH_PORT }} -i ~/.ssh/id_rsa" --owner --group --chmod=775 --chown=${{ secrets.INDEX_RUN_USER }}:${{ secrets.INDEX_RUN_GROUP }} ./migrations/* ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }}:${{ secrets.MIGRATIONS_COPY_LOCATION }}
 
       - name: Run update script
         run: |
