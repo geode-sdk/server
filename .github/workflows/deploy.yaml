@@ -42,7 +42,7 @@ jobs:
         run: |
           install -m 600 -D /dev/null ~/.ssh/id_rsa
           echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.INDEX_SERVER }} > ~/.ssh/known_hosts
+          ssh-keyscan -p ${{ secrets.INDEX_SSH_PORT }} -H ${{ secrets.INDEX_SERVER }} > ~/.ssh/known_hosts
 
       - name: Upload target to server
         id: upload
@@ -52,5 +52,5 @@ jobs:
 
       - name: Run update script
         run: |
-          ssh ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "cd ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }} && ./update.sh"
+          ssh -p ${{ secrets.INDEX_SSH_PORT }} ${{ secrets.INDEX_USER }}@${{ secrets.INDEX_SERVER }} "cd ${{ secrets.INDEX_UPDATE_SCRIPT_PATH }} && ./update.sh"
         if: steps.upload.outcome == 'success'
