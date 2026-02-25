@@ -435,6 +435,12 @@ impl ModJson {
             )));
         }
 
+        if self.id == "geode.loader" {
+            return Err(ModZipError::InvalidModJson(
+                "Noooo you can't do that :(".to_string(),
+            ));
+        }
+
         if Version::parse(self.version.trim_start_matches('v')).is_err() {
             return Err(ModZipError::InvalidModJson(format!(
                 "Invalid mod.json mod version: {}",

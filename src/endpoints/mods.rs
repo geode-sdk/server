@@ -164,6 +164,10 @@ pub async fn create(
 
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
+    if json.id.starts_with("geode.") && !dev.admin {
+        return Err(ApiError::BadRequest("Only index admins may use mod ids that start with 'geode.'".into()));
+    }
+
     if let Some(m) = &existing {
         if !developers::has_access_to_mod(dev.id, &m.id, &mut pool).await? {
             return Err(ApiError::Authorization);
