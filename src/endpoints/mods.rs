@@ -11,7 +11,7 @@ use crate::endpoints::ApiError;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
 use crate::mod_zip;
-use crate::types::api::ApiResponse;
+use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::mod_json::ModJson;
 use crate::types::models;
 use crate::types::models::deprecations::Deprecation;
@@ -24,8 +24,9 @@ use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
+use utoipa::{ToSchema, IntoParams};
 
-#[derive(Deserialize, Default, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexSortType {
     #[default]
@@ -37,7 +38,7 @@ pub enum IndexSortType {
     NameReverse,
 }
 
-#[derive(Deserialize, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
 pub struct IndexQueryParams {
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -56,10 +57,23 @@ pub struct IndexQueryParams {
     pub status: Option<ModVersionStatusEnum>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateQueryParams {
     download_link: String,
 }
+
+/// List all mods with optional filtering and pagination
+#[utoipa::path(
+    get,
+    path = "/v1/mods",
+    tag = "mods",
+    params(IndexQueryParams),
+    responses(
+        (status = 200, description = "List of mods", body = inline(ApiResponse<PaginatedData<Mod>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
 
 #[get("/v1/mods")]
 pub async fn index(
@@ -95,6 +109,19 @@ pub async fn index(
     Ok(web::Json(resp))
 }
 
+/// Get a specific mod by ID
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}",
+    tag = "mods",
+    params(
+        ("id" = String, Path, description = "Mod ID")
+    ),
+    responses(
+        (status = 200, description = "Mod details", body = inline(ApiResponse<Mod>)),
+        (status = 404, description = "Mod not found")
+    )
+)]
 #[get("/v1/mods/{id}")]
 pub async fn get(
     data: web::Data<AppData>,
@@ -150,6 +177,22 @@ pub async fn get(
     }))
 }
 
+/// Create a new mod
+#[utoipa::path(
+    post,
+    path = "/v1/mods",
+    tag = "mods",
+    request_body = CreateQueryParams,
+    responses(
+        (status = 201, description = "Mod created", body = inline(ApiResponse<Mod>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 409, description = "Mod already exists")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[post("/v1/mods")]
 pub async fn create(
     data: web::Data<AppData>,
@@ -240,14 +283,14 @@ pub async fn create(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct UpdateQueryParams {
     ids: String,
     gd: GDVersionEnum,
     platform: VerPlatform,
     geode: String,
 }
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 #[serde(untagged)]
 enum UpdateQueryResponse {
     V4(Vec<ModUpdate>),
@@ -257,6 +300,17 @@ enum UpdateQueryResponse {
     },
 }
 
+/// Get available mod updates for a list of installed mods
+#[utoipa::path(
+    get,
+    path = "/v1/mods/updates",
+    tag = "mods",
+    params(UpdateQueryParams),
+    responses(
+        (status = 200, description = "Available updates for the given mods", body = inline(ApiResponse<UpdateQueryResponse>)),
+        (status = 400, description = "Bad request")
+    )
+)]
 #[get("/v1/mods/updates")]
 pub async fn get_mod_updates(
     data: web::Data<AppData>,
@@ -304,6 +358,19 @@ pub async fn get_mod_updates(
     }))
 }
 
+/// Get the logo image for a mod
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}/logo",
+    tag = "mods",
+    params(
+        ("id" = String, Path, description = "Mod ID")
+    ),
+    responses(
+        (status = 200, description = "Mod logo image", content_type = "image/png"),
+        (status = 404, description = "Logo not found")
+    )
+)]
 #[get("/v1/mods/{id}/logo")]
 pub async fn get_logo(
     data: web::Data<AppData>,
@@ -325,11 +392,30 @@ pub async fn get_logo(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct UpdateModPayload {
     featured: bool,
 }
 
+/// Update a mod (admin only)
+#[utoipa::path(
+    put,
+    path = "/v1/mods/{id}",
+    tag = "mods",
+    params(
+        ("id" = String, Path, description = "Mod ID")
+    ),
+    request_body = UpdateModPayload,
+    responses(
+        (status = 204, description = "Mod updated successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 404, description = "Mod not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[put("/v1/mods/{id}")]
 pub async fn update_mod(
     data: web::Data<AppData>,

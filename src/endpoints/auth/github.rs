@@ -3,6 +3,7 @@ use actix_web::{dev::ConnectionInfo, post, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 use crate::config::AppData;
 use crate::database::repository::{
@@ -12,23 +13,32 @@ use crate::endpoints::auth::TokensResponse;
 use crate::endpoints::ApiError;
 use crate::{auth::github, types::api::ApiResponse};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct PollParams {
     uuid: String,
     expiry: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct TokenLoginParams {
     token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct CallbackParams {
     code: String,
     state: String,
 }
 
+/// Start GitHub device flow authentication
+#[utoipa::path(
+    post,
+    path = "/v1/login/github",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Device flow started", body = inline(ApiResponse<String>))
+    )
+)]
 #[post("v1/login/github")]
 pub async fn start_github_login(
     data: web::Data<AppData>,
@@ -57,6 +67,15 @@ pub async fn start_github_login(
     }))
 }
 
+/// Start GitHub web OAuth flow
+#[utoipa::path(
+    post,
+    path = "/v1/login/github/web",
+    tag = "auth",
+    responses(
+        (status = 200, description = "OAuth URL generated", body = inline(ApiResponse<String>))
+    )
+)]
 #[post("v1/login/github/web")]
 pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
@@ -74,6 +93,18 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
     }))
 }
 
+/// Handle GitHub OAuth callback
+#[utoipa::path(
+    post,
+    path = "/v1/login/github/callback",
+    tag = "auth",
+    request_body = CallbackParams,
+    responses(
+        (status = 200, description = "Login successful", body = inline(ApiResponse<TokensResponse>)),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Invalid secret")
+    )
+)]
 #[post("v1/login/github/callback")]
 pub async fn github_web_callback(
     json: web::Json<CallbackParams>,
@@ -119,6 +150,18 @@ pub async fn github_web_callback(
     }))
 }
 
+/// Poll GitHub device flow for authentication
+#[utoipa::path(
+    post,
+    path = "/v1/login/github/poll",
+    tag = "auth",
+    request_body = PollParams,
+    responses(
+        (status = 200, description = "Login successful", body = inline(ApiResponse<TokensResponse>)),
+        (status = 400, description = "Bad request or too fast"),
+        (status = 404, description = "Login attempt not found")
+    )
+)]
 #[post("v1/login/github/poll")]
 pub async fn poll_github_login(
     json: web::Json<PollParams>,
@@ -212,6 +255,17 @@ pub async fn poll_github_login(
     }
 }
 
+/// Login using a GitHub personal access token
+#[utoipa::path(
+    post,
+    path = "/v1/login/github/token",
+    tag = "auth",
+    request_body = TokenLoginParams,
+    responses(
+        (status = 200, description = "Login successful", body = inline(ApiResponse<String>)),
+        (status = 400, description = "Invalid access token")
+    )
+)]
 #[post("v1/login/github/token")]
 pub async fn github_token_login(
     json: web::Json<TokenLoginParams>,

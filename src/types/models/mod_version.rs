@@ -14,13 +14,14 @@ use crate::types::{
 };
 use semver::Version;
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::{
     PgConnection, Postgres, QueryBuilder,
     types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
 
-#[derive(Serialize, Debug, sqlx::FromRow, Clone)]
+#[derive(Serialize, Debug, sqlx::FromRow, Clone, ToSchema)]
 pub struct ModVersion {
     #[serde(skip_serializing)]
     pub id: i32,

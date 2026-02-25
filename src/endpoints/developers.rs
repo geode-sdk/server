@@ -1,20 +1,23 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 
 use super::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
+use crate::types::api::{ApiResponse, PaginatedData};
 use crate::{
     extractors::auth::Auth,
     types::{
-        api::ApiResponse,
         models::{
-            developer::ModDeveloper, mod_entity::Mod, mod_version_status::ModVersionStatusEnum,
+            developer::{ModDeveloper, Developer},
+            mod_entity::Mod,
+            mod_version_status::ModVersionStatusEnum,
         },
     },
 };
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct SimpleDevMod {
     pub id: String,
     pub featured: bool,
@@ -23,7 +26,7 @@ pub struct SimpleDevMod {
     pub developers: Vec<ModDeveloper>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
 pub struct SimpleDevModVersion {
     pub name: String,
     pub version: String,
@@ -33,40 +36,50 @@ pub struct SimpleDevModVersion {
     pub status: ModVersionStatusEnum,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct AddDevPath {
     id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct RemoveDevPath {
     id: String,
     username: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct AddDevPayload {
     username: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct DeveloperUpdatePayload {
     admin: Option<bool>,
     verified: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct UpdateDeveloperPath {
     id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct DeveloperIndexQuery {
     query: Option<String>,
     page: Option<i64>,
     per_page: Option<i64>,
 }
 
+/// List all developers with optional search and pagination
+#[utoipa::path(
+    get,
+    path = "/v1/developers",
+    tag = "developers",
+    params(DeveloperIndexQuery),
+    responses(
+        (status = 200, description = "List of developers", body = inline(ApiResponse<PaginatedData<Developer>>))
+    )
+)]
 #[get("v1/developers")]
 pub async fn developer_index(
     data: web::Data<AppData>,
@@ -85,6 +98,24 @@ pub async fn developer_index(
     }))
 }
 
+/// Add a developer to a mod
+#[utoipa::path(
+    post,
+    path = "/v1/mods/{id}/developers",
+    tag = "developers",
+    params(AddDevPath),
+    request_body = AddDevPayload,
+    responses(
+        (status = 204, description = "Developer added successfully"),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Mod or developer not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[post("v1/mods/{id}/developers")]
 pub async fn add_developer_to_mod(
     data: web::Data<AppData>,
@@ -114,6 +145,23 @@ pub async fn add_developer_to_mod(
     Ok(HttpResponse::NoContent())
 }
 
+/// Remove a developer from a mod
+#[utoipa::path(
+    delete,
+    path = "/v1/mods/{id}/developers/{username}",
+    tag = "developers",
+    params(RemoveDevPath),
+    responses(
+        (status = 204, description = "Developer removed successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Mod or developer not found"),
+        (status = 409, description = "Cannot remove self")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[delete("v1/mods/{id}/developers/{username}")]
 pub async fn remove_dev_from_mod(
     data: web::Data<AppData>,
@@ -157,6 +205,19 @@ pub async fn remove_dev_from_mod(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// Delete the current API token
+#[utoipa::path(
+    delete,
+    path = "/v1/me/token",
+    tag = "developers",
+    responses(
+        (status = 204, description = "Token deleted successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[delete("v1/me/token")]
 pub async fn delete_token(
     data: web::Data<AppData>,
@@ -170,6 +231,19 @@ pub async fn delete_token(
     Ok(HttpResponse::NoContent())
 }
 
+/// Delete all API tokens for the current developer
+#[utoipa::path(
+    delete,
+    path = "/v1/me/tokens",
+    tag = "developers",
+    responses(
+        (status = 204, description = "All tokens deleted successfully"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[delete("v1/me/tokens")]
 pub async fn delete_tokens(
     data: web::Data<AppData>,
@@ -184,11 +258,26 @@ pub async fn delete_tokens(
     Ok(HttpResponse::NoContent())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct UploadProfilePayload {
     display_name: String,
 }
 
+/// Update the current developer's profile
+#[utoipa::path(
+    put,
+    path = "/v1/me",
+    tag = "developers",
+    request_body = UploadProfilePayload,
+    responses(
+        (status = 200, description = "Profile updated", body = inline(ApiResponse<Developer>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[put("v1/me")]
 pub async fn update_profile(
     data: web::Data<AppData>,
@@ -220,7 +309,7 @@ pub async fn update_profile(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetOwnModsQuery {
     #[serde(default = "default_own_mods_status")]
     status: ModVersionStatusEnum,
@@ -232,6 +321,20 @@ pub fn default_own_mods_status() -> ModVersionStatusEnum {
     ModVersionStatusEnum::Accepted
 }
 
+/// Get all mods owned by the current developer
+#[utoipa::path(
+    get,
+    path = "/v1/me/mods",
+    tag = "developers",
+    params(GetOwnModsQuery),
+    responses(
+        (status = 200, description = "List of developer's mods", body = inline(ApiResponse<Vec<SimpleDevMod>>)),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[get("v1/me/mods")]
 pub async fn get_own_mods(
     data: web::Data<AppData>,
@@ -248,6 +351,19 @@ pub async fn get_own_mods(
     }))
 }
 
+/// Get the current developer's profile
+#[utoipa::path(
+    get,
+    path = "/v1/me",
+    tag = "developers",
+    responses(
+        (status = 200, description = "Current developer profile", body = inline(ApiResponse<Developer>)),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[get("v1/me")]
 pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
@@ -257,11 +373,22 @@ pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetDeveloperPath {
     id: i32,
 }
 
+/// Get a specific developer by ID
+#[utoipa::path(
+    get,
+    path = "/v1/developers/{id}",
+    tag = "developers",
+    params(GetDeveloperPath),
+    responses(
+        (status = 200, description = "Developer details", body = inline(ApiResponse<Developer>)),
+        (status = 404, description = "Developer not found")
+    )
+)]
 #[get("v1/developers/{id}")]
 pub async fn get_developer(
     data: web::Data<AppData>,
@@ -278,6 +405,24 @@ pub async fn get_developer(
     }))
 }
 
+/// Update a developer's admin/verified status (admin only)
+#[utoipa::path(
+    put,
+    path = "/v1/developers/{id}",
+    tag = "developers",
+    params(UpdateDeveloperPath),
+    request_body = DeveloperUpdatePayload,
+    responses(
+        (status = 200, description = "Developer updated", body = inline(ApiResponse<Developer>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 404, description = "Developer not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[put("v1/developers/{id}")]
 pub async fn update_developer(
     auth: Auth,

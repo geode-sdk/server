@@ -4,29 +4,31 @@ use crate::{
     endpoints::ApiError,
     extractors::auth::Auth,
     types::api::ApiResponse,
+    types::models::deprecations::Deprecation,
 };
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use serde::Deserialize;
 use sqlx::{Acquire, PgConnection};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct ModPath {
     id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct ModDeprecationPath {
     id: String,
     deprecation_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct CreateDeprecationData {
     by: Vec<String>,
     reason: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct UpdateDeprecationData {
     by: Option<Vec<String>>,
     reason: Option<String>,
@@ -35,6 +37,21 @@ struct UpdateDeprecationData {
 const MAX_MODS_PER_DEPRECATION: usize = 20;
 
 /// Fetch all deprecations for a mod
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}/deprecations",
+    tag = "deprecations",
+    params(ModPath),
+    responses(
+        (status = 200, description = "List of deprecations", body = inline(ApiResponse<Vec<Deprecation>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Mod not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[get("v1/mods/{id}/deprecations")]
 pub async fn index(
     data: web::Data<AppData>,
@@ -60,6 +77,23 @@ pub async fn index(
 }
 
 /// Insert one deprecation for a mod
+#[utoipa::path(
+    post,
+    path = "/v1/mods/{id}/deprecations",
+    tag = "deprecations",
+    params(ModPath),
+    request_body = CreateDeprecationData,
+    responses(
+        (status = 201, description = "Deprecation created", body = inline(ApiResponse<Deprecation>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Mod not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[post("v1/mods/{id}/deprecations")]
 pub async fn store(
     data: web::Data<AppData>,
@@ -91,6 +125,22 @@ pub async fn store(
 }
 
 /// Update a deprecation
+#[utoipa::path(
+    put,
+    path = "/v1/mods/{id}/deprecations/{deprecation_id}",
+    tag = "deprecations",
+    params(ModDeprecationPath),
+    request_body = UpdateDeprecationData,
+    responses(
+        (status = 200, description = "Deprecation updated", body = inline(ApiResponse<Deprecation>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Deprecation not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[put("v1/mods/{id}/deprecations/{deprecation_id}")]
 pub async fn update(
     data: web::Data<AppData>,
@@ -145,7 +195,22 @@ pub async fn update(
     }))
 }
 
-/// Update a deprecation
+/// Delete a deprecation
+#[utoipa::path(
+    delete,
+    path = "/v1/mods/{id}/deprecations/{deprecation_id}",
+    tag = "deprecations",
+    params(ModDeprecationPath),
+    responses(
+        (status = 204, description = "Deprecation deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Deprecation not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[delete("v1/mods/{id}/deprecations/{deprecation_id}")]
 pub async fn delete(
     data: web::Data<AppData>,
@@ -183,6 +248,22 @@ pub async fn delete(
     Ok(HttpResponse::NoContent())
 }
 
+/// Delete all deprecations for a mod
+#[utoipa::path(
+    delete,
+    path = "/v1/mods/{id}/deprecations",
+    tag = "deprecations",
+    params(ModPath),
+    responses(
+        (status = 204, description = "All deprecations deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Mod not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[delete("v1/mods/{id}/deprecations")]
 pub async fn clear_all(
     data: web::Data<AppData>,

@@ -3,6 +3,7 @@ use std::str::FromStr;
 use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 use sqlx::{types::ipnetwork::IpNetwork, Acquire};
+use utoipa::{ToSchema, IntoParams};
 
 use crate::config::AppData;
 use crate::database::repository::{
@@ -29,42 +30,42 @@ use crate::{
     },
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct IndexPath {
     id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct GetOnePath {
     id: String,
     version: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateQueryParams {
     download_link: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct UpdatePayload {
     status: ModVersionStatusEnum,
     info: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct UpdateVersionPath {
     id: String,
     version: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetOneQuery {
     platforms: Option<String>,
     gd: Option<String>,
     major: Option<u32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct IndexQuery {
     page: Option<i64>,
     per_page: Option<i64>,
@@ -75,6 +76,17 @@ struct IndexQuery {
     compare: Option<String>,
 }
 
+/// List all versions for a mod
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}/versions",
+    tag = "mod_versions",
+    params(IndexPath, IndexQuery),
+    responses(
+        (status = 200, description = "List of mod versions", body = inline(ApiResponse<Vec<ModVersion>>)),
+        (status = 404, description = "Mod not found")
+    )
+)]
 #[get("v1/mods/{id}/versions")]
 pub async fn get_version_index(
     path: web::Path<IndexPath>,
@@ -124,6 +136,17 @@ pub async fn get_version_index(
     }))
 }
 
+/// Get a specific version of a mod
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}/versions/{version}",
+    tag = "mod_versions",
+    params(GetOnePath, GetOneQuery),
+    responses(
+        (status = 200, description = "Mod version details", body = inline(ApiResponse<ModVersion>)),
+        (status = 404, description = "Mod or version not found")
+    )
+)]
 #[get("v1/mods/{id}/versions/{version}")]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -167,7 +190,7 @@ pub async fn get_one(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct DownloadQuery {
     gd: Option<GDVersionEnum>,
     // platform1,platform2,...
@@ -175,6 +198,17 @@ struct DownloadQuery {
     major: Option<u32>,
 }
 
+/// Download a specific version of a mod (redirects to download URL)
+#[utoipa::path(
+    get,
+    path = "/v1/mods/{id}/versions/{version}/download",
+    tag = "mod_versions",
+    params(GetOnePath, DownloadQuery),
+    responses(
+        (status = 302, description = "Redirect to download URL"),
+        (status = 404, description = "Mod or version not found")
+    )
+)]
 #[get("v1/mods/{id}/versions/{version}/download")]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
@@ -236,6 +270,26 @@ pub async fn download_version(
         .finish())
 }
 
+/// Create a new version for a mod
+#[utoipa::path(
+    post,
+    path = "/v1/mods/{id}/versions",
+    tag = "mod_versions",
+    params(
+        ("id" = String, Path, description = "Mod ID")
+    ),
+    request_body = CreateQueryParams,
+    responses(
+        (status = 201, description = "Version created", body = inline(ApiResponse<ModVersion>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 409, description = "Version already exists")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[post("v1/mods/{id}/versions")]
 pub async fn create_version(
     path: web::Path<String>,
@@ -410,6 +464,24 @@ pub async fn create_version(
     }))
 }
 
+/// Update a mod version status (admin only)
+#[utoipa::path(
+    put,
+    path = "/v1/mods/{id}/versions/{version}",
+    tag = "mod_versions",
+    params(UpdateVersionPath),
+    request_body = UpdatePayload,
+    responses(
+        (status = 204, description = "Version updated successfully"),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 404, description = "Mod or version not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[put("v1/mods/{id}/versions/{version}")]
 pub async fn update_version(
     path: web::Path<UpdateVersionPath>,

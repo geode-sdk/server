@@ -1,8 +1,9 @@
 use crate::{database::repository::developers, endpoints::ApiError};
 use chrono::Utc;
-use reqwest::{header::HeaderValue, Client};
+use reqwest::{Client, header::HeaderValue};
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
+use utoipa::ToSchema;
 
 use super::mod_entity::Mod;
 
@@ -19,7 +20,7 @@ struct GithubReleaseWithAssets {
     assets: Vec<GithubReleaseAsset>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct Stats {
     pub total_geode_downloads: i64,
     pub total_mod_count: i64,

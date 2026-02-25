@@ -4,7 +4,17 @@ use crate::config::AppData;
 use crate::database::repository::mod_tags;
 use crate::endpoints::ApiError;
 use crate::types::api::ApiResponse;
+use crate::types::models::tag::Tag;
 
+/// Get all available tags
+#[utoipa::path(
+    get,
+    path = "/v1/tags",
+    tag = "tags",
+    responses(
+        (status = 200, description = "List of tag names", body = inline(ApiResponse<Vec<String>>))
+    )
+)]
 #[get("/v1/tags")]
 pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
@@ -20,6 +30,15 @@ pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError>
     }))
 }
 
+/// Get all available tags with detailed information
+#[utoipa::path(
+    get,
+    path = "/v1/detailed-tags",
+    tag = "tags",
+    responses(
+        (status = 200, description = "List of tags with details", body = inline(ApiResponse<Vec<Tag>>))
+    )
+)]
 #[get("/v1/detailed-tags")]
 pub async fn detailed_index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
