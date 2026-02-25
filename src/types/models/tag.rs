@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::database::repository::mod_tags;
-use crate::{database::DatabaseError, endpoints::ApiError};
+use crate::database::{repository::mod_tags, DatabaseError};
+use crate::endpoints::ApiError;
 use sqlx::PgConnection;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct Tag {
     pub id: i32,
     pub name: String,

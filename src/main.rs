@@ -1,11 +1,14 @@
+use crate::openapi::ApiDoc;
+use crate::types::api;
 use actix_cors::Cors;
 use actix_web::{
     App, HttpServer,
     middleware::Logger,
     web::{self, QueryConfig},
 };
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
-use crate::types::api;
 mod auth;
 mod cli;
 mod config;
@@ -15,6 +18,7 @@ mod events;
 mod extractors;
 mod jobs;
 mod mod_zip;
+mod openapi;
 mod types;
 mod webhook;
 
@@ -37,9 +41,14 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
+        let openapi = ApiDoc::openapi();
+
         App::new()
             .app_data(web::Data::new(app_data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
+            .service(
+                SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()),
+            )
             .wrap(
                 Cors::default()
                     .allow_any_origin()

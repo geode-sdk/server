@@ -1,5 +1,14 @@
 use actix_web::get;
 
+/// Health check endpoint
+#[utoipa::path(
+    get,
+    path = "/",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service is healthy", body = String, content_type = "text/plain")
+    )
+)]
 #[get("/")]
 pub async fn health() -> &'static str {
     r#"

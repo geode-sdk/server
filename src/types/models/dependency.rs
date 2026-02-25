@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
+use utoipa::ToSchema;
 use crate::database::DatabaseError;
 
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
@@ -16,7 +17,7 @@ pub struct DependencyCreate {
     pub importance: DependencyImportance,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct ResponseDependency {
     pub mod_id: String,
     pub version: String,
@@ -64,7 +65,7 @@ impl FetchedDependency {
     }
 }
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, ToSchema)]
 #[sqlx(type_name = "version_compare")]
 pub enum ModVersionCompare {
     #[serde(rename = "=")]
@@ -96,7 +97,7 @@ impl Display for ModVersionCompare {
     }
 }
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, ToSchema)]
 #[sqlx(type_name = "dependency_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum DependencyImportance {

@@ -8,6 +8,7 @@ use crate::database::DatabaseError;
 use crate::types::models::dependency::ModVersionCompare;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, Postgres};
+use utoipa::ToSchema;
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedIncompatibility {
@@ -28,7 +29,7 @@ pub struct IncompatibilityCreate {
 #[derive(sqlx::FromRow)]
 pub struct Incompatibility {}
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ToSchema)]
 pub struct Replacement {
     pub id: String,
     pub version: String,
@@ -39,7 +40,7 @@ pub struct Replacement {
     pub incompatibilities: Vec<ResponseIncompatibility>,
 }
 
-#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq, Default)]
+#[derive(sqlx::Type, Debug, Serialize, Clone, Copy, Deserialize, PartialEq, Default, ToSchema)]
 #[sqlx(type_name = "incompatibility_importance", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum IncompatibilityImportance {
@@ -49,7 +50,7 @@ pub enum IncompatibilityImportance {
     Superseded,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct ResponseIncompatibility {
     pub mod_id: String,
     pub version: String,

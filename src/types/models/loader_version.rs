@@ -7,6 +7,7 @@ use crate::{
 };
 
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use sqlx::{
     PgConnection, Postgres, QueryBuilder,
@@ -24,7 +25,7 @@ pub struct LoaderVersionCreate {
     pub ios: Option<GDVersionEnum>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct LoaderVersion {
     pub version: String,
     pub tag: String,

@@ -1,9 +1,10 @@
 use serde::Serialize;
 use sqlx::PgConnection;
+use utoipa::ToSchema;
 
 use crate::database::DatabaseError;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct ModLinks {
     #[serde(skip_serializing)]
     pub mod_id: String,

@@ -1,6 +1,7 @@
 use actix_web::{get, post, web, HttpResponse, Responder};
 use serde::Deserialize;
 use std::str::FromStr;
+use utoipa::{ToSchema, IntoParams};
 
 use sqlx::Acquire;
 
@@ -9,7 +10,7 @@ use crate::{
     config::AppData,
     extractors::auth::Auth,
     types::{
-        api::ApiResponse,
+        api::{ApiResponse, PaginatedData},
         models::{
             gd_version_alias::GDVersionAlias,
             loader_version::{GetVersionsQuery, LoaderVersion, LoaderVersionCreate},
@@ -18,7 +19,7 @@ use crate::{
     },
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetOneQuery {
     platform: Option<VerPlatform>,
     gd: Option<String>,
@@ -26,11 +27,22 @@ struct GetOneQuery {
     prerelease: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetOnePath {
     version: String,
 }
 
+/// Get a specific loader version (or latest)
+#[utoipa::path(
+    get,
+    path = "/v1/loader/versions/{version}",
+    tag = "loader",
+    params(GetOnePath, GetOneQuery),
+    responses(
+        (status = 200, description = "Loader version details", body = inline(ApiResponse<LoaderVersion>)),
+        (status = 404, description = "Version not found")
+    )
+)]
 #[get("v1/loader/versions/{version}")]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -70,7 +82,7 @@ pub async fn get_one(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct CreateVersionBody {
     pub tag: String,
     #[serde(default)]
@@ -79,6 +91,22 @@ struct CreateVersionBody {
     pub gd: DetailedGDVersion,
 }
 
+/// Create a new loader version (admin only)
+#[utoipa::path(
+    post,
+    path = "/v1/loader/versions",
+    tag = "loader",
+    request_body = CreateVersionBody,
+    responses(
+        (status = 201, description = "Loader version created", body = inline(ApiResponse<LoaderVersion>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
 #[post("v1/loader/versions")]
 pub async fn create_version(
     data: web::Data<AppData>,
@@ -112,7 +140,7 @@ pub async fn create_version(
     Ok(HttpResponse::NoContent())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct GetManyQuery {
     pub gd: Option<GDVersionEnum>,
     pub platform: Option<VerPlatform>,
@@ -121,6 +149,16 @@ struct GetManyQuery {
     pub prerelease: Option<bool>,
 }
 
+/// Get all loader versions with optional filtering
+#[utoipa::path(
+    get,
+    path = "/v1/loader/versions",
+    tag = "loader",
+    params(GetManyQuery),
+    responses(
+        (status = 200, description = "List of loader versions", body = inline(ApiResponse<PaginatedData<LoaderVersion>>))
+    )
+)]
 #[get("v1/loader/versions")]
 pub async fn get_many(
     data: web::Data<AppData>,

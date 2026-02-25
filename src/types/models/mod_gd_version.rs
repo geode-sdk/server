@@ -2,10 +2,11 @@ use std::{collections::HashMap, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
+use utoipa::ToSchema;
 
 use crate::{database::DatabaseError, types::mod_json::ModJson};
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, Hash, PartialEq, Eq, ToSchema)]
 #[sqlx(type_name = "gd_version")]
 pub enum GDVersionEnum {
     #[serde(rename = "*")]
@@ -81,7 +82,7 @@ pub enum PlatformParseError {
     InvalidPlatform(String),
 }
 
-#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
 #[sqlx(type_name = "gd_ver_platform", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum VerPlatform {
@@ -162,7 +163,7 @@ pub struct ModGDVersionCreate {
     pub platform: VerPlatform,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, ToSchema)]
 pub struct DetailedGDVersion {
     pub win: Option<GDVersionEnum>,
     #[serde(skip_serializing)]

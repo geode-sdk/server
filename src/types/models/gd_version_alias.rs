@@ -4,10 +4,11 @@ use crate::{
 };
 
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use sqlx::{types::Uuid, PgConnection, Postgres, QueryBuilder};
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct GDVersionAlias {
     pub version_name: GDVersionEnum,
     pub mac_arm_uuid: Option<String>,

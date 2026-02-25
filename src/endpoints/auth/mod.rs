@@ -7,20 +7,32 @@ use actix_web::{post, web, Responder};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
 use uuid::Uuid;
+use utoipa::ToSchema;
 
 pub mod github;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct TokensResponse {
     access_token: String,
     refresh_token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct RefreshBody {
     refresh_token: String,
 }
 
+/// Refresh an access token using a refresh token
+#[utoipa::path(
+    post,
+    path = "/v1/login/refresh",
+    tag = "auth",
+    request_body = RefreshBody,
+    responses(
+        (status = 200, description = "New tokens generated", body = inline(ApiResponse<TokensResponse>)),
+        (status = 400, description = "Invalid or expired refresh token")
+    )
+)]
 #[post("v1/login/refresh")]
 pub async fn refresh_token(
     json: web::Json<RefreshBody>,
