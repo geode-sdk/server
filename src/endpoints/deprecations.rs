@@ -296,7 +296,7 @@ async fn check_existing_mods(ids: &[String], conn: &mut PgConnection) -> Result<
 
     let (_, missing) = mods::exists_multiple(ids, &mut *conn).await?;
 
-    if missing.is_empty() {
+    if !missing.is_empty() {
         return Err(ApiError::BadRequest(format!(
             "The following mods don't exist on the index: {}",
             missing.join(", ")
