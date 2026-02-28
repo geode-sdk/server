@@ -3,7 +3,7 @@ use crate::database::DatabaseError;
 use crate::types::{
     mod_json::ModJson,
     models::{
-        developer::Developer, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum,
+        developer::Developer, mod_version::ModVersion, mod_version_status::ModVersionStatusEnum, mod_gd_version::ModGDVersion,
     },
 };
 use chrono::{DateTime, Utc};
@@ -93,7 +93,7 @@ pub async fn get_for_mod(
     statuses: Option<&[ModVersionStatusEnum]>,
     conn: &mut PgConnection,
 ) -> Result<Vec<ModVersion>, DatabaseError> {
-    sqlx::query_as!(
+    let records = sqlx::query_as!(
         ModVersionRow,
         r#"SELECT
             mv.id, mv.name, mv.description, mv.version,
@@ -110,11 +110,23 @@ pub async fn get_for_mod(
         mod_id,
         statuses as Option<&[ModVersionStatusEnum]>
     )
-        .fetch_all(conn)
+        .fetch_all(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to get mod_versions for mod {mod_id}: {e}"))
-        .map_err(|e| e.into())
-        .map(|opt: Vec<ModVersionRow>| opt.into_iter().map(|x| x.into_mod_version()).collect())
+        .inspect_err(|e| log::error!("Failed to get mod_versions for mod {mod_id}: {e}"))?;
+
+    let version_ids: Vec<i32> = records.iter().map(|x| x.id).collect();
+    let mut gd_versions = ModGDVersion::get_for_mod_versions(&version_ids, conn).await?;
+
+    let versions: Vec<ModVersion> = records
+        .into_iter()
+        .map(|x| {
+            let mut version = x.into_mod_version();
+            version.gd = gd_versions.remove(&version.id).unwrap_or_default();
+            version
+        })
+        .collect();
+
+    Ok(versions)
 }
 
 pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
