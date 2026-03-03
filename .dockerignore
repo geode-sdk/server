@@ -1,7 +1,10 @@
-target
+target/
 Dockerfile
 .dockerignore
-.idea
-.git
+.idea/
+.git/
 .gitignore
 .env
+log/
+docs/
+README.md

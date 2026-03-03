@@ -1,4 +1,4 @@
-name: Build Docker Image
+name: Build Ubuntu 24.04 image for ARM builds
 
 on:
   push:
