@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 
+ARG LIBC=musl
+
 # 1. shared toolchain (Rust + Zig + cargo-chef + cargo-zigbuild)
 FROM --platform=$BUILDPLATFORM debian:trixie-slim AS builder-tools
 
@@ -115,3 +117,4 @@ EXPOSE 3000
 ENTRYPOINT ["./geode-index"]
 
 FROM runtime-${LIBC:-musl} AS runtime
+ARG LIBC
