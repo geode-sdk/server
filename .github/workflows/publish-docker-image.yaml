@@ -10,10 +10,31 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  resolve-tag:
+    name: Resolve tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            tag=$(gh release view --repo "${{ github.repository }}" --json tagName -q '.tagName')
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          fi
+
   # 1. Build each arch, push by digest, upload as artifact
   build:
     name: Build (${{ matrix.arch }}, ${{ matrix.suffix }})
     runs-on: ubuntu-24.04
+    needs: resolve-tag
     permissions:
       contents: read
       packages: write
@@ -49,6 +70,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -92,7 +115,7 @@ jobs:
   merge:
     name: Merge (${{ matrix.suffix }})
     runs-on: ubuntu-24.04
-    needs: build
+    needs: [resolve-tag, build]
     permissions:
       contents: read
       packages: write
@@ -132,8 +155,8 @@ jobs:
           flavor: |
             suffix=-${{ matrix.suffix }},onlatest=true
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.resolve-tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.resolve-tag.outputs.tag }}
             type=raw,value=latest
 
       - name: Create and push multi-arch manifest
