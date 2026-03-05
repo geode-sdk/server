@@ -44,29 +44,18 @@ const MAX_MODS_PER_DEPRECATION: usize = 20;
     params(ModPath),
     responses(
         (status = 200, description = "List of deprecations", body = inline(ApiResponse<Vec<Deprecation>>)),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
         (status = 404, description = "Mod not found")
-    ),
-    security(
-        ("bearer_token" = [])
     )
 )]
 #[get("v1/mods/{id}/deprecations")]
 pub async fn index(
     data: web::Data<AppData>,
-    path: web::Path<ModPath>,
-    auth: Auth,
+    path: web::Path<ModPath>
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
-    }
-    // Allow admins to deprecate any mod
-    if !dev.admin && !developers::owns_mod(dev.id, &path.id, &mut pool).await? {
-        return Err(ApiError::Authorization);
     }
 
     let deps = deprecations::get_for_mods(std::slice::from_ref(&path.id), &mut pool).await?;
