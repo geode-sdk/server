@@ -139,6 +139,32 @@ pub async fn get_one(id: i32, conn: &mut PgConnection) -> Result<Option<Develope
     .map_err(|e| e.into())
 }
 
+pub async fn get_many_by_id(
+    ids: &[i32],
+    conn: &mut PgConnection,
+) -> Result<Vec<Developer>, DatabaseError> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    sqlx::query_as!(
+        Developer,
+        "SELECT
+            id,
+            username,
+            display_name,
+            verified,
+            admin,
+            github_user_id as github_id
+        FROM developers
+        WHERE id = ANY($1)",
+        ids
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("Failed to fetch developers by id: {e}"))
+    .map_err(|e| e.into())
+}
+
 pub async fn get_one_by_username(
     username: &str,
     conn: &mut PgConnection,
