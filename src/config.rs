@@ -21,6 +21,7 @@ pub struct AppData {
     max_download_mb: u32,
     port: u16,
     debug: bool,
+    storage_path: String,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
 }
@@ -53,6 +54,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .unwrap_or("250".to_string())
         .parse::<u32>()
         .unwrap_or(250);
+    let storage_path = dotenvy::var("STORAGE_PATH").unwrap_or("./storage".to_string());
     let mods_cache = Cache::builder()
         .max_capacity(128)
         .time_to_idle(Duration::from_mins(5))
@@ -72,6 +74,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         max_download_mb,
         port,
         debug,
+        storage_path,
         mods_cache,
     })
 }
@@ -121,6 +124,10 @@ impl AppData {
 
     pub fn debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn storage_path(&self) -> &str {
+        &self.storage_path
     }
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {

@@ -44,3 +44,4 @@ thiserror = "2.0.12"
 moka = { version = "0.12.13", features = ["future"] }
 utoipa = { version = "5.4.0", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }
+bytes = "1.11"

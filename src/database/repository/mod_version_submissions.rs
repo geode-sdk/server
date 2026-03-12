@@ -1,5 +1,7 @@
 use crate::database::DatabaseError;
-use crate::types::models::mod_version_submission::{ModVersionSubmissionCommentRow, ModVersionSubmissionRow};
+use crate::types::models::mod_version_submission::{
+    ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionRow,
+};
 use sqlx::{Error, PgConnection};
 
 pub async fn get_for_mod_version(
@@ -82,7 +84,7 @@ pub async fn get_paginated_comments_for_submission(
     .fetch_all(conn)
     .await
     .inspect_err(|e| log::error!("mod_version_submissions::get_paginated_items_for_submission failed: {e}"))
-    .map_err(|e: Error| e.into())
+    .map_err(|e| e.into())
 }
 
 pub async fn count_comments_for_submission(
@@ -170,5 +172,103 @@ pub async fn delete_comment(
     .await
     .inspect_err(|e| log::error!("mod_version_submissions::delete_comment failed: {e}"))?;
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn count_attachments_for_comment(
+    comment_id: i64,
+    conn: &mut PgConnection,
+) -> Result<i64, DatabaseError> {
+    sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM mod_version_submission_comment_attachments WHERE comment_id = $1",
+        comment_id
+    )
+    .fetch_one(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::count_attachments_for_comment failed: {e}"))
+    .map(|c| c.unwrap_or(0))
+    .map_err(|e| e.into())
+}
+
+pub async fn create_attachment(
+    comment_id: i64,
+    filename: &str,
+    conn: &mut PgConnection,
+) -> Result<ModVersionSubmissionAttachmentRow, DatabaseError> {
+    sqlx::query_as!(
+        ModVersionSubmissionAttachmentRow,
+        "INSERT INTO mod_version_submission_comment_attachments (comment_id, filename)
+        VALUES ($1, $2)
+        RETURNING id, comment_id, filename, created_at",
+        comment_id,
+        filename
+    )
+    .fetch_one(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::create_attachment failed: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn get_attachments_for_comment(
+    comment_id: i64,
+    conn: &mut PgConnection,
+) -> Result<Vec<ModVersionSubmissionAttachmentRow>, DatabaseError> {
+    sqlx::query_as!(
+        ModVersionSubmissionAttachmentRow,
+        "SELECT id, comment_id, filename, created_at
+        FROM mod_version_submission_comment_attachments
+        WHERE comment_id = $1
+        ORDER BY id ASC",
+        comment_id
+    )
+    .fetch_all(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::get_attachments_for_comment failed: {e}"))
+    .map_err(|e: Error| e.into())
+}
+
+pub async fn get_attachment(
+    attachment_id: i64,
+    conn: &mut PgConnection,
+) -> Result<Option<ModVersionSubmissionAttachmentRow>, DatabaseError> {
+    sqlx::query_as!(
+        ModVersionSubmissionAttachmentRow,
+        "SELECT id, comment_id, filename, created_at
+        FROM mod_version_submission_comment_attachments
+        WHERE id = $1",
+        attachment_id
+    )
+    .fetch_optional(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::get_attachment failed: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn delete_attachment(
+    attachment_id: i64,
+    conn: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    let result = sqlx::query!(
+        "DELETE FROM mod_version_submission_comment_attachments WHERE id = $1",
+        attachment_id
+    )
+    .execute(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::delete_attachment failed: {e}"))?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn count_references_to_filename(
+    filename: &str,
+    conn: &mut PgConnection,
+) -> Result<i64, DatabaseError> {
+    sqlx::query_scalar!(
+        "SELECT COUNT(*) FROM mod_version_submission_comment_attachments WHERE filename = $1",
+        filename
+    )
+    .fetch_one(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::count_references_to_filename failed: {e}"))
+    .map(|c| c.unwrap_or(0))
+    .map_err(|e| e.into())
 }
 

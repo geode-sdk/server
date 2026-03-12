@@ -64,6 +64,35 @@ impl ModVersionSubmissionCommentRow {
     }
 }
 
+#[derive(Serialize, ToSchema, Debug, Clone)]
+pub struct ModVersionSubmissionAttachment {
+    pub id: i64,
+    pub comment_id: i64,
+    pub url: String,
+    pub created_at: DateTime<Utc>,
+}
+
+pub struct ModVersionSubmissionAttachmentRow {
+    pub id: i64,
+    pub comment_id: i64,
+    pub filename: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl ModVersionSubmissionAttachmentRow {
+    pub fn into_attachment(self, app_url: &str) -> ModVersionSubmissionAttachment {
+        ModVersionSubmissionAttachment {
+            id: self.id,
+            comment_id: self.comment_id,
+            url: format!(
+                "{}/storage/submission-attachments/{}",
+                app_url, self.filename
+            ),
+            created_at: self.created_at,
+        }
+    }
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSubmissionPayload {
     pub locked: bool,
