@@ -8,7 +8,7 @@ use utoipa::{ToSchema, IntoParams};
 use crate::config::AppData;
 use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
-    mod_tags, mod_versions, mods,
+    mod_tags, mod_version_submissions, mod_versions, mods,
 };
 use crate::endpoints::ApiError;
 use crate::events::mod_created::{
@@ -435,6 +435,11 @@ pub async fn create_version(
         }
 
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+    }
+
+
+    if !make_accepted {
+        mod_version_submissions::create(version.id, &mut tx).await?;
     }
 
     tx.commit().await?;
