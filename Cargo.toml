@@ -4,7 +4,8 @@ version = "0.51.3"
 edition = "2024"
 
 [dependencies]
-image = { version = "0.25", features = ["png"] }
+image = { version = "0.25", features = ["png", "jpeg", "webp"] }
+actix-multipart = "0.7"
 actix-web = "4.10"
 anyhow = "1.0"
 dotenvy = "0.15"
