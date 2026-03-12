@@ -544,7 +544,7 @@ pub async fn upload_attachments(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked && !dev.admin {
+    if submission.locked {
         return Err(ApiError::BadRequest(
             "Submission is locked; attachments cannot be uploaded".into(),
         ));
@@ -561,10 +561,7 @@ pub async fn upload_attachments(
         )));
     }
 
-    if !dev.admin
-        && !developers::has_access_to_mod(dev.id, &path.id, &mut pool).await?
-        && comment_row.author_id != dev.id
-    {
+    if comment_row.author_id != dev.id {
         return Err(ApiError::Authorization);
     }
 
@@ -681,9 +678,15 @@ pub async fn delete_attachment(
 
     let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
 
-    mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
+
+    if submission.locked && !dev.admin {
+        return Err(ApiError::BadRequest(
+            "Submission is locked; attachments cannot be deleted".into(),
+        ));
+    }
 
     let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut pool)
         .await?
