@@ -1,3 +1,12 @@
+use super::ApiError;
+use crate::config::AppData;
+use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
+use crate::extractors::auth::Auth;
+use crate::types::api::{ApiResponse, PaginatedData};
+use crate::types::models::mod_version_submission::{
+    CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
+    ModVersionSubmissionComment, UpdateCommentPayload, UpdateSubmissionPayload,
+};
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use futures::StreamExt;
@@ -5,9 +14,6 @@ use serde::Deserialize;
 use sqlx::PgConnection;
 use std::collections::HashMap;
 use utoipa::IntoParams;
-
-use super::ApiError;
-use crate::config::AppData;
 
 fn sanitize_comment(raw: &str) -> String {
     ammonia::Builder::default()
@@ -17,13 +23,6 @@ fn sanitize_comment(raw: &str) -> String {
         .trim()
         .to_string()
 }
-use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
-use crate::extractors::auth::Auth;
-use crate::types::api::{ApiResponse, PaginatedData};
-use crate::types::models::mod_version_submission::{
-    CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
-    ModVersionSubmissionComment, UpdateCommentPayload, UpdateSubmissionPayload,
-};
 
 #[derive(Deserialize, IntoParams)]
 struct SubmissionPath {
@@ -720,7 +719,11 @@ pub async fn delete_attachment(
     let remaining =
         mod_version_submissions::count_references_to_filename(&filename, &mut pool).await?;
     if remaining == 0 {
-        let file_path = format!("{}/submission_attachments/{}", data.storage_path(), filename);
+        let file_path = format!(
+            "{}/submission_attachments/{}",
+            data.storage_path(),
+            filename
+        );
         tokio::fs::remove_file(&file_path).await.ok();
     }
 
