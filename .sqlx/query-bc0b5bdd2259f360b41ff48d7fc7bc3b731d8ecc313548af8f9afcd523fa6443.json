@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_version_submissions (mod_version_id)\n        VALUES ($1)\n        RETURNING mod_version_id, locked, locked_by, created_at, updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "locked",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "locked_by",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "bc0b5bdd2259f360b41ff48d7fc7bc3b731d8ecc313548af8f9afcd523fa6443"
+}
