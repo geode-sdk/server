@@ -100,11 +100,15 @@ pub struct UpdateSubmissionPayload {
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateCommentPayload {
+    #[schema(max_length = 1000)]
+    /// Plain text comment; HTML tags are stripped
     pub comment: String,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateCommentPayload {
+    #[schema(max_length = 1000)]
+    /// Plain text comment; HTML tags are stripped
     pub comment: String,
 }
 

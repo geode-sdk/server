@@ -8,6 +8,15 @@ use utoipa::IntoParams;
 
 use super::ApiError;
 use crate::config::AppData;
+
+fn sanitize_comment(raw: &str) -> String {
+    ammonia::Builder::default()
+        .tags(std::collections::HashSet::new())
+        .clean(raw)
+        .to_string()
+        .trim()
+        .to_string()
+}
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::extractors::auth::Auth;
 use crate::types::api::{ApiResponse, PaginatedData};
@@ -259,9 +268,14 @@ pub async fn create_comment(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
 
-    let comment_text = payload.comment.trim().to_string();
+    let comment_text = sanitize_comment(&payload.comment);
     if comment_text.is_empty() {
         return Err(ApiError::BadRequest("Comment must not be empty".into()));
+    }
+    if comment_text.len() > 1000 {
+        return Err(ApiError::BadRequest(
+            "Comment must not exceed 1000 characters".into(),
+        ));
     }
 
     let mut pool = data.db().acquire().await?;
@@ -321,9 +335,14 @@ pub async fn update_comment(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
 
-    let comment_text = payload.comment.trim().to_string();
+    let comment_text = sanitize_comment(&payload.comment);
     if comment_text.is_empty() {
         return Err(ApiError::BadRequest("Comment must not be empty".into()));
+    }
+    if comment_text.len() > 1000 {
+        return Err(ApiError::BadRequest(
+            "Comment must not exceed 1000 characters".into(),
+        ));
     }
 
     let mut pool = data.db().acquire().await?;
