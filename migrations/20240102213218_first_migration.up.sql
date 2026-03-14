@@ -40,7 +40,7 @@ CREATE TABLE mod_tags (
 INSERT INTO mod_tags (name) VALUES
 ('universal'), ('gameplay'), ('editor'), ('offline'), ('online'),
 ('enhancement'), ('music'), ('interface'), ('bugfix'), ('utility'),
-('performance'), ('customization'), ('content'), ('developer'), ('joke'), ('api');
+('performance'), ('customization'), ('content'), ('developer');
 
 CREATE TABLE mods_mod_tags (
     mod_id TEXT NOT NULL,
