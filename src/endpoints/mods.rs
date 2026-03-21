@@ -1,3 +1,8 @@
+#[derive(Deserialize, ToSchema)]
+pub struct ModGetQueryParams {
+    pub abbreviate: Option<bool>,
+}
+use crate::abbreviate::abbreviate_number;
 use crate::config::AppData;
 use crate::database::repository::developers;
 use crate::database::repository::incompatibilities;
@@ -24,7 +29,7 @@ use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -74,7 +79,6 @@ pub struct CreateQueryParams {
         (status = 403, description = "Forbidden")
     )
 )]
-
 #[get("/v1/mods")]
 pub async fn index(
     data: web::Data<AppData>,
@@ -126,6 +130,7 @@ pub async fn index(
 pub async fn get(
     data: web::Data<AppData>,
     id: web::Path<String>,
+    query: web::Query<ModGetQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer().ok();
@@ -171,9 +176,31 @@ pub async fn get(
         i.modify_metadata(data.app_url(), has_extended_permissions);
     }
 
+    // If abbreviate param is set, abbreviate download_count fields
+    let mut payload = serde_json::to_value(&the_mod).unwrap();
+    if query.abbreviate.unwrap_or(false) {
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert(
+                "download_count".to_string(),
+                serde_json::Value::String(abbreviate_number(the_mod.download_count)),
+            );
+            if let Some(versions) = obj.get_mut("versions").and_then(|v| v.as_array_mut()) {
+                for (i, v) in versions.iter_mut().enumerate() {
+                    if let Some(version_obj) = v.as_object_mut() {
+                        if let Some(dc) = the_mod.versions.get(i) {
+                            version_obj.insert(
+                                "download_count".to_string(),
+                                serde_json::Value::String(abbreviate_number(dc.download_count)),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: the_mod,
+        payload,
     }))
 }
 
@@ -208,7 +235,9 @@ pub async fn create(
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
-        return Err(ApiError::BadRequest("Only index admins may use mod ids that start with 'geode.'".into()));
+        return Err(ApiError::BadRequest(
+            "Only index admins may use mod ids that start with 'geode.'".into(),
+        ));
     }
 
     if let Some(m) = &existing {

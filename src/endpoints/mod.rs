@@ -1,10 +1,12 @@
+pub mod mod_status_badge;
 use crate::{
     mod_zip::ModZipError,
     types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
 };
-use actix_web::{http::StatusCode, HttpResponse};
+use actix_web::{HttpResponse, http::StatusCode};
 
 pub mod auth;
+pub mod deprecations;
 pub mod developers;
 pub mod health;
 pub mod loader;
@@ -12,7 +14,6 @@ pub mod mod_versions;
 pub mod mods;
 pub mod stats;
 pub mod tags;
-pub mod deprecations;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
