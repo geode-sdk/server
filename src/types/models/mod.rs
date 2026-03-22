@@ -1,4 +1,5 @@
 pub mod dependency;
+pub mod download_count;
 pub mod developer;
 pub mod github_login_attempt;
 pub mod incompatibility;

@@ -1,5 +1,6 @@
 use super::{
     dependency::ResponseDependency,
+    download_count::DownloadCount,
     developer::ModDeveloper,
     incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
@@ -22,20 +23,21 @@ use crate::{
     },
 };
 use semver::Version;
-use serde::Serialize;
-use utoipa::ToSchema;
 use sqlx::{
     PgConnection,
     types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
+use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Serialize, Debug, Clone, sqlx::FromRow, ToSchema)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct Mod {
     pub id: String,
     pub repository: Option<String>,
     pub featured: bool,
-    pub download_count: i32,
+    #[schema(value_type = i32)]
+    pub download_count: DownloadCount,
     pub developers: Vec<ModDeveloper>,
     pub versions: Vec<ModVersion>,
     pub tags: Vec<String>,
@@ -107,6 +109,13 @@ pub struct ModStats {
 }
 
 impl Mod {
+    pub fn set_abbreviated_download_counts(&mut self, abbreviate: bool) {
+        self.download_count.set_abbreviated(abbreviate);
+        for version in &mut self.versions {
+            version.set_abbreviated_download_count(abbreviate);
+        }
+    }
+
     pub async fn get_stats(pool: &mut PgConnection) -> Result<ModStats, DatabaseError> {
         let result = sqlx::query!(
             "
@@ -356,7 +365,7 @@ impl Mod {
                 Mod {
                     id: x.id,
                     repository: x.repository,
-                    download_count: x.download_count,
+                    download_count: x.download_count.into(),
                     featured: x.featured,
                     versions: vec![version],
                     tags,
@@ -403,7 +412,7 @@ impl Mod {
                 Mod {
                     id: x.id.clone(),
                     repository: x.repository.clone(),
-                    download_count: x.download_count,
+                    download_count: x.download_count.into(),
                     featured: x.featured,
                     versions: version,
                     tags,
@@ -548,7 +557,7 @@ impl Mod {
                 description: x.description.clone(),
                 version: x.version.clone(),
                 download_link: x.download_link.clone(),
-                download_count: x.mod_version_download_count,
+                download_count: x.mod_version_download_count.into(),
                 hash: x.hash.clone(),
                 geode: x.geode.clone(),
                 early_load: x.early_load,
@@ -592,7 +601,7 @@ impl Mod {
             id: records[0].id.clone(),
             repository: records[0].repository.clone(),
             featured: records[0].featured,
-            download_count: records[0].mod_download_count,
+            download_count: records[0].mod_download_count.into(),
             versions,
             tags,
             developers: devs,
