@@ -26,9 +26,9 @@ use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
-use sqlx::Acquire;
-use utoipa::{IntoParams, ToSchema};
 use serde::Serialize;
+use sqlx::Acquire;
+use utoipa::{ToSchema, IntoParams};
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +78,7 @@ pub struct CreateQueryParams {
         (status = 403, description = "Forbidden")
     )
 )]
+
 #[get("/v1/mods")]
 pub async fn index(
     data: web::Data<AppData>,
@@ -214,9 +215,7 @@ pub async fn create(
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
-        return Err(ApiError::BadRequest(
-            "Only index admins may use mod ids that start with 'geode.'".into(),
-        ));
+        return Err(ApiError::BadRequest("Only index admins may use mod ids that start with 'geode.'".into()));
     }
 
     if let Some(m) = &existing {

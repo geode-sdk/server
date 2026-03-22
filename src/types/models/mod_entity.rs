@@ -23,15 +23,15 @@ use crate::{
     },
 };
 use semver::Version;
+use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::{
     PgConnection,
     types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
-use serde::Serialize;
-use utoipa::ToSchema;
 
-#[derive(Serialize, Debug, Clone, ToSchema)]
+#[derive(Serialize, Debug, Clone, sqlx::FromRow, ToSchema)]
 pub struct Mod {
     pub id: String,
     pub repository: Option<String>,

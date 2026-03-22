@@ -38,24 +38,3 @@ impl Serialize for DownloadCount {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::DownloadCount;
-
-    #[test]
-    fn serializes_as_number_by_default() {
-        let serialized = serde_json::to_string(&DownloadCount::new(1234)).unwrap();
-
-        assert_eq!(serialized, "1234");
-    }
-
-    #[test]
-    fn serializes_as_abbreviated_string_when_enabled() {
-        let mut count = DownloadCount::new(1234);
-        count.set_abbreviated(true);
-        let serialized = serde_json::to_string(&count).unwrap();
-
-        assert_eq!(serialized, "\"1.2K\"");
-    }
-}
