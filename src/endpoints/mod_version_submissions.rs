@@ -624,7 +624,6 @@ pub async fn upload_attachments(
         .await
         .map_err(|e| ApiError::InternalError(format!("Task join error: {e}")))??;
 
-    // Write files and insert DB rows
     let attachments_dir = format!("{}/submission_attachments", storage_path);
     let app_url = data.app_url().to_string();
     let mut result = Vec::with_capacity(processed.len());
