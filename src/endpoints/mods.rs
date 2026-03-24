@@ -6,7 +6,7 @@ use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
-use crate::database::repository::{dependencies, deprecations};
+use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
 use crate::endpoints::ApiError;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
@@ -270,6 +270,11 @@ pub async fn create(
     version.gd = mod_gd_versions::create(version.id, &json, &mut tx).await?;
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut tx).await?;
     the_mod.versions.insert(0, version);
+
+
+    // First version is always pending, so always open a submission for review
+    let first_version = the_mod.versions.first().unwrap();
+    mod_version_submissions::create(first_version.id, &mut tx).await?;
 
     tx.commit().await?;
 

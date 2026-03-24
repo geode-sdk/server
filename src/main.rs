@@ -36,6 +36,10 @@ async fn main() -> anyhow::Result<()> {
     log::info!("Running migrations");
     sqlx::migrate!("./migrations").run(app_data.db()).await?;
 
+    let attachments_dir = format!("{}/submission_attachments", app_data.storage_path());
+    std::fs::create_dir_all(&attachments_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create storage directory: {e}"))?;
+
     let port = app_data.port();
     let debug = app_data.debug();
 
@@ -69,6 +73,15 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
+            .service(endpoints::mod_version_submissions::get_submission)
+            .service(endpoints::mod_version_submissions::update_submission)
+            .service(endpoints::mod_version_submissions::get_comments)
+            .service(endpoints::mod_version_submissions::create_comment)
+            .service(endpoints::mod_version_submissions::update_comment)
+            .service(endpoints::mod_version_submissions::delete_comment)
+            .service(endpoints::mod_version_submissions::get_attachments)
+            .service(endpoints::mod_version_submissions::upload_attachments)
+            .service(endpoints::mod_version_submissions::delete_attachment)
             .service(endpoints::deprecations::index)
             .service(endpoints::deprecations::store)
             .service(endpoints::deprecations::update)
