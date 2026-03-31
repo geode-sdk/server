@@ -6,6 +6,7 @@ use regex::Regex;
 use reqwest::Url;
 use semver::Version;
 use serde::Deserialize;
+use validator::{Validate, ValidationError};
 use zip::read::ZipFile;
 
 use crate::mod_zip::{self, ModZipError};
@@ -16,16 +17,29 @@ use super::models::{
     mod_gd_version::DetailedGDVersion,
 };
 
-#[derive(Debug, Deserialize)]
+const MAX_MOD_JSON_SIZE: u64 = 65536; // 64 KB
+const MAX_MARKDOWN_FILE_SIZE: u64 = 1048576; // 1 MB
+const MAX_MOD_ZIP_SIZE: u64 = 1024 * 1024 * 512; // 512 mb
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct ModJson {
+    #[validate(length(max = 32))]
     pub geode: String,
+    #[validate(length(max = 32))]
     pub version: String,
+    #[validate(length(max = 64))]
     pub id: String,
+    #[validate(length(max = 256))]
     pub name: String,
+    #[validate(length(max = 256))]
     pub developer: Option<String>,
+    #[validate(custom(function = "validate_vec_string"))]
     pub developers: Option<Vec<String>>,
+    #[validate(length(max = 512))]
     pub description: Option<String>,
+    #[validate(length(max = 512))]
     pub repository: Option<String>,
+    #[validate(custom(function = "validate_vec_string"))]
     pub tags: Option<Vec<String>>,
     #[serde(default, skip_deserializing)]
     pub windows: bool,
@@ -51,17 +65,22 @@ pub struct ModJson {
     pub gd: DetailedGDVersion,
     #[serde(skip_deserializing, skip_serializing)]
     pub logo: Vec<u8>,
+    #[validate(length(min = 1, max = MAX_MARKDOWN_FILE_SIZE))]
     pub about: Option<String>,
+    #[validate(length(min = 1, max = MAX_MARKDOWN_FILE_SIZE))]
     pub changelog: Option<String>,
     pub dependencies: Option<ModJsonDependencies>,
     pub incompatibilities: Option<ModJsonIncompatibilities>,
     pub links: Option<ModJsonLinks>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Validate)]
 pub struct ModJsonLinks {
+    #[validate(length(max = 512))]
     pub community: Option<String>,
+    #[validate(length(max = 512))]
     pub homepage: Option<String>,
+    #[validate(length(max = 512))]
     pub source: Option<String>,
 }
 
@@ -169,11 +188,33 @@ impl ModJson {
         let hash = sha256::digest(slice);
         let mut archive = mod_zip::bytes_to_ziparchive(file)?;
 
+        // check total size of the zip file
+        let mut total_size: u64 = 0;
+        for i in 0..archive.len() {
+            let file = archive.by_index(i)?;
+            total_size += file.size();
+        }
+
+        if total_size > MAX_MOD_ZIP_SIZE {
+            let size_mb = total_size / 1_000_000;
+            return Err(ModZipError::ModFileTooLargeUncompressed(
+                size_mb,
+                MAX_MOD_ZIP_SIZE / 1_000_000,
+            ));
+        }
+
         let json_file = archive
             .by_name("mod.json")
             .or(Err(ModZipError::InvalidModJson(
                 "No mod.json found in .geode file".into(),
             )))?;
+
+        if json_file.size() > MAX_MOD_JSON_SIZE {
+            return Err(ModZipError::InvalidModJson(format!(
+                "mod.json is too large (max {} bytes)",
+                MAX_MOD_JSON_SIZE
+            )));
+        }
 
         let mut json = serde_json::from_reader::<ZipFile<Cursor<Bytes>>, ModJson>(json_file)
             .inspect_err(|e| log::error!("Failed to parse mod.json: {e}"))?;
@@ -197,6 +238,13 @@ impl ModJson {
                 } else if file.name().ends_with(".android64.so") {
                     json.android64 = true;
                 } else if file.name().eq("about.md") {
+                    if file.size() > MAX_MARKDOWN_FILE_SIZE {
+                        return Err(ModZipError::InvalidModJson(format!(
+                            "about.md is too large (max {} bytes)",
+                            MAX_MARKDOWN_FILE_SIZE
+                        )));
+                    }
+
                     json.about = Some(
                         parse_zip_entry_to_str(&mut file)
                             .inspect_err(|e| log::error!("Failed to parse about.md for mod: {e}"))
@@ -205,6 +253,13 @@ impl ModJson {
                             })?,
                     );
                 } else if file.name().eq("changelog.md") {
+                    if file.size() > MAX_MARKDOWN_FILE_SIZE {
+                        return Err(ModZipError::InvalidModJson(format!(
+                            "changelog.md is too large (max {} bytes)",
+                            MAX_MARKDOWN_FILE_SIZE
+                        )));
+                    }
+
                     json.changelog = Some(
                         parse_zip_entry_to_str(&mut file)
                             .inspect_err(|e| log::error!("Failed to parse changelog.md: {e}"))
@@ -427,6 +482,13 @@ impl ModJson {
     }
 
     pub fn validate(&self) -> Result<(), ModZipError> {
+        if let Err(e) = <Self as Validate>::validate(self) {
+            log::error!("mod.json validation error: {e}");
+            return Err(ModZipError::InvalidModJson(
+                "validation error, likely one or multiple fields are unreasonably long".into(),
+            ));
+        }
+
         let id_regex = Regex::new(r#"^[a-z0-9_\-]+\.[a-z0-9_\-]+$"#).unwrap();
         if !id_regex.is_match(&self.id) {
             return Err(ModZipError::InvalidModJson(format!(
@@ -458,12 +520,6 @@ impl ModJson {
         if self.developer.is_none() && self.developers.is_none() {
             return Err(ModZipError::InvalidModJson(
                 "No developer specified on mod.json".to_string(),
-            ));
-        }
-
-        if self.id.len() > 64 {
-            return Err(ModZipError::InvalidModJson(
-                "Mod id too long (max 64 characters)".to_string(),
             ));
         }
 
@@ -619,4 +675,15 @@ fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), M
         }
     }
     Err(ModZipError::InvalidBinaries("Invalid macOS binary".into()))
+}
+
+fn validate_vec_string(vec: &Vec<String>) -> Result<(), ValidationError> {
+    for s in vec {
+        if s.len() > 256 {
+            return Err(ValidationError::new(
+                "String is too long (max 256 characters)",
+            ));
+        }
+    }
+    Ok(())
 }
