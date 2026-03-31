@@ -17,7 +17,7 @@ use super::models::{
     mod_gd_version::DetailedGDVersion,
 };
 
-const MAX_MOD_JSON_SIZE: u64 = 65536; // 64 KB
+const MAX_MOD_JSON_SIZE: u64 = 128 * 1024; // 128 KB
 const MAX_MARKDOWN_FILE_SIZE: u64 = 1048576; // 1 MB
 const MAX_MOD_ZIP_SIZE: u64 = 1024 * 1024 * 512; // 512 mb
 
@@ -500,6 +500,13 @@ impl ModJson {
         if self.id == "geode.loader" {
             return Err(ModZipError::InvalidModJson(
                 "Noooo you can't do that :(".to_string(),
+            ));
+        }
+
+        // check if name consists of printable chars
+        if !self.name.chars().all(|c| c.is_ascii_graphic() || c == ' ') {
+            return Err(ModZipError::InvalidModJson(
+                "Mod name contains non-printable characters".to_string(),
             ));
         }
 
