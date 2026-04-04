@@ -49,22 +49,22 @@ pub async fn status_badge(
         StatusBadgeStat::Version => (
             "payload.versions[0].version",
             "Version",
-            "static/mod_version.svg",
+            "storage/public/shields/mod_version.svg",
         ),
         StatusBadgeStat::GdVersion => (
             "payload.versions[0].gd.win",
             "Geometry Dash",
-            "static/mod_gd_version.svg",
+            "storage/public/shields/mod_gd_version.svg",
         ),
         StatusBadgeStat::GeodeVersion => (
             "payload.versions[0].geode",
             "Geode",
-            "static/mod_geode_version.svg",
+            "storage/public/shields/mod_geode_version.svg",
         ),
         StatusBadgeStat::Downloads => (
             "payload.download_count",
             "Downloads",
-            "static/mod_downloads.svg",
+            "storage/public/shields/mod_downloads.svg",
         ),
     };
     let svg = fs::read_to_string(Path::new(svg_path))
