@@ -297,9 +297,9 @@ pub async fn update_profile(
         ));
     }
 
-    if json.display_name.len() < 2 {
+    if json.display_name.len() < 2 || json.display_name.len() > 64 {
         return Err(ApiError::BadRequest(
-            "Display name must have more than 1 character".into(),
+            "Display name must be between 2 and 64 characters".into(),
         ));
     }
 
