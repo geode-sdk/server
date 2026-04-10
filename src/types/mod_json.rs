@@ -483,10 +483,11 @@ impl ModJson {
 
     pub fn validate(&self) -> Result<(), ModZipError> {
         if let Err(e) = <Self as Validate>::validate(self) {
-            log::error!("mod.json validation error: {e}");
-            return Err(ModZipError::InvalidModJson(
-                "validation error, likely one or multiple fields are unreasonably long".into(),
-            ));
+            log::warn!("mod.json validation error: {e}");
+            let useful_error = extract_validation_error(&e);
+            return Err(ModZipError::InvalidModJson(format!(
+                "validation error: {useful_error}"
+            )));
         }
 
         let id_regex = Regex::new(r#"^[a-z0-9_\-]+\.[a-z0-9_\-]+$"#).unwrap();
@@ -693,4 +694,75 @@ fn validate_vec_string(vec: &Vec<String>) -> Result<(), ValidationError> {
         }
     }
     Ok(())
+}
+
+fn map_field_error(e: &validator::ValidationError) -> String {
+    if let Some(msg) = &e.message {
+        return msg.to_string();
+    }
+
+    match e.code.as_ref() {
+        "length" => {
+            let min = e
+                .params
+                .get("min")
+                .and_then(|v| v.as_u64())
+                .map(|v| v.to_string());
+
+            let max = e
+                .params
+                .get("max")
+                .and_then(|v| v.as_u64())
+                .map(|v| v.to_string());
+
+            match (min, max) {
+                (Some(min), Some(max)) => {
+                    format!("length must be between {min} and {max} characters")
+                }
+                (Some(min), None) => format!("length must be at least {min} characters"),
+                (None, Some(max)) => format!("length must be at most {max} characters"),
+                (None, None) => "invalid length".to_string(),
+            }
+        }
+
+        e => e.to_owned(),
+    }
+}
+
+fn extract_validation_error(e: &validator::ValidationErrors) -> String {
+    use validator::ValidationErrorsKind;
+
+    let mut str_errors = Vec::new();
+
+    for (field, err) in e.errors() {
+        match err {
+            ValidationErrorsKind::Struct(s) => {
+                str_errors.push(format!(
+                    "field '{field}' is invalid ({})",
+                    extract_validation_error(s)
+                ));
+            }
+
+            ValidationErrorsKind::Field(errors) => {
+                let joined = errors
+                    .iter()
+                    .map(map_field_error)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                str_errors.push(format!("field '{field}' is invalid: {}", joined));
+            }
+
+            ValidationErrorsKind::List(map) => {
+                for (index, errors) in map {
+                    str_errors.push(format!(
+                        "field '{field}' at index {index} is invalid ({})",
+                        extract_validation_error(errors)
+                    ));
+                }
+            }
+        }
+    }
+
+    str_errors.join(", ")
 }
