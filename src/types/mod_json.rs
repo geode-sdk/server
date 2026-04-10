@@ -211,8 +211,8 @@ impl ModJson {
 
         if json_file.size() > MAX_MOD_JSON_SIZE {
             return Err(ModZipError::InvalidModJson(format!(
-                "mod.json is too large (max {} bytes)",
-                MAX_MOD_JSON_SIZE
+                "mod.json is too large (max {} MB)",
+                MAX_MOD_JSON_SIZE / 1_000_000
             )));
         }
 
@@ -240,8 +240,8 @@ impl ModJson {
                 } else if file.name().eq("about.md") {
                     if file.size() > MAX_MARKDOWN_FILE_SIZE {
                         return Err(ModZipError::InvalidModJson(format!(
-                            "about.md is too large (max {} bytes)",
-                            MAX_MARKDOWN_FILE_SIZE
+                            "about.md is too large (max {} MB)",
+                            MAX_MARKDOWN_FILE_SIZE / 1_000_000
                         )));
                     }
 
@@ -255,8 +255,8 @@ impl ModJson {
                 } else if file.name().eq("changelog.md") {
                     if file.size() > MAX_MARKDOWN_FILE_SIZE {
                         return Err(ModZipError::InvalidModJson(format!(
-                            "changelog.md is too large (max {} bytes)",
-                            MAX_MARKDOWN_FILE_SIZE
+                            "changelog.md is too large (max {} MB)",
+                            MAX_MARKDOWN_FILE_SIZE / 1_000_000
                         )));
                     }
 
