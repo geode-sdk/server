@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::database::DatabaseError;
 use crate::types::models::tag::Tag;
 use sqlx::PgConnection;
@@ -124,6 +125,8 @@ pub async fn update_for_mod(
         .iter()
         .filter(|t| !t.is_readonly && !existing.iter().any(|e| e.id == t.id))
         .map(|x| x.id)
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
 
     let deletable = existing

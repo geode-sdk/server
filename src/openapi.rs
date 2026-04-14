@@ -106,7 +106,7 @@ use crate::{endpoints, types};
     ),
     info(
         title = "Geode Index API",
-        version = "0.51.3",
+        version = "0.52.0",
         description = "API for the Geode mod index",
         contact(
             name = "Geode Team",

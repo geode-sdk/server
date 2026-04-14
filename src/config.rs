@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use moka::future::Cache;
 
+use crate::storage::{PrivateStorage, StaticStorage};
 use crate::{
     endpoints::mods::IndexQueryParams,
     types::{
@@ -17,11 +18,12 @@ pub struct AppData {
     front_url: String,
     github: GitHubClientData,
     webhook_url: String,
+    static_storage: StaticStorage,
+    private_storage: PrivateStorage,
     disable_downloads: bool,
     max_download_mb: u32,
     port: u16,
     debug: bool,
-    storage_path: String,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
 }
@@ -35,7 +37,8 @@ pub struct GitHubClientData {
 pub async fn build_config() -> anyhow::Result<AppData> {
     let env_url = dotenvy::var("DATABASE_URL")?;
 
-    let pg_connections = dotenvy::var("DATABASE_CONNECTIONS").map_or(10, |x: String| x.parse::<u32>().unwrap_or(10));
+    let pg_connections =
+        dotenvy::var("DATABASE_CONNECTIONS").map_or(10, |x: String| x.parse::<u32>().unwrap_or(10));
 
     let pool = sqlx::postgres::PgPoolOptions::default()
         .max_connections(pg_connections)
@@ -54,7 +57,6 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .unwrap_or("250".to_string())
         .parse::<u32>()
         .unwrap_or(250);
-    let storage_path = dotenvy::var("STORAGE_PATH").unwrap_or("./storage".to_string());
     let mods_cache = Cache::builder()
         .max_capacity(128)
         .time_to_idle(Duration::from_mins(5))
@@ -70,11 +72,12 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             client_secret: github_secret,
         },
         webhook_url,
+        static_storage: StaticStorage::new(),
+        private_storage: PrivateStorage::new(),
         disable_downloads,
         max_download_mb,
         port,
         debug,
-        storage_path,
         mods_cache,
     })
 }
@@ -126,8 +129,12 @@ impl AppData {
         self.debug
     }
 
-    pub fn storage_path(&self) -> &str {
-        &self.storage_path
+    pub fn static_storage(&self) -> &StaticStorage {
+        &self.static_storage
+    }
+
+    pub fn private_storage(&self) -> &PrivateStorage {
+        &self.private_storage
     }
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {
