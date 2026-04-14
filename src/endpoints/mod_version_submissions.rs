@@ -53,8 +53,6 @@ struct CommentsQuery {
     per_page: Option<i64>,
 }
 
-/// Resolve a mod-version's numeric id from its string version tag, and
-/// return both it and the verified-mod id.
 async fn resolve_version_id(
     mod_id: &str,
     version: &str,
