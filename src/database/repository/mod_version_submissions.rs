@@ -3,6 +3,7 @@ use crate::types::models::mod_version_submission::{
     ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionRow,
 };
 use sqlx::{Error, PgConnection};
+use std::collections::HashMap;
 
 pub async fn get_for_mod_version(
     id: i32,
@@ -83,7 +84,9 @@ pub async fn get_paginated_comments_for_submission(
     )
     .fetch_all(conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::get_paginated_items_for_submission failed: {e}"))
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::get_paginated_items_for_submission failed: {e}")
+    })
     .map_err(|e| e.into())
 }
 
@@ -97,7 +100,9 @@ pub async fn count_comments_for_submission(
     )
     .fetch_one(conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::count_comments_for_submission failed: {e}"))
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::count_comments_for_submission failed: {e}")
+    })
     .map(|c| c.unwrap_or(0))
     .map_err(|e| e.into())
 }
@@ -184,7 +189,9 @@ pub async fn count_attachments_for_comment(
     )
     .fetch_one(conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::count_attachments_for_comment failed: {e}"))
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::count_attachments_for_comment failed: {e}")
+    })
     .map(|c| c.unwrap_or(0))
     .map_err(|e| e.into())
 }
@@ -222,7 +229,9 @@ pub async fn get_attachments_for_comment(
     )
     .fetch_all(conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::get_attachments_for_comment failed: {e}"))
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::get_attachments_for_comment failed: {e}")
+    })
     .map_err(|e: Error| e.into())
 }
 
@@ -257,6 +266,20 @@ pub async fn delete_attachment(
     Ok(result.rows_affected() > 0)
 }
 
+pub async fn delete_attachments_for_comment(
+    comment_id: i64,
+    conn: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    let result = sqlx::query!(
+        "DELETE FROM mod_version_submission_comment_attachments WHERE comment_id = $1",
+        comment_id
+    )
+        .execute(conn)
+        .await
+        .inspect_err(|e| log::error!("mod_version_submissions::delete_attachments_for_comment_id failed: {e}"))?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn count_references_to_filename(
     filename: &str,
     conn: &mut PgConnection,
@@ -267,8 +290,34 @@ pub async fn count_references_to_filename(
     )
     .fetch_one(conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::count_references_to_filename failed: {e}"))
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::count_references_to_filename failed: {e}")
+    })
     .map(|c| c.unwrap_or(0))
     .map_err(|e| e.into())
 }
 
+pub async fn count_references_to_filenames(
+    filenames: &[String],
+    conn: &mut PgConnection,
+) -> Result<HashMap<String, i64>, DatabaseError> {
+    sqlx::query!(
+        "SELECT
+            filename, COUNT(*) as count
+        FROM mod_version_submission_comment_attachments
+        WHERE filename = ANY($1)
+        GROUP BY filename",
+        filenames
+    )
+    .fetch_all(conn)
+    .await
+    .map(|x| {
+        x.into_iter()
+            .map(|record| (record.filename, record.count.unwrap_or(0)))
+            .collect()
+    })
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::count_references_to_filenames failed: {e}")
+    })
+    .map_err(|e| e.into())
+}

@@ -8,6 +8,7 @@ use actix_web::{
 };
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use crate::storage::StorageDisk;
 
 mod auth;
 mod cli;
@@ -29,6 +30,8 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| e.context("Failed to read log4rs config"))?;
 
     let app_data = config::build_config().await?;
+    app_data.static_storage().init().await?;
+    app_data.private_storage().init().await?;
 
     if cli::maybe_cli(&app_data).await? {
         return Ok(());
@@ -36,10 +39,6 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("Running migrations");
     sqlx::migrate!("./migrations").run(app_data.db()).await?;
-
-    let attachments_dir = format!("{}/submission_attachments", app_data.storage_path());
-    std::fs::create_dir_all(&attachments_dir)
-        .map_err(|e| anyhow::anyhow!("Failed to create storage directory: {e}"))?;
 
     let port = app_data.port();
     let debug = app_data.debug();

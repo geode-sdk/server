@@ -2,6 +2,7 @@ use super::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::extractors::auth::Auth;
+use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
@@ -10,8 +11,9 @@ use crate::types::models::mod_version_submission::{
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use futures::StreamExt;
+use log::error;
 use serde::Deserialize;
-use sqlx::PgConnection;
+use sqlx::{Acquire, PgConnection};
 use std::collections::HashMap;
 use utoipa::IntoParams;
 
@@ -414,13 +416,15 @@ pub async fn delete_comment(
 
     let mut pool = data.db().acquire().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    let mut tx = pool.begin().await?;
+
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
@@ -430,7 +434,7 @@ pub async fn delete_comment(
         ));
     }
 
-    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut pool)
+    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
@@ -445,7 +449,28 @@ pub async fn delete_comment(
         return Err(ApiError::Authorization);
     }
 
-    mod_version_submissions::delete_comment(path.comment_id, &mut pool).await?;
+    let attachment_filenames =
+        mod_version_submissions::get_attachments_for_comment(comment_row.id, &mut tx)
+            .await?
+            .into_iter()
+            .map(|a| a.filename)
+            .collect::<Vec<_>>();
+
+    mod_version_submissions::delete_comment(path.comment_id, &mut tx).await?;
+
+    let references =
+        mod_version_submissions::count_references_to_filenames(&attachment_filenames, &mut tx)
+            .await?;
+
+    tx.commit().await?;
+
+    for (filename, count) in references {
+        if count == 0 {
+            if let Err(e) = data.static_storage().delete(&filename).await {
+                error!("Failed to delete attachment file {}: {e}", filename);
+            }
+        }
+    }
 
     Ok(HttpResponse::NoContent())
 }
@@ -534,13 +559,15 @@ pub async fn upload_attachments(
 
     let mut pool = data.db().acquire().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    let mut tx = pool.begin().await?;
+
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
@@ -550,7 +577,7 @@ pub async fn upload_attachments(
         ));
     }
 
-    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut pool)
+    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
@@ -591,7 +618,7 @@ pub async fn upload_attachments(
     }
 
     let existing =
-        mod_version_submissions::count_attachments_for_comment(path.comment_id, &mut pool).await?;
+        mod_version_submissions::count_attachments_for_comment(path.comment_id, &mut tx).await?;
     if existing + images.len() as i64 > 5 {
         return Err(ApiError::BadRequest(format!(
             "Comment already has {} attachment(s); adding {} would exceed the limit of 5",
@@ -600,11 +627,9 @@ pub async fn upload_attachments(
         )));
     }
 
-    let storage_path = data.storage_path().to_string();
-
     // Decode → encode WebP → hash, all in a blocking thread
-    let processed: Vec<(String, Vec<u8>)> =
-        tokio::task::spawn_blocking(move || -> Result<Vec<(String, Vec<u8>)>, ApiError> {
+    let processed: Vec<Vec<u8>> =
+        tokio::task::spawn_blocking(move || -> Result<Vec<Vec<u8>>, ApiError> {
             images
                 .into_iter()
                 .map(|raw| {
@@ -616,28 +641,25 @@ pub async fn upload_attachments(
                         image::ImageFormat::WebP,
                     )
                     .map_err(|e| ApiError::InternalError(format!("WebP encode failed: {e}")))?;
-                    let filename = format!("{}.webp", sha256::digest(&webp_bytes));
-                    Ok((filename, webp_bytes))
+                    Ok(webp_bytes)
                 })
                 .collect()
         })
         .await
         .map_err(|e| ApiError::InternalError(format!("Task join error: {e}")))??;
 
-    let attachments_dir = format!("{}/submission_attachments", storage_path);
-    let app_url = data.app_url().to_string();
     let mut result = Vec::with_capacity(processed.len());
-    for (filename, webp_bytes) in processed {
-        let file_path = format!("{}/{}", attachments_dir, filename);
-        if !std::path::Path::new(&file_path).exists() {
-            tokio::fs::write(&file_path, &webp_bytes)
-                .await
-                .map_err(|e| ApiError::InternalError(format!("Failed to write file: {e}")))?;
-        }
-        let row = mod_version_submissions::create_attachment(path.comment_id, &filename, &mut pool)
+    for webp_bytes in &processed {
+        let filename = data
+            .static_storage()
+            .store_hashed_with_extension("submission-attachments", webp_bytes, Some("webp"))
             .await?;
-        result.push(row.into_attachment(&app_url));
+        let row =
+            mod_version_submissions::create_attachment(path.comment_id, &filename, &mut tx).await?;
+        result.push(row.into_attachment(&data.app_url().to_string()));
     }
+
+    tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -671,13 +693,15 @@ pub async fn delete_attachment(
 
     let mut pool = data.db().acquire().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    let mut tx = pool.begin().await?;
+
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
@@ -687,7 +711,7 @@ pub async fn delete_attachment(
         ));
     }
 
-    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut pool)
+    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
@@ -702,7 +726,7 @@ pub async fn delete_attachment(
         return Err(ApiError::Authorization);
     }
 
-    let attachment = mod_version_submissions::get_attachment(path.attachment_id, &mut pool)
+    let attachment = mod_version_submissions::get_attachment(path.attachment_id, &mut tx)
         .await?
         .ok_or_else(|| {
             ApiError::NotFound(format!("Attachment {} not found", path.attachment_id))
@@ -716,17 +740,20 @@ pub async fn delete_attachment(
     }
 
     let filename = attachment.filename.clone();
-    mod_version_submissions::delete_attachment(path.attachment_id, &mut pool).await?;
+    mod_version_submissions::delete_attachment(path.attachment_id, &mut tx).await?;
 
     let remaining =
-        mod_version_submissions::count_references_to_filename(&filename, &mut pool).await?;
+        mod_version_submissions::count_references_to_filename(&filename, &mut tx).await?;
+
+    tx.commit().await?;
+
     if remaining == 0 {
-        let file_path = format!(
-            "{}/submission_attachments/{}",
-            data.storage_path(),
-            filename
-        );
-        tokio::fs::remove_file(&file_path).await.ok();
+        // TODO: implement a cleanup job for orphaned attachment files
+        // If this fails it's fine to still return a 204 to the user
+        let r = data.static_storage().delete(&filename).await;
+        if let Err(e) = r {
+            error!("Failed to delete attachment: {e}");
+        }
     }
 
     Ok(HttpResponse::NoContent())

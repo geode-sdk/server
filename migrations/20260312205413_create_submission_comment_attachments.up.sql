@@ -3,7 +3,7 @@ CREATE TABLE mod_version_submission_comment_attachments
 (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     comment_id BIGINT      NOT NULL,
-    filename   TEXT        NOT NULL, -- SHA-256 hex of WebP content; file on disk: {STORAGE_PATH}/submission_attachments/{filename}
+    filename   TEXT        NOT NULL, -- SHA-256 hex of WebP content; file on disk: {STORAGE_PATH}/submission-attachments/{filename}
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (comment_id) REFERENCES mod_version_submission_comments (id) ON DELETE CASCADE
 );

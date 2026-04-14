@@ -43,6 +43,8 @@ pub enum ApiError {
     Zip(#[from] zip::result::ZipError),
     #[error("Failed to contact external resource: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("I/O error: {0}")]
+    IO(#[from] std::io::Error),
 }
 
 impl ApiError {
