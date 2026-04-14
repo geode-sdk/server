@@ -4,6 +4,7 @@ use crate::database::repository::{developers, mod_version_submissions, mod_versi
 use crate::extractors::auth::Auth;
 use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
+use crate::types::models::audit_actions::AuditAction;
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
     ModVersionSubmissionComment, UpdateCommentPayload, UpdateSubmissionPayload,
@@ -138,21 +139,25 @@ pub async fn update_submission(
     auth.check_admin()?;
     let mut pool = data.db().acquire().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    let mut tx = pool.begin().await?;
+
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     let locked_by_id = if payload.locked { Some(dev.id) } else { None };
 
     let row =
-        mod_version_submissions::set_locked(version_id, payload.locked, locked_by_id, &mut pool)
+        mod_version_submissions::set_locked(version_id, payload.locked, locked_by_id, &mut tx)
             .await?;
+
+    tx.commit().await?;
 
     let locked_by = if payload.locked {
         Some(dev.clone())
@@ -278,14 +283,15 @@ pub async fn create_comment(
     }
 
     let mut pool = data.db().acquire().await?;
+    let mut tx = pool.begin().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
@@ -296,12 +302,23 @@ pub async fn create_comment(
     }
 
     // Only the mod developers (or admins) may comment
-    if !dev.admin && !developers::has_access_to_mod(dev.id, &path.id, &mut pool).await? {
+    if !dev.admin && !developers::has_access_to_mod(dev.id, &path.id, &mut tx).await? {
         return Err(ApiError::Authorization);
     }
 
-    let row = mod_version_submissions::create_comment(version_id, dev.id, &comment_text, &mut pool)
-        .await?;
+    let row =
+        mod_version_submissions::create_comment(version_id, dev.id, &comment_text, &mut tx).await?;
+
+    mod_version_submissions::insert_comment_audit(
+        row.id,
+        AuditAction::Created,
+        None,
+        Some(dev.id),
+        &mut tx,
+    )
+    .await?;
+
+    tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -345,14 +362,15 @@ pub async fn update_comment(
     }
 
     let mut pool = data.db().acquire().await?;
+    let mut tx = pool.begin().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version_id = resolve_version_id(&path.id, &path.version, &mut tx).await?;
 
-    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+    let submission = mod_version_submissions::get_for_mod_version(version_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
@@ -362,7 +380,7 @@ pub async fn update_comment(
         ));
     }
 
-    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut pool)
+    let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
@@ -377,10 +395,22 @@ pub async fn update_comment(
         return Err(ApiError::Authorization);
     }
 
-    let updated_row =
-        mod_version_submissions::update_comment(path.comment_id, &comment_text, &mut pool).await?;
+    mod_version_submissions::insert_comment_audit(
+        comment_row.id,
+        AuditAction::Updated,
+        Some(&format!(
+            "Updated comment. Previously: {}",
+            comment_row.comment
+        )),
+        Some(dev.id),
+        &mut tx,
+    )
+    .await?;
 
-    let author = developers::get_one(updated_row.author_id, &mut pool)
+    let updated_row =
+        mod_version_submissions::update_comment(path.comment_id, &comment_text, &mut tx).await?;
+
+    let author = developers::get_one(updated_row.author_id, &mut tx)
         .await?
         .ok_or_else(|| ApiError::InternalError("Author not found".into()))?;
 
@@ -453,6 +483,15 @@ pub async fn delete_comment(
             .into_iter()
             .map(|a| a.filename)
             .collect::<Vec<_>>();
+
+    mod_version_submissions::insert_comment_audit(
+        comment_row.id,
+        AuditAction::Deleted,
+        None,
+        Some(dev.id),
+        &mut tx,
+    )
+    .await?;
 
     mod_version_submissions::delete_comment(path.comment_id, &mut tx).await?;
 
@@ -657,6 +696,23 @@ pub async fn upload_attachments(
         result.push(row.into_attachment(&data.app_url().to_string()));
     }
 
+    mod_version_submissions::insert_comment_audit(
+        comment_row.id,
+        AuditAction::Updated,
+        Some(&format!(
+            "Attached {} file{}",
+            result.len(),
+            if result.len() > 1 || result.is_empty() {
+                "s"
+            } else {
+                ""
+            }
+        )),
+        Some(dev.id),
+        &mut tx,
+    )
+    .await?;
+
     tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
@@ -739,6 +795,14 @@ pub async fn delete_attachment(
 
     let filename = attachment.filename.clone();
     mod_version_submissions::delete_attachment(path.attachment_id, &mut tx).await?;
+    mod_version_submissions::insert_comment_audit(
+        comment_row.id,
+        AuditAction::Updated,
+        Some("Removed an attachment"),
+        Some(dev.id),
+        &mut tx,
+    )
+    .await?;
 
     let remaining =
         mod_version_submissions::count_references_to_filename(&filename, &mut tx).await?;

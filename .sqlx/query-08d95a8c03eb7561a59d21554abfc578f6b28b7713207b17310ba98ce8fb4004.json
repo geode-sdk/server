@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO mod_version_submission_comment_audit (comment_id, action, details, performed_by)VALUES ($1, $2, $3, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        {
+          "Custom": {
+            "name": "audit_action",
+            "kind": {
+              "Enum": [
+                "created",
+                "updated",
+                "deleted",
+                "restored"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "08d95a8c03eb7561a59d21554abfc578f6b28b7713207b17310ba98ce8fb4004"
+}

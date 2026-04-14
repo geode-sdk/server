@@ -1,4 +1,5 @@
 use crate::database::DatabaseError;
+use crate::types::models::audit_actions::AuditAction;
 use crate::types::models::mod_version_submission::{
     ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionRow,
 };
@@ -28,17 +29,19 @@ pub async fn create(
     mod_version_id: i32,
     conn: &mut PgConnection,
 ) -> Result<ModVersionSubmissionRow, DatabaseError> {
-    sqlx::query_as!(
+    let row = sqlx::query_as!(
         ModVersionSubmissionRow,
         "INSERT INTO mod_version_submissions (mod_version_id)
         VALUES ($1)
         RETURNING mod_version_id, locked, locked_by, created_at, updated_at",
         mod_version_id
     )
-    .fetch_one(conn)
+    .fetch_one(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("mod_version_submissions::create failed: {e}"))
-    .map_err(|e| e.into())
+    .inspect_err(|e| log::error!("mod_version_submissions::create failed: {e}"))?;
+
+    insert_submission_audit(mod_version_id, AuditAction::Created, None, None, conn).await?;
+    Ok(row)
 }
 
 pub async fn set_locked(
@@ -47,6 +50,23 @@ pub async fn set_locked(
     locked_by: Option<i32>,
     conn: &mut PgConnection,
 ) -> Result<ModVersionSubmissionRow, DatabaseError> {
+    insert_submission_audit(
+        mod_version_id,
+        AuditAction::Updated,
+        Some(&format!(
+            "Submission {}{}",
+            if locked { "locked" } else { "unlocked" },
+            if locked_by.is_none() {
+                "automatically"
+            } else {
+                ""
+            }
+        )),
+        locked_by,
+        &mut *conn,
+    )
+    .await?;
+
     sqlx::query_as!(
         ModVersionSubmissionRow,
         "UPDATE mod_version_submissions
@@ -274,9 +294,11 @@ pub async fn delete_attachments_for_comment(
         "DELETE FROM mod_version_submission_comment_attachments WHERE comment_id = $1",
         comment_id
     )
-        .execute(conn)
-        .await
-        .inspect_err(|e| log::error!("mod_version_submissions::delete_attachments_for_comment_id failed: {e}"))?;
+    .execute(conn)
+    .await
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::delete_attachments_for_comment_id failed: {e}")
+    })?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -320,4 +342,48 @@ pub async fn count_references_to_filenames(
         log::error!("mod_version_submissions::count_references_to_filenames failed: {e}")
     })
     .map_err(|e| e.into())
+}
+
+pub async fn insert_submission_audit(
+    id: i32,
+    action: AuditAction,
+    details: Option<&str>,
+    performed_by: Option<i32>,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    sqlx::query!(
+        "INSERT INTO mod_version_submissions_audit (submission_id, action, details, performed_by)
+        VALUES ($1, $2, $3, $4)",
+        id,
+        action as AuditAction,
+        details,
+        performed_by
+    )
+    .execute(conn)
+    .await
+    .map(|_| ())
+    .inspect_err(|e| log::error!("mod_version_submissions::insert_submission_audit failed: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn insert_comment_audit(
+    id: i64,
+    action: AuditAction,
+    details: Option<&str>,
+    performed_by: Option<i32>,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    sqlx::query!(
+        "INSERT INTO mod_version_submission_comment_audit (comment_id, action, details, performed_by)\
+        VALUES ($1, $2, $3, $4)",
+        id,
+        action as AuditAction,
+        details,
+        performed_by
+    )
+        .execute(conn)
+        .await
+        .map(|_| ())
+        .inspect_err(|e| log::error!("mod_version_submissions::insert_comment_audit failed: {e}"))
+        .map_err(|e| e.into())
 }

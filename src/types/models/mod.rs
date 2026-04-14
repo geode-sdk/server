@@ -13,3 +13,4 @@ pub mod mod_version_status;
 pub mod mod_version_submission;
 pub mod stats;
 pub mod tag;
+pub mod audit_actions;
