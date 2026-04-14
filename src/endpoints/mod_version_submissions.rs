@@ -295,7 +295,7 @@ pub async fn create_comment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked {
+    if !dev.admin && submission.locked {
         return Err(ApiError::BadRequest(
             "Submission is locked; no new comments allowed".into(),
         ));
@@ -374,7 +374,7 @@ pub async fn update_comment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked {
+    if !dev.admin && submission.locked {
         return Err(ApiError::BadRequest(
             "Submission is locked; comments cannot be edited".into(),
         ));
@@ -608,7 +608,7 @@ pub async fn upload_attachments(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked {
+    if !dev.admin && submission.locked {
         return Err(ApiError::BadRequest(
             "Submission is locked; attachments cannot be uploaded".into(),
         ));
