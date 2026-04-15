@@ -26,7 +26,7 @@ impl ModRecordGetOne {
             id: self.id,
             repository: self.repository,
             featured: self.featured,
-            download_count: self.download_count,
+            download_count: self.download_count.into(),
             versions: Default::default(),
             tags: Default::default(),
             developers: Default::default(),

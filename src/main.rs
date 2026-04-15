@@ -9,6 +9,7 @@ use actix_web::{
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+mod abbreviate;
 mod auth;
 mod cli;
 mod config;
@@ -65,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mods::create)
             .service(endpoints::mods::update_mod)
             .service(endpoints::mods::get_logo)
+            .service(endpoints::mod_status_badge::status_badge)
             .service(endpoints::mod_versions::get_version_index)
             .service(endpoints::mod_versions::get_one)
             .service(endpoints::mod_versions::download_version)
