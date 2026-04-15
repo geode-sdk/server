@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "geode-index"
-version = "0.52.0"
+version = "0.53.0"
 dependencies = [
  "actix-cors",
  "actix-web",
