@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use moka::future::Cache;
 
-use crate::storage::{PrivateStorage, StaticStorage};
+use crate::storage::{PrivateStorage, PublicStorage, StaticStorage};
 use crate::{
     endpoints::mods::IndexQueryParams,
     types::{
@@ -19,6 +19,7 @@ pub struct AppData {
     github: GitHubClientData,
     webhook_url: String,
     static_storage: StaticStorage,
+    public_storage: PublicStorage,
     private_storage: PrivateStorage,
     disable_downloads: bool,
     max_download_mb: u32,
@@ -65,14 +66,15 @@ pub async fn build_config() -> anyhow::Result<AppData> {
 
     Ok(AppData {
         db: pool,
-        app_url,
+        app_url: app_url.clone(),
         front_url,
         github: GitHubClientData {
             client_id: github_client,
             client_secret: github_secret,
         },
         webhook_url,
-        static_storage: StaticStorage::new(),
+        static_storage: StaticStorage::new(app_url.clone()),
+        public_storage: PublicStorage::new(app_url.clone()),
         private_storage: PrivateStorage::new(),
         disable_downloads,
         max_download_mb,
@@ -131,6 +133,10 @@ impl AppData {
 
     pub fn static_storage(&self) -> &StaticStorage {
         &self.static_storage
+    }
+
+    pub fn public_storage(&self) -> &PublicStorage {
+        &self.public_storage
     }
 
     pub fn private_storage(&self) -> &PrivateStorage {

@@ -4,8 +4,7 @@ use actix_web::{HttpResponse, Responder, get, web};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 
-use std::fs;
-use std::path::Path;
+use crate::storage::StorageDisk;
 use urlencoding;
 
 const LABEL_COLOR: &str = "#0c0811";
@@ -49,29 +48,32 @@ pub async fn status_badge(
         StatusBadgeStat::Version => (
             "payload.versions[0].version",
             "Version",
-            "storage/public/shields/mod_version.svg",
+            "shields/mod_version.svg",
         ),
         StatusBadgeStat::GdVersion => (
             "payload.versions[0].gd.win",
             "Geometry Dash",
-            "storage/public/shields/mod_gd_version.svg",
+            "shields/mod_gd_version.svg",
         ),
         StatusBadgeStat::GeodeVersion => (
             "payload.versions[0].geode",
             "Geode",
-            "storage/public/shields/mod_geode_version.svg",
+            "shields/mod_geode_version.svg",
         ),
         StatusBadgeStat::Downloads => (
             "payload.download_count",
             "Downloads",
-            "storage/public/shields/mod_downloads.svg",
+            "shields/mod_downloads.svg",
         ),
     };
-    let svg = fs::read_to_string(Path::new(svg_path))
-        .map_err(|_| ApiError::BadRequest(format!("Could not read SVG file: {}", svg_path)))?;
+    let svg = data
+        .static_storage()
+        .read(svg_path)
+        .await
+        .map_err(|_| ApiError::InternalError("Failed to read status badge file".into()))?;
     let api_url = format!("{}/v1/mods/{}?abbreviate=true", data.app_url(), id);
     let mod_link = format!("{}/mods/{}", data.front_url(), id);
-    let svg_data_url = format!("data:image/svg+xml;utf8,{}", urlencoding::encode(&svg));
+    let svg_data_url = format!("data:image/svg+xml;utf8,{}", urlencoding::encode_binary(&svg));
     let shields_url = format!(
         "https://img.shields.io/badge/dynamic/json?url={}&query={}&label={}&labelColor={}&color={}&link={}&style=plastic&logo={}",
         urlencoding::encode(&api_url),
