@@ -12,18 +12,39 @@ You will need the following:
 
 ## 1. Setting up the database
 
-First step after installing all the required tools is setting up your database. If you have installed PostgreSQL locally, you have to setup a new database for the index, alongside a new user. For the purposes of this guide, the database, user and password will all be `geode`.
+First step after installing all the required tools is setting up your database. As of the last update to this guide, the PostgreSQL version used by the index is **17.x**, and we recommend you also use that same version. If you have installed PostgreSQL locally, you have to setup a new database for the index, alongside a new user. For the purposes of this guide, the database, user and password will all be `geode`.
 
 If you want to run **PostgreSQL with Docker**, first install Docker for your platform, then you can use the following commands in your terminal of choice to run a PostgreSQL container.
 
 ```bash
 docker volume create geode-pgsql
-docker run -p 5432:5432 --name=geode-db -v geode-pgsql:/var/lib/postgresql/data --restart=unless-stopped -e POSTGRES_DB=geode -e POSTGRES_USER=geode -e POSTGRES_PASSWORD=geode -dit postgres:14-alpine3.21
+docker run -p 5432:5432 --name=geode-db -v geode-pgsql:/var/lib/postgresql --restart=unless-stopped -e POSTGRES_DB=geode -e POSTGRES_USER=geode -e POSTGRES_PASSWORD=geode -e PGDATA=/var/lib/postgresql/17/docker -dit postgres:17-alpine
+```
+
+> You may be asking what the PGDATA environment variable is for. Starting with PostgreSQL 18, the docker container stores data in a version-specific way, so that upgrades are easier. We can take advantage of this earlier by setting PGDATA ourselves. Upgrades to PostgreSQL 18 and further will be easier this way!
+
+If you are updating from the **older PostgreSQL 14** image, here are some easy steps to migrate
+
+```bash
+# Dump the database
+docker exec -t geode-db pg_dumpall -U geode > dump.sql
+# Stop and remove the old container
+docker stop geode-db
+docker rm geode-db
+# Remove the old volume (if you don't need it anymore)
+docker volume rm geode-pgsql
+# Create a new volume and run the new container
+docker volume create geode-pgsql
+docker run -p 5432:5432 --name=geode-db -v geode-pgsql:/var/lib/postgresql --restart=unless-stopped -e POSTGRES_DB=geode -e POSTGRES_USER=geode -e POSTGRES_PASSWORD=geode -e PGDATA=/var/lib/postgresql/17/docker -dit postgres:17-alpine
+# Restore the dump
+docker exec -i geode-db psql -U geode < dump.sql
+# *After* making sure everything works, you can remove the dump file
+rm dump.sql
 ```
 
 This creates a lightweight container (using Alpine Linux) that contains your database. It exposes the port `5432`, so you can connect to it from outside the container itself. Note that you can change this if you already use `5432` on your machine, just change the first part of the port binding (for example, if I were to use `5433`, my port binding would become `5433:5432`). It also creates a **named volume**, so that the data you enter will be stored between container restarts. The environment variables passed to the container initialize a new database, called `geode`, owned by a new user, called `geode`, with the password `geode`. Easy, right?
 
-You can stop and start your container using `docker stop geode-db`, and `docker start geode-db`, respectively
+You can stop and start your container using `docker stop geode-db`, and `docker start geode-db`, respectively.
 
 ## 2. Environment file
 

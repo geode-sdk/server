@@ -22,6 +22,7 @@ mod mod_zip;
 mod openapi;
 mod types;
 mod webhook;
+mod storage;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

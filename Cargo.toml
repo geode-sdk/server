@@ -1,6 +1,6 @@
 [package]
 name = "geode-index"
-version = "0.51.3"
+version = "0.52.0"
 edition = "2024"
 
 [dependencies]
@@ -44,3 +44,4 @@ moka = { version = "0.12.13", features = ["future"] }
 utoipa = { version = "5.4.0", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }
 urlencoding = "2.1.3"
+validator = { version = "0.20.0", features = ["derive"] }

@@ -6,9 +6,9 @@ use image::codecs::png::PngDecoder;
 use image::codecs::png::PngEncoder;
 use image::{DynamicImage, GenericImageView};
 use image::{ImageEncoder, ImageError};
+use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
-use zip::ZipArchive;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ModZipError {
@@ -28,6 +28,8 @@ pub enum ModZipError {
     ModFileFetchError(#[from] reqwest::Error),
     #[error(".geode file is too large ({0} MB), maximum is {1} MB")]
     ModFileTooLarge(u64, u64),
+    #[error(".geode file is too large after uncompression ({0} MB), maximum is {1} MB")]
+    ModFileTooLargeUncompressed(u64, u64),
     #[error("Invalid mod.json: {0}")]
     InvalidModJson(String),
     #[error("Invalid binaries: {0}")]
