@@ -66,14 +66,9 @@ pub async fn status_badge(
             "shields/mod_downloads.svg",
         ),
     };
-    let svg = data
-        .static_storage()
-        .read(svg_path)
-        .await
-        .map_err(|_| ApiError::InternalError("Failed to read status badge file".into()))?;
+    let svg_url = data.static_storage().asset_url(svg_path);
     let api_url = format!("{}/v1/mods/{}?abbreviate=true", data.app_url(), id);
     let mod_link = format!("{}/mods/{}", data.front_url(), id);
-    let svg_data_url = format!("data:image/svg+xml;utf8,{}", urlencoding::encode_binary(&svg));
     let shields_url = format!(
         "https://img.shields.io/badge/dynamic/json?url={}&query={}&label={}&labelColor={}&color={}&link={}&style=plastic&logo={}",
         urlencoding::encode(&api_url),
@@ -82,7 +77,7 @@ pub async fn status_badge(
         urlencoding::encode(LABEL_COLOR),
         urlencoding::encode(STAT_COLOR),
         urlencoding::encode(&mod_link),
-        urlencoding::encode(&svg_data_url)
+        urlencoding::encode(&svg_url)
     );
     Ok(HttpResponse::Found()
         .append_header(("Location", shields_url))
