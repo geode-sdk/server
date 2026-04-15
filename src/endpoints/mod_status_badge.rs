@@ -78,7 +78,7 @@ pub async fn status_badge(
         "https://img.shields.io/badge/dynamic/json?url={}&query={}&label={}&labelColor={}&color={}&link={}&style=plastic&logo={}",
         urlencoding::encode(&api_url),
         urlencoding::encode(stat),
-        label,
+        urlencoding::encode(label),
         urlencoding::encode(LABEL_COLOR),
         urlencoding::encode(STAT_COLOR),
         urlencoding::encode(&mod_link),
