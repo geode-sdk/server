@@ -132,6 +132,10 @@ pub async fn add_developer_to_mod(
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+
     if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
@@ -145,6 +149,10 @@ pub async fn add_developer_to_mod(
             "No developer found with username {}",
             json.username
         )))?;
+
+    if let Some(ban) = developers::check_ban(target.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
 
     mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
 
