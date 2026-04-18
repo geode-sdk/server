@@ -149,8 +149,8 @@ pub async fn add_developer_to_mod(
             json.username
         )))?;
 
-    if let Some(ban) = developers::check_ban(target.id, &mut pool).await? {
-        return Err(ApiError::Banned(ban.reason));
+    if let Some(_) = developers::check_ban(target.id, &mut pool).await? {
+        return Err(ApiError::Banned(Some("The developer being added is banned".into())));
     }
 
     mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
