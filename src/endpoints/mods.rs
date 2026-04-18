@@ -217,6 +217,11 @@ pub async fn create(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
+
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+
     let bytes = mod_zip::download_mod(
         data.check_dns_http_client(),
         &payload.download_link,
