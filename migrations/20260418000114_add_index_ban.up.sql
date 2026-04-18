@@ -1,6 +1,4 @@
 -- Add up migration script here
-ALTER TABLE developers ADD COLUMN note TEXT;
-
 CREATE TABLE bans (
 	developer_id INTEGER PRIMARY KEY NOT NULL REFERENCES developers(id) ON DELETE CASCADE,
 	reason TEXT,
