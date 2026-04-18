@@ -43,6 +43,8 @@ pub enum ApiError {
     Zip(#[from] zip::result::ZipError),
     #[error("Failed to contact external resource: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
+    Banned(Option<String>),
 }
 
 impl ApiError {

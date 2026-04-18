@@ -1,6 +1,6 @@
 use crate::database::DatabaseError;
 use crate::types::api::PaginatedData;
-use crate::types::models::developer::{Developer, ModDeveloper};
+use crate::types::models::developer::{Developer, DeveloperBan, ModDeveloper};
 use sqlx::PgConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -426,4 +426,45 @@ pub async fn find_by_token(
     .await
     .inspect_err(|e| log::error!("{}", e))
     .map_err(|e| e.into())
+}
+
+pub async fn create_ban(
+    dev_id: i32,
+    admin_id: i32,
+    reason: Option<&str>,
+    conn: &mut PgConnection,
+) -> Result<DeveloperBan, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "INSERT INTO bans (developer_id, reason, admin_id)
+            VALUES ($1, $2, $3)
+        RETURNING
+            developer_id, reason, admin_id, created_at",
+        dev_id, reason, admin_id
+    )
+    .fetch_one(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("Failed to insert create developer ban: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn check_ban(
+    dev_id: i32,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperBan>, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "SELECT developer_id, reason, admin_id, created_at FROM bans WHERE developer_id=$1", dev_id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("Failed to get developer ban: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
+    sqlx::query!("DELETE FROM bans WHERE developer_id = $1", dev_id)
+        .execute(conn)
+        .await
+        .inspect_err(|e| log::error!("Failed to delete developer ban: {e}"))?;
+
+    Ok(())
 }
