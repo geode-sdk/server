@@ -4,7 +4,7 @@ use crate::database::repository::{developers, mod_version_submissions, mod_versi
 use crate::extractors::auth::Auth;
 use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
-use crate::types::models::audit_actions::AuditAction;
+use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
     ModVersionSubmissionComment, UpdateCommentPayload, UpdateSubmissionPayload,
@@ -110,6 +110,47 @@ pub async fn get_submission(
     Ok(web::Json(ApiResponse {
         error: "".into(),
         payload: row.into_submission(locked_by),
+    }))
+}
+
+#[utoipa::path(
+    path = "/v1/mods/{id}/versions/{version}/submission/audit",
+    tag = "mod_version_submissions",
+    params(SubmissionPath),
+    responses(
+        (status = 200, description = "Submission audit", body = inline(ApiResponse<Vec<AuditActionRow>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - admin only"),
+        (status = 404, description = "Mod, version, or submission not found"),
+    ),
+    security(("bearer_token" = []))
+)]
+#[get("v1/mods/{id}/versions/{version}/submission/audit")]
+pub async fn get_submission_audit(
+    path: web::Path<SubmissionPath>,
+    data: web::Data<AppData>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    auth.check_admin()?;
+
+    let mut pool = data.db().acquire().await?;
+
+    if !mods::exists(&path.id, &mut pool).await? {
+        return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
+    }
+
+    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+
+    let row = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
+
+    let audit =
+        mod_version_submissions::get_audit_for_submission(row.mod_version_id, &mut pool).await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: audit,
     }))
 }
 
@@ -245,6 +286,55 @@ pub async fn get_comments(
             data: comments,
             count,
         },
+    }))
+}
+
+#[utoipa::path(
+    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/audit",
+    tag = "mod_version_submissions",
+    params(CommentPath),
+    responses(
+        (status = 200, description = "Comment audit", body = inline(ApiResponse<Vec<AuditActionRow>>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - admin only"),
+        (status = 404, description = "Mod, version, submission or comment not found"),
+    ),
+    security(("bearer_token" = []))
+)]
+#[get("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/audit")]
+pub async fn get_comment_audit(
+    path: web::Path<CommentPath>,
+    data: web::Data<AppData>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    auth.check_admin()?;
+
+    let mut pool = data.db().acquire().await?;
+
+    if !mods::exists(&path.id, &mut pool).await? {
+        return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
+    }
+
+    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+
+    let row = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
+
+    let comment = mod_version_submissions::get_comment(path.comment_id, &mut pool)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Comment not found".into()))?;
+
+    if comment.submission_id != row.mod_version_id {
+        return Err(ApiError::NotFound("Comment not found".into()));
+    }
+
+    let audit =
+        mod_version_submissions::get_audit_for_comment(comment.id, &mut pool).await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".into(),
+        payload: audit,
     }))
 }
 

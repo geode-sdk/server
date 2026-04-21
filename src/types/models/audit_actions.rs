@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -23,4 +24,12 @@ impl FromStr for AuditAction {
             _ => Err(()),
         }
     }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct AuditActionRow {
+    pub action: AuditAction,
+    pub details: Option<String>,
+    pub performed_by: Option<i32>,
+    pub performed_at: DateTime<Utc>,
 }

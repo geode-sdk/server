@@ -1,5 +1,5 @@
 use crate::database::DatabaseError;
-use crate::types::models::audit_actions::AuditAction;
+use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::mod_version_submission::{
     ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionRow,
 };
@@ -22,6 +22,24 @@ pub async fn get_for_mod_version(
     .fetch_optional(conn)
     .await
     .inspect_err(|e| log::error!("mod_version_submissions::get_for_mod_versions failed: {e}"))
+    .map_err(|e| e.into())
+}
+
+pub async fn get_audit_for_submission(
+    id: i32,
+    conn: &mut PgConnection,
+) -> Result<Vec<AuditActionRow>, DatabaseError> {
+    sqlx::query_as!(
+        AuditActionRow,
+        r#"SELECT
+            action as "action: _", details, performed_by, performed_at
+        FROM mod_version_submissions_audit
+        WHERE submission_id = $1"#,
+        id
+    )
+    .fetch_all(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::get_audit_for_submission failed: {e}",))
     .map_err(|e| e.into())
 }
 
@@ -197,6 +215,24 @@ pub async fn delete_comment(
     .await
     .inspect_err(|e| log::error!("mod_version_submissions::delete_comment failed: {e}"))?;
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn get_audit_for_comment(
+    id: i64,
+    conn: &mut PgConnection,
+) -> Result<Vec<AuditActionRow>, DatabaseError> {
+    sqlx::query_as!(
+        AuditActionRow,
+        r#"SELECT
+            action as "action: _", details, performed_by, performed_at
+        FROM mod_version_submission_comment_audit
+        WHERE comment_id = $1"#,
+        id
+    )
+    .fetch_all(conn)
+    .await
+    .inspect_err(|e| log::error!("mod_version_submissions::get_audit_for_comment failed: {e}",))
+    .map_err(|e| e.into())
 }
 
 pub async fn count_attachments_for_comment(
