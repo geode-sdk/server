@@ -592,10 +592,8 @@ pub async fn delete_comment(
     tx.commit().await?;
 
     for (filename, count) in references {
-        if count == 0 {
-            if let Err(e) = data.static_storage().delete(&filename).await {
-                error!("Failed to delete attachment file {}: {e}", filename);
-            }
+        if count == 0 && let Err(e) = data.static_storage().delete(&filename).await {
+            log::error!("Failed to delete attachment file {filename}: {e}");
         }
     }
 
