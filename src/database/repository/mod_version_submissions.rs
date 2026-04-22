@@ -1,7 +1,8 @@
 use crate::database::DatabaseError;
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::mod_version_submission::{
-    ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionLock, ModVersionSubmissionRow
+    ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionLock,
+    ModVersionSubmissionRow,
 };
 use sqlx::{Error, PgConnection};
 use std::collections::HashMap;
@@ -76,7 +77,7 @@ pub async fn set_locked(
             match lock {
                 ModVersionSubmissionLock::None => "unlocked",
                 ModVersionSubmissionLock::Internal => "restricted to mod developers and admins",
-                ModVersionSubmissionLock::Locked => "locked"
+                ModVersionSubmissionLock::Locked => "locked",
             },
             if locked_by.is_none() {
                 " automatically"
@@ -293,6 +294,33 @@ pub async fn get_attachments_for_comment(
         log::error!("mod_version_submissions::get_attachments_for_comment failed: {e}")
     })
     .map_err(|e: Error| e.into())
+}
+
+pub async fn get_attachments_for_comments(
+    comment_ids: &[i64],
+    conn: &mut PgConnection,
+) -> Result<HashMap<i64, Vec<ModVersionSubmissionAttachmentRow>>, DatabaseError> {
+    let rows = sqlx::query_as!(
+        ModVersionSubmissionAttachmentRow,
+        "SELECT id, comment_id, filename, created_at
+        FROM mod_version_submission_comment_attachments
+        WHERE comment_id = ANY($1)
+        ORDER BY id ASC",
+        comment_ids
+    )
+    .fetch_all(conn)
+    .await
+    .inspect_err(|e| {
+        log::error!("mod_version_submissions::get_attachments_for_comments failed: {e}")
+    })?;
+
+    let mut ret: HashMap<i64, Vec<ModVersionSubmissionAttachmentRow>> = HashMap::with_capacity(comment_ids.len());
+
+    for row in rows {
+        ret.entry(row.comment_id).or_default().push(row);
+    }
+
+    Ok(ret)
 }
 
 pub async fn get_attachment(

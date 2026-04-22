@@ -47,6 +47,7 @@ pub struct ModVersionSubmissionComment {
     pub submission_id: i32,
     pub comment: String,
     pub author: Developer,
+    pub attachments: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -61,12 +62,13 @@ pub struct ModVersionSubmissionCommentRow {
 }
 
 impl ModVersionSubmissionCommentRow {
-    pub fn into_comment(self, author: Developer) -> ModVersionSubmissionComment {
+    pub fn into_comment(self, author: Developer, attachment_links: Vec<String>) -> ModVersionSubmissionComment {
         ModVersionSubmissionComment {
             id: self.id,
             submission_id: self.submission_id,
             comment: self.comment,
             author,
+            attachments: attachment_links, 
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

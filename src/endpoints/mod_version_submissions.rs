@@ -106,11 +106,8 @@ async fn check_submission_lock(
 #[get("v1/mods/{id}/versions/{version}/submission")]
 pub async fn get_submission(
     path: web::Path<SubmissionPath>,
-    data: web::Data<AppData>,
-    auth: Auth,
+    data: web::Data<AppData>
 ) -> Result<impl Responder, ApiError> {
-    auth.developer()?;
-
     let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
@@ -290,11 +287,26 @@ pub async fn get_comments(
         ids
     };
 
+    let comment_ids = rows.iter().map(|i| i.id).collect::<Vec<i64>>();
+
     let authors_map = developers::get_many_by_id(&author_ids, &mut pool)
         .await?
         .into_iter()
         .map(|dev| (dev.id, dev))
         .collect::<HashMap<_, _>>();
+
+    let mut attachments_map =
+        mod_version_submissions::get_attachments_for_comments(&comment_ids, &mut pool)
+            .await?
+            .into_iter()
+            .map(|(k, v)| {
+                let transformed = v
+                    .into_iter()
+                    .map(|i| data.public_storage().asset_url(&i.filename))
+                    .collect();
+                (k, transformed)
+            })
+            .collect::<HashMap<i64, Vec<String>>>();
 
     let comments = rows
         .into_iter()
@@ -303,7 +315,13 @@ pub async fn get_comments(
                 .get(&row.author_id)
                 .cloned()
                 .ok_or_else(|| ApiError::InternalError("Author not found".into()))?;
-            Ok(row.into_comment(author))
+
+            let id = row.id;
+
+            Ok(row.into_comment(
+                author,
+                attachments_map.remove(&id).unwrap_or_default()
+            ))
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
 
@@ -441,7 +459,7 @@ pub async fn create_comment(
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
-        payload: row.into_comment(dev),
+        payload: row.into_comment(dev, vec![]),
     }))
 }
 
@@ -531,9 +549,18 @@ pub async fn update_comment(
         .await?
         .ok_or_else(|| ApiError::InternalError("Author not found".into()))?;
 
+    let attachments =
+        mod_version_submissions::get_attachments_for_comment(path.comment_id, &mut tx)
+            .await?
+            .into_iter()
+            .map(|i| data.public_storage().asset_url(&i.filename))
+            .collect::<Vec<String>>();
+
+    tx.commit().await?;
+
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: updated_row.into_comment(author),
+        payload: updated_row.into_comment(author, attachments),
     }))
 }
 
