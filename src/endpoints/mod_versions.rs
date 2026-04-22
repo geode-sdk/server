@@ -12,7 +12,7 @@ use crate::database::repository::{
 };
 use crate::endpoints::ApiError;
 use crate::events::mod_created::{
-    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
+    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification, NewUnverifiedModVersionCreated,
 };
 use crate::mod_zip::{self, download_mod};
 use crate::types::models;
@@ -303,7 +303,7 @@ pub async fn create_version(
 
     let id = path.into_inner();
 
-    let the_mod = mods::get_one(&id, false, &mut pool)
+    let mut the_mod = mods::get_one(&id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", &id)))?;
 
@@ -435,7 +435,7 @@ pub async fn create_version(
             mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
         }
 
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+        the_mod = mods::update_with_json_moved(the_mod, json, &mut tx).await?;
     }
 
     if !make_accepted {
@@ -459,6 +459,15 @@ pub async fn create_version(
         }
         .to_discord_webhook()
         .send(data.webhook_url());
+    } else {
+        NewUnverifiedModVersionCreated {
+            id: the_mod.id.clone(),
+            name: version.name.clone(),
+            version: version.name.clone(),
+            owner: dev.clone(),
+        }
+        .to_discord_webhook()
+        .send(data.index_admin_webhook_url());
     }
 
     version.modify_metadata(data.app_url(), false);

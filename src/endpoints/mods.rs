@@ -8,6 +8,7 @@ use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
 use crate::endpoints::ApiError;
+use crate::events::mod_created::NewUnverifiedModVersionCreated;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
 use crate::mod_zip;
@@ -24,7 +25,7 @@ use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -74,7 +75,6 @@ pub struct CreateQueryParams {
         (status = 403, description = "Forbidden")
     )
 )]
-
 #[get("/v1/mods")]
 pub async fn index(
     data: web::Data<AppData>,
@@ -208,7 +208,9 @@ pub async fn create(
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
-        return Err(ApiError::BadRequest("Only index admins may use mod ids that start with 'geode.'".into()));
+        return Err(ApiError::BadRequest(
+            "Only index admins may use mod ids that start with 'geode.'".into(),
+        ));
     }
 
     if let Some(m) = &existing {
@@ -271,12 +273,20 @@ pub async fn create(
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut tx).await?;
     the_mod.versions.insert(0, version);
 
-
     // First version is always pending, so always open a submission for review
     let first_version = the_mod.versions.first().unwrap();
     mod_version_submissions::create(first_version.id, &mut tx).await?;
 
     tx.commit().await?;
+
+    NewUnverifiedModVersionCreated {
+        id: the_mod.id.clone(),
+        name: first_version.name.clone(),
+        version: first_version.name.clone(),
+        owner: dev.clone(),
+    }
+    .to_discord_webhook()
+    .send(data.index_admin_webhook_url());
 
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), false);
