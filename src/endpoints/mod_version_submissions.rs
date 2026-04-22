@@ -1,13 +1,16 @@
 use super::ApiError;
 use crate::config::AppData;
+use crate::database::DatabaseError;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::extractors::auth::Auth;
 use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
+use crate::types::models::developer::Developer;
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
-    ModVersionSubmissionComment, UpdateCommentPayload, UpdateSubmissionPayload,
+    ModVersionSubmissionComment, ModVersionSubmissionLock, UpdateCommentPayload,
+    UpdateSubmissionPayload,
 };
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
@@ -63,6 +66,26 @@ async fn resolve_version_id(
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Version {} not found", version)))?;
     Ok(ver.id)
+}
+
+async fn check_submission_lock(
+    dev: &Developer,
+    mod_id: &str,
+    lock_status: ModVersionSubmissionLock,
+    conn: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    if dev.admin {
+        return Ok(true);
+    }
+
+    let access_to_mod = developers::has_access_to_mod(dev.id, mod_id, &mut *conn).await?;
+    let active_developer = developers::has_active_mod(dev.id, &mut *conn).await?;
+
+    Ok(match lock_status {
+        ModVersionSubmissionLock::None => access_to_mod || active_developer,
+        ModVersionSubmissionLock::Internal => access_to_mod,
+        ModVersionSubmissionLock::Locked => false,
+    })
 }
 
 /// Get the submission for a mod version
@@ -192,18 +215,20 @@ pub async fn update_submission(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    let locked_by_id = if payload.locked { Some(dev.id) } else { None };
+    let locked_by_id = if payload.lock != ModVersionSubmissionLock::None {
+        Some(dev.id)
+    } else {
+        None
+    };
 
-    let row =
-        mod_version_submissions::set_locked(version_id, payload.locked, locked_by_id, &mut tx)
-            .await?;
+    let row = mod_version_submissions::set_locked(version_id, payload.lock, locked_by_id, &mut tx)
+        .await?;
 
     tx.commit().await?;
 
-    let locked_by = if payload.locked {
-        Some(dev.clone())
-    } else {
-        None
+    let locked_by = match payload.lock {
+        ModVersionSubmissionLock::None => None,
+        _ => Some(dev.clone()),
     };
 
     Ok(web::Json(ApiResponse {
@@ -329,8 +354,7 @@ pub async fn get_comment_audit(
         return Err(ApiError::NotFound("Comment not found".into()));
     }
 
-    let audit =
-        mod_version_submissions::get_audit_for_comment(comment.id, &mut pool).await?;
+    let audit = mod_version_submissions::get_audit_for_comment(comment.id, &mut pool).await?;
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
@@ -385,7 +409,7 @@ pub async fn create_comment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if !dev.admin && submission.locked {
+    if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
         return Err(ApiError::BadRequest(
             "Submission is locked; no new comments allowed".into(),
         ));
@@ -464,7 +488,7 @@ pub async fn update_comment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if !dev.admin && submission.locked {
+    if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
         return Err(ApiError::BadRequest(
             "Submission is locked; comments cannot be edited".into(),
         ));
@@ -481,7 +505,7 @@ pub async fn update_comment(
         )));
     }
 
-    if !dev.admin && comment_row.author_id != dev.id {
+    if comment_row.author_id != dev.id {
         return Err(ApiError::Authorization);
     }
 
@@ -546,7 +570,7 @@ pub async fn delete_comment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked && !dev.admin {
+    if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
         return Err(ApiError::BadRequest(
             "Submission is locked; comments cannot be deleted".into(),
         ));
@@ -557,10 +581,7 @@ pub async fn delete_comment(
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
     if comment_row.submission_id != version_id {
-        return Err(ApiError::NotFound(format!(
-            "Comment {} does not belong to this submission",
-            path.comment_id
-        )));
+        return Err(ApiError::NotFound("Comment not found".to_string()));
     }
 
     if !dev.admin && comment_row.author_id != dev.id {
@@ -592,7 +613,9 @@ pub async fn delete_comment(
     tx.commit().await?;
 
     for (filename, count) in references {
-        if count == 0 && let Err(e) = data.static_storage().delete(&filename).await {
+        if count == 0
+            && let Err(e) = data.static_storage().delete(&filename).await
+        {
             log::error!("Failed to delete attachment file {filename}: {e}");
         }
     }
@@ -696,7 +719,7 @@ pub async fn upload_attachments(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if !dev.admin && submission.locked {
+    if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
         return Err(ApiError::BadRequest(
             "Submission is locked; attachments cannot be uploaded".into(),
         ));
@@ -707,10 +730,7 @@ pub async fn upload_attachments(
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
     if comment_row.submission_id != version_id {
-        return Err(ApiError::NotFound(format!(
-            "Comment {} does not belong to this submission",
-            path.comment_id
-        )));
+        return Err(ApiError::NotFound("Comment not found".into()));
     }
 
     if comment_row.author_id != dev.id {
@@ -752,7 +772,7 @@ pub async fn upload_attachments(
         )));
     }
 
-    // Decode → encode WebP → hash, all in a blocking thread
+    // Decode -> encode WebP -> hash, all in a blocking thread
     let processed: Vec<Vec<u8>> =
         tokio::task::spawn_blocking(move || -> Result<Vec<Vec<u8>>, ApiError> {
             images
@@ -771,7 +791,8 @@ pub async fn upload_attachments(
                 .collect()
         })
         .await
-        .map_err(|e| ApiError::InternalError(format!("Task join error: {e}")))??;
+        .inspect_err(|e| log::error!("Bad bad bad bad {e}"))
+        .map_err(|_| ApiError::InternalError("Something very bad happened!".into()))??;
 
     let mut result = Vec::with_capacity(processed.len());
     for webp_bytes in &processed {
@@ -847,7 +868,7 @@ pub async fn delete_attachment(
         .await?
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
-    if submission.locked && !dev.admin {
+    if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
         return Err(ApiError::BadRequest(
             "Submission is locked; attachments cannot be deleted".into(),
         ));
@@ -858,10 +879,7 @@ pub async fn delete_attachment(
         .ok_or_else(|| ApiError::NotFound(format!("Comment {} not found", path.comment_id)))?;
 
     if comment_row.submission_id != version_id {
-        return Err(ApiError::NotFound(format!(
-            "Comment {} does not belong to this submission",
-            path.comment_id
-        )));
+        return Err(ApiError::NotFound("Comment not found".into()));
     }
 
     if !dev.admin && comment_row.author_id != dev.id {

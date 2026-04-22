@@ -7,9 +7,15 @@ CREATE TYPE audit_action AS ENUM (
     'restored'
 );
 
+CREATE TYPE submission_lock AS ENUM (
+    'none',
+    'internal',
+    'locked'
+);
+
 CREATE TABLE mod_version_submissions (
     mod_version_id INT NOT NULL PRIMARY KEY,
-    locked BOOLEAN NOT NULL DEFAULT FALSE,
+    lock submission_lock NOT NULL DEFAULT 'none',
     locked_by INT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -293,6 +293,26 @@ pub async fn has_access_to_mod(
     .map_err(|e| e.into())
 }
 
+pub async fn has_active_mod(
+    dev_id: i32,
+    conn: &mut PgConnection
+) -> Result<bool, DatabaseError> {
+    sqlx::query!(
+        "SELECT mods.id FROM mods
+        INNER JOIN mod_versions ON mods.id = mod_versions.mod_id
+        INNER JOIN mod_version_statuses ON mod_version_statuses.id = mod_versions.status_id
+        INNER JOIN mods_developers ON mods.id = mods_developers.mod_id
+        WHERE mods_developers.developer_id = $1
+        AND mod_version_statuses.status = 'accepted'
+        LIMIT 1",
+        dev_id
+    ).fetch_optional(conn)
+    .await
+    .inspect_err(|e| log::error!("developers::has_active_mod failed: {e}"))
+    .map_err(|e| e.into())
+    .map(|result| result.is_some())
+}
+
 pub async fn owns_mod(
     dev_id: i32,
     mod_id: &str,

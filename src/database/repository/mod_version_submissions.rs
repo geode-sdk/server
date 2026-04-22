@@ -1,7 +1,7 @@
 use crate::database::DatabaseError;
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::mod_version_submission::{
-    ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionRow,
+    ModVersionSubmissionAttachmentRow, ModVersionSubmissionCommentRow, ModVersionSubmissionLock, ModVersionSubmissionRow
 };
 use sqlx::{Error, PgConnection};
 use std::collections::HashMap;
@@ -12,11 +12,11 @@ pub async fn get_for_mod_version(
 ) -> Result<Option<ModVersionSubmissionRow>, DatabaseError> {
     sqlx::query_as!(
         ModVersionSubmissionRow,
-        "SELECT
-        mod_version_id, locked, locked_by,
+        r#"SELECT
+        mod_version_id, lock as "lock: _", locked_by,
         created_at, updated_at
         FROM mod_version_submissions
-        WHERE mod_version_id = $1",
+        WHERE mod_version_id = $1"#,
         id
     )
     .fetch_optional(conn)
@@ -49,9 +49,9 @@ pub async fn create(
 ) -> Result<ModVersionSubmissionRow, DatabaseError> {
     let row = sqlx::query_as!(
         ModVersionSubmissionRow,
-        "INSERT INTO mod_version_submissions (mod_version_id)
+        r#"INSERT INTO mod_version_submissions (mod_version_id)
         VALUES ($1)
-        RETURNING mod_version_id, locked, locked_by, created_at, updated_at",
+        RETURNING mod_version_id, lock as "lock: _", locked_by, created_at, updated_at"#,
         mod_version_id
     )
     .fetch_one(&mut *conn)
@@ -64,7 +64,7 @@ pub async fn create(
 
 pub async fn set_locked(
     mod_version_id: i32,
-    locked: bool,
+    lock: ModVersionSubmissionLock,
     locked_by: Option<i32>,
     conn: &mut PgConnection,
 ) -> Result<ModVersionSubmissionRow, DatabaseError> {
@@ -73,9 +73,13 @@ pub async fn set_locked(
         AuditAction::Updated,
         Some(&format!(
             "Submission {}{}",
-            if locked { "locked" } else { "unlocked" },
+            match lock {
+                ModVersionSubmissionLock::None => "unlocked",
+                ModVersionSubmissionLock::Internal => "restricted to mod developers and admins",
+                ModVersionSubmissionLock::Locked => "locked"
+            },
             if locked_by.is_none() {
-                "automatically"
+                " automatically"
             } else {
                 ""
             }
@@ -87,11 +91,11 @@ pub async fn set_locked(
 
     sqlx::query_as!(
         ModVersionSubmissionRow,
-        "UPDATE mod_version_submissions
-        SET locked = $1, locked_by = $2, updated_at = NOW()
+        r#"UPDATE mod_version_submissions
+        SET lock = $1, locked_by = $2, updated_at = NOW()
         WHERE mod_version_id = $3
-        RETURNING mod_version_id, locked, locked_by, created_at, updated_at",
-        locked,
+        RETURNING mod_version_id, lock as "lock: _", locked_by, created_at, updated_at"#,
+        lock as ModVersionSubmissionLock,
         locked_by,
         mod_version_id
     )

@@ -16,6 +16,7 @@ use crate::events::mod_created::{
 };
 use crate::mod_zip::{self, download_mod};
 use crate::types::models;
+use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
@@ -427,11 +428,11 @@ pub async fn create_version(
             )
             .await?;
         }
-        if let Some(tags) = &json.tags {
-            if !tags.is_empty() {
-                let tags = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
-                mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
-            }
+        if let Some(tags) = &json.tags
+            && !tags.is_empty()
+        {
+            let tags = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
+            mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
         }
 
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
@@ -579,8 +580,16 @@ pub async fn update_version(
 
         // Let's also maybe lock the thread if it exists!
         let thread = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await?;
-        if let Some(thread) = thread && !thread.locked {
-            mod_version_submissions::set_locked(thread.mod_version_id, true, None, &mut tx).await?;
+        if let Some(thread) = thread
+            && thread.lock != ModVersionSubmissionLock::Locked
+        {
+            mod_version_submissions::set_locked(
+                thread.mod_version_id,
+                ModVersionSubmissionLock::Locked,
+                None,
+                &mut tx,
+            )
+            .await?;
         }
     }
 

@@ -3,10 +3,19 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use crate::types::models::developer::Developer;
 
+#[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
+#[sqlx(type_name = "submission_lock", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum ModVersionSubmissionLock {
+    None,
+    Internal,
+    Locked
+}
+
 #[derive(Serialize, ToSchema, Debug, Clone)]
 pub struct ModVersionSubmission {
     pub mod_version_id: i32,
-    pub locked: bool,
+    pub lock: ModVersionSubmissionLock,
     pub locked_by: Option<Developer>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -14,7 +23,7 @@ pub struct ModVersionSubmission {
 
 pub struct ModVersionSubmissionRow {
     pub mod_version_id: i32,
-    pub locked: bool,
+    pub lock: ModVersionSubmissionLock,
     pub locked_by: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -24,7 +33,7 @@ impl ModVersionSubmissionRow {
     pub fn into_submission(self, locked_by: Option<Developer>) -> ModVersionSubmission {
         ModVersionSubmission {
             mod_version_id: self.mod_version_id,
-            locked: self.locked,
+            lock: self.lock,
             locked_by,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -95,7 +104,7 @@ impl ModVersionSubmissionAttachmentRow {
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSubmissionPayload {
-    pub locked: bool,
+    pub lock: ModVersionSubmissionLock,
 }
 
 #[derive(Deserialize, ToSchema)]
