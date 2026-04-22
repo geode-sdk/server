@@ -802,7 +802,7 @@ pub async fn upload_attachments(
             .await?;
         let row =
             mod_version_submissions::create_attachment(path.comment_id, &filename, &mut tx).await?;
-        result.push(row.into_attachment(&data.app_url().to_string()));
+        result.push(row.into_attachment(data.app_url()));
     }
 
     mod_version_submissions::insert_comment_audit(
