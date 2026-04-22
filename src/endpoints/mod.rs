@@ -9,6 +9,7 @@ pub mod developers;
 pub mod health;
 pub mod loader;
 pub mod mod_versions;
+pub mod mod_status_badge;
 pub mod mods;
 pub mod stats;
 pub mod tags;

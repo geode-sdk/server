@@ -1,3 +1,7 @@
+#[derive(Deserialize, ToSchema)]
+pub struct ModGetQueryParams {
+    pub abbreviate: Option<bool>,
+}
 use crate::config::AppData;
 use crate::database::repository::developers;
 use crate::database::repository::incompatibilities;
@@ -126,6 +130,7 @@ pub async fn index(
 pub async fn get(
     data: web::Data<AppData>,
     id: web::Path<String>,
+    query: web::Query<ModGetQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer().ok();
@@ -170,6 +175,8 @@ pub async fn get(
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), has_extended_permissions);
     }
+
+    the_mod.set_abbreviated_download_counts(query.abbreviate.unwrap_or(false));
 
     Ok(web::Json(ApiResponse {
         error: "".into(),

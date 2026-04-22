@@ -1,5 +1,6 @@
 use super::{
     dependency::{Dependency, ModVersionCompare, ResponseDependency},
+    download_count::DownloadCount,
     developer::ModDeveloper,
     incompatibility::{Incompatibility, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
@@ -31,7 +32,8 @@ pub struct ModVersion {
     pub download_link: String,
     pub hash: String,
     pub geode: String,
-    pub download_count: i32,
+    #[schema(value_type = i32)]
+    pub download_count: DownloadCount,
     pub early_load: bool,
     pub requires_patching: bool,
     pub api: bool,
@@ -101,7 +103,7 @@ impl ModVersionGetOne {
             geode: self.geode.clone(),
             early_load: self.early_load,
             requires_patching: self.requires_patching,
-            download_count: self.download_count,
+            download_count: self.download_count.into(),
             api: self.api,
             mod_id: self.mod_id.clone(),
             status: self.status,
@@ -128,6 +130,10 @@ impl ModVersionGetOne {
 }
 
 impl ModVersion {
+    pub fn set_abbreviated_download_count(&mut self, abbreviate: bool) {
+        self.download_count.set_abbreviated(abbreviate);
+    }
+
     fn modify_download_link(&mut self, app_url: &str) {
         self.download_link = create_download_link(app_url, &self.mod_id, &self.version)
     }

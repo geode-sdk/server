@@ -3,17 +3,56 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Debug)]
 pub struct StaticStorage {
     base_path: PathBuf,
+    app_url: String
 }
 
 impl StaticStorage {
-    pub fn new() -> Self {
+    pub fn new(app_url: String) -> Self {
         Self {
             base_path: PathBuf::from("storage/static"),
+            app_url
         }
+    }
+
+    pub fn asset_url(&self, relative_path: &str) -> String {
+        format!(
+            "{}/static/{}",
+            self.app_url.trim_end_matches('/'),
+            relative_path
+        )
     }
 }
 
 impl StorageDisk for StaticStorage {
+    fn base_path(&self) -> &Path {
+        &self.base_path
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PublicStorage {
+    base_path: PathBuf,
+    app_url: String
+}
+
+impl PublicStorage {
+    pub fn new(app_url: String) -> Self {
+        Self {
+            base_path: PathBuf::from("storage/public"),
+            app_url
+        }
+    }
+
+    pub fn asset_url(&self, relative_path: &str) -> String {
+        format!(
+            "{}/storage/{}",
+            self.app_url.trim_end_matches('/'),
+            relative_path
+        )
+    }
+}
+
+impl StorageDisk for PublicStorage {
     fn base_path(&self) -> &Path {
         &self.base_path
     }
@@ -87,6 +126,13 @@ pub trait StorageDisk {
         match tokio::fs::read(self.path(relative_path)).await {
             Ok(data) => Ok(data),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(e) => Err(e),
+        }
+    }
+    async fn read_to_string(&self, relative_path: &str) -> std::io::Result<String> {
+        match tokio::fs::read_to_string(self.path(relative_path)).await {
+            Ok(data) => Ok(data),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
             Err(e) => Err(e),
         }
     }
