@@ -2,6 +2,7 @@ use super::ApiError;
 use crate::config::AppData;
 use crate::database::DatabaseError;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
+use crate::events::thread_comment::NewThreadComment;
 use crate::extractors::auth::Auth;
 use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
@@ -12,6 +13,7 @@ use crate::types::models::mod_version_submission::{
     ModVersionSubmissionComment, ModVersionSubmissionLock, UpdateCommentPayload,
     UpdateSubmissionPayload,
 };
+use crate::webhook::discord::DiscordWebhook;
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use futures::StreamExt;
@@ -410,13 +412,6 @@ pub async fn create_comment(
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
-        return Err(ApiError::BadRequest(
-            "Submission is locked; no new comments allowed".into(),
-        ));
-    }
-
-    // Only the mod developers (or admins) may comment
-    if !dev.admin && !developers::has_access_to_mod(dev.id, &path.id, &mut tx).await? {
         return Err(ApiError::Authorization);
     }
 
@@ -433,6 +428,16 @@ pub async fn create_comment(
     .await?;
 
     tx.commit().await?;
+
+    if !data.index_admin_webhook_url().is_empty() {
+        NewThreadComment {
+            mod_id: path.id.clone(),
+            mod_version: path.version.clone(),
+            username: dev.username.clone(),
+        }
+        .to_discord_webhook()
+        .send(data.index_admin_webhook_url());
+    }
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -489,9 +494,7 @@ pub async fn update_comment(
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
-        return Err(ApiError::BadRequest(
-            "Submission is locked; comments cannot be edited".into(),
-        ));
+        return Err(ApiError::Authorization);
     }
 
     let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
@@ -571,9 +574,7 @@ pub async fn delete_comment(
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
-        return Err(ApiError::BadRequest(
-            "Submission is locked; comments cannot be deleted".into(),
-        ));
+        return Err(ApiError::Authorization);
     }
 
     let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
@@ -720,9 +721,7 @@ pub async fn upload_attachments(
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
-        return Err(ApiError::BadRequest(
-            "Submission is locked; attachments cannot be uploaded".into(),
-        ));
+        return Err(ApiError::Authorization);
     }
 
     let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)
@@ -869,9 +868,7 @@ pub async fn delete_attachment(
         .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
 
     if !check_submission_lock(&dev, &path.id, submission.lock, &mut tx).await? {
-        return Err(ApiError::BadRequest(
-            "Submission is locked; attachments cannot be deleted".into(),
-        ));
+        return Err(ApiError::Authorization);
     }
 
     let comment_row = mod_version_submissions::get_comment(path.comment_id, &mut tx)

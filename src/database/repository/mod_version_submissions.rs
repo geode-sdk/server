@@ -326,22 +326,6 @@ pub async fn delete_attachment(
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn delete_attachments_for_comment(
-    comment_id: i64,
-    conn: &mut PgConnection,
-) -> Result<bool, DatabaseError> {
-    let result = sqlx::query!(
-        "DELETE FROM mod_version_submission_comment_attachments WHERE comment_id = $1",
-        comment_id
-    )
-    .execute(conn)
-    .await
-    .inspect_err(|e| {
-        log::error!("mod_version_submissions::delete_attachments_for_comment_id failed: {e}")
-    })?;
-    Ok(result.rows_affected() > 0)
-}
-
 pub async fn count_references_to_filename(
     filename: &str,
     conn: &mut PgConnection,
