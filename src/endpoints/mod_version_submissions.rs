@@ -253,11 +253,8 @@ pub async fn update_submission(
 pub async fn get_comments(
     path: web::Path<SubmissionPath>,
     data: web::Data<AppData>,
-    query: web::Query<CommentsQuery>,
-    auth: Auth,
+    query: web::Query<CommentsQuery>
 ) -> Result<impl Responder, ApiError> {
-    auth.developer()?;
-
     let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
@@ -667,11 +664,8 @@ pub async fn delete_comment(
 #[get("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments")]
 pub async fn get_attachments(
     path: web::Path<CommentPath>,
-    data: web::Data<AppData>,
-    auth: Auth,
+    data: web::Data<AppData>
 ) -> Result<impl Responder, ApiError> {
-    auth.developer()?;
-
     let mut pool = data.db().acquire().await?;
 
     if !mods::exists(&path.id, &mut pool).await? {
