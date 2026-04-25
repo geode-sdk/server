@@ -1,7 +1,8 @@
+use crate::types::models::developer::Developer;
+use crate::types::serde::chrono_dt_secs;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use crate::types::models::developer::Developer;
 
 #[derive(sqlx::Type, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
 #[sqlx(type_name = "submission_lock", rename_all = "lowercase")]
@@ -9,7 +10,7 @@ use crate::types::models::developer::Developer;
 pub enum ModVersionSubmissionLock {
     None,
     Internal,
-    Locked
+    Locked,
 }
 
 #[derive(Serialize, ToSchema, Debug, Clone)]
@@ -48,7 +49,9 @@ pub struct ModVersionSubmissionComment {
     pub comment: String,
     pub author: Developer,
     pub attachments: Vec<String>,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "chrono_dt_secs::option")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -57,18 +60,24 @@ pub struct ModVersionSubmissionCommentRow {
     pub submission_id: i32,
     pub comment: String,
     pub author_id: i32,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "chrono_dt_secs::option")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
 impl ModVersionSubmissionCommentRow {
-    pub fn into_comment(self, author: Developer, attachment_links: Vec<String>) -> ModVersionSubmissionComment {
+    pub fn into_comment(
+        self,
+        author: Developer,
+        attachment_links: Vec<String>,
+    ) -> ModVersionSubmissionComment {
         ModVersionSubmissionComment {
             id: self.id,
             submission_id: self.submission_id,
             comment: self.comment,
             author,
-            attachments: attachment_links, 
+            attachments: attachment_links,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -122,4 +131,3 @@ pub struct UpdateCommentPayload {
     /// Plain text comment; HTML tags are stripped
     pub comment: String,
 }
-
