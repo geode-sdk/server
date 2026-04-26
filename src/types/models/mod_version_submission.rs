@@ -60,9 +60,7 @@ pub struct ModVersionSubmissionCommentRow {
     pub submission_id: i32,
     pub comment: String,
     pub author_id: i32,
-    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
-    #[serde(with = "chrono_dt_secs::option")]
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -89,6 +87,7 @@ pub struct ModVersionSubmissionAttachment {
     pub id: i64,
     pub comment_id: i64,
     pub url: String,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
 }
 
