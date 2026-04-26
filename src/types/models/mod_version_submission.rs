@@ -18,7 +18,9 @@ pub struct ModVersionSubmission {
     pub mod_version_id: i32,
     pub lock: ModVersionSubmissionLock,
     pub locked_by: Option<Developer>,
+    #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "chrono_dt_secs")]
     pub updated_at: DateTime<Utc>,
 }
 
