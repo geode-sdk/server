@@ -293,10 +293,7 @@ pub async fn has_access_to_mod(
     .map_err(|e| e.into())
 }
 
-pub async fn has_active_mod(
-    dev_id: i32,
-    conn: &mut PgConnection
-) -> Result<bool, DatabaseError> {
+pub async fn has_active_mod(dev_id: i32, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
     sqlx::query!(
         "SELECT mods.id FROM mods
         INNER JOIN mod_versions ON mods.id = mod_versions.mod_id
@@ -306,7 +303,8 @@ pub async fn has_active_mod(
         AND mod_version_statuses.status = 'accepted'
         LIMIT 1",
         dev_id
-    ).fetch_optional(conn)
+    )
+    .fetch_optional(conn)
     .await
     .inspect_err(|e| log::error!("developers::has_active_mod failed: {e}"))
     .map_err(|e| e.into())
@@ -471,5 +469,23 @@ pub async fn find_by_token(
     .fetch_optional(&mut *conn)
     .await
     .inspect_err(|e| log::error!("{}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn has_accepted_mod(id: i32, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
+    sqlx::query!(
+        "SELECT mod_versions.id
+        FROM mod_versions
+        INNER JOIN mods ON mods.id = mod_versions.mod_id
+        INNER JOIN mods_developers ON mods.id = mods_developers.mod_id
+        INNER JOIN mod_version_statuses ON mod_version_statuses.id = mod_versions.status_id
+        WHERE mod_version_statuses.status = 'accepted'
+        AND mods_developers.developer_id = $1",
+        id
+    )
+    .fetch_optional(conn)
+    .await
+    .map(|x| x.is_some())
+    .inspect_err(|e| log::error!("developers::has_accepted_mod failed: {e}"))
     .map_err(|e| e.into())
 }
