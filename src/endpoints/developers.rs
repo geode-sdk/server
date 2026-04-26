@@ -6,6 +6,7 @@ use super::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
 use crate::types::api::{ApiResponse, PaginatedData};
+use crate::types::models::developer::SelfDeveloper;
 use crate::{
     extractors::auth::Auth,
     types::{
@@ -357,7 +358,7 @@ pub async fn get_own_mods(
     path = "/v1/me",
     tag = "developers",
     responses(
-        (status = 200, description = "Current developer profile", body = inline(ApiResponse<Developer>)),
+        (status = 200, description = "Current developer profile", body = inline(ApiResponse<SelfDeveloper>)),
         (status = 401, description = "Unauthorized")
     ),
     security(
@@ -365,11 +366,15 @@ pub async fn get_own_mods(
     )
 )]
 #[get("v1/me")]
-pub async fn get_me(auth: Auth) -> Result<impl Responder, ApiError> {
+pub async fn get_me(auth: Auth, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
+    let mut pool = data.db().acquire().await?;
     let dev = auth.developer()?;
+
+    let has_accepted_mod = developers::has_accepted_mod(dev.id, &mut pool).await?;
+
     Ok(HttpResponse::Ok().json(ApiResponse {
         error: "".to_string(),
-        payload: dev,
+        payload: dev.to_self_developer(has_accepted_mod),
     }))
 }
 

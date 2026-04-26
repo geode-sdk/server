@@ -4,7 +4,8 @@ version = "0.53.2"
 edition = "2024"
 
 [dependencies]
-image = { version = "0.25", features = ["png"] }
+image = { version = "0.25", features = ["png", "jpeg", "webp"] }
+actix-multipart = "0.7"
 actix-web = "4.10"
 anyhow = "1.0"
 dotenvy = "0.15"
@@ -45,3 +46,5 @@ utoipa = { version = "5.4.0", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }
 urlencoding = "2.1.3"
 validator = { version = "0.20.0", features = ["derive"] }
+bytes = "1.11"
+ammonia = "4"

@@ -1,27 +1,28 @@
 use std::str::FromStr;
 
-use actix_web::{dev::ConnectionInfo, get, post, put, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, dev::ConnectionInfo, get, post, put, web};
 use serde::Deserialize;
-use sqlx::{types::ipnetwork::IpNetwork, Acquire};
-use utoipa::{ToSchema, IntoParams};
+use sqlx::{Acquire, types::ipnetwork::IpNetwork};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::config::AppData;
 use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
-    mod_tags, mod_versions, mods,
+    mod_tags, mod_version_submissions, mod_versions, mods,
 };
 use crate::endpoints::ApiError;
 use crate::events::mod_created::{
-    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
+    NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification, NewUnverifiedModVersionCreated,
 };
 use crate::mod_zip::{self, download_mod};
 use crate::types::models;
+use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
     extractors::auth::Auth,
     types::{
         api::ApiResponse,
-        mod_json::{split_version_and_compare, ModJson},
+        mod_json::{ModJson, split_version_and_compare},
         models::{
             mod_gd_version::{GDVersionEnum, VerPlatform},
             mod_version::{self, ModVersion},
@@ -302,7 +303,7 @@ pub async fn create_version(
 
     let id = path.into_inner();
 
-    let the_mod = mods::get_one(&id, false, &mut pool)
+    let mut the_mod = mods::get_one(&id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", &id)))?;
 
@@ -427,14 +428,18 @@ pub async fn create_version(
             )
             .await?;
         }
-        if let Some(tags) = &json.tags {
-            if !tags.is_empty() {
-                let tags = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
-                mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
-            }
+        if let Some(tags) = &json.tags
+            && !tags.is_empty()
+        {
+            let tags = models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?;
+            mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
         }
 
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+        the_mod = mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+    }
+
+    if !make_accepted {
+        mod_version_submissions::create(version.id, &mut tx).await?;
     }
 
     tx.commit().await?;
@@ -454,6 +459,15 @@ pub async fn create_version(
         }
         .to_discord_webhook()
         .send(data.webhook_url());
+    } else {
+        NewUnverifiedModVersionCreated {
+            id: the_mod.id.clone(),
+            name: version.name.clone(),
+            version: version.name.clone(),
+            owner: dev.clone(),
+        }
+        .to_discord_webhook()
+        .send(data.index_admin_webhook_url());
     }
 
     version.modify_metadata(data.app_url(), false);
@@ -572,6 +586,20 @@ pub async fn update_version(
         mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
 
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+
+        // Let's also maybe lock the thread if it exists!
+        let thread = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await?;
+        if let Some(thread) = thread
+            && thread.lock != ModVersionSubmissionLock::Locked
+        {
+            mod_version_submissions::set_locked(
+                thread.mod_version_id,
+                ModVersionSubmissionLock::Locked,
+                None,
+                &mut tx,
+            )
+            .await?;
+        }
     }
 
     tx.commit().await?;

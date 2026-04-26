@@ -14,6 +14,7 @@ pub mod mods;
 pub mod stats;
 pub mod tags;
 pub mod deprecations;
+pub mod mod_version_submissions;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
@@ -43,6 +44,8 @@ pub enum ApiError {
     Zip(#[from] zip::result::ZipError),
     #[error("Failed to contact external resource: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("I/O error: {0}")]
+    IO(#[from] std::io::Error),
 }
 
 impl ApiError {
@@ -61,6 +64,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Authorization => StatusCode::FORBIDDEN,
             ApiError::Json(..) => StatusCode::BAD_REQUEST,
             ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
+            ApiError::NotFound(..) => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

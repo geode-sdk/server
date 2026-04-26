@@ -95,7 +95,7 @@ pub trait StorageDisk {
         tokio::fs::write(path, data).await
     }
     /// Store data at a path calculated from the hash of the data. Uses content-addressable storage with 2 levels
-    async fn store_hashed(&self, relative_path: &str, data: &[u8]) -> std::io::Result<()> {
+    async fn store_hashed(&self, relative_path: &str, data: &[u8]) -> std::io::Result<String> {
         self.store_hashed_with_extension(relative_path, data, None)
             .await
     }
@@ -106,7 +106,7 @@ pub trait StorageDisk {
         relative_path: &str,
         data: &[u8],
         extension: Option<&str>,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<String> {
         let hash = sha256::digest(data);
 
         let hashed_path = format!(
@@ -119,7 +119,8 @@ pub trait StorageDisk {
                 ext.trim_start_matches('.')
             ))
         );
-        self.store(&hashed_path, data).await
+        self.store(&hashed_path, data).await?;
+        Ok(hashed_path)
     }
     async fn read(&self, relative_path: &str) -> std::io::Result<Vec<u8>> {
         match tokio::fs::read(self.path(relative_path)).await {
