@@ -5,7 +5,7 @@ Server for the Geode Index, the API used by Geode SDK to retrieve mod informatio
 ## Requirements for hosting
 
 - rust stable
-- PostgreSQL 14 or later
+- PostgreSQL 17 or later
 
 ## Documentation
 
