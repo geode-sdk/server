@@ -10,7 +10,7 @@ use crate::{
     extractors::auth::Auth,
     types::{
         models::{
-            developer::{ModDeveloper, Developer},
+            developer::{ModDeveloper, Developer, DeveloperBan},
             mod_entity::Mod,
             mod_version_status::ModVersionStatusEnum,
         },
@@ -70,6 +70,11 @@ struct DeveloperIndexQuery {
     per_page: Option<i64>,
 }
 
+#[derive(Deserialize, ToSchema)]
+struct DeveloperBanPayload {
+    reason: Option<String>,
+}
+
 /// List all developers with optional search and pagination
 #[utoipa::path(
     get,
@@ -126,6 +131,10 @@ pub async fn add_developer_to_mod(
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+
     if !mods::exists(&path.id, &mut pool).await? {
         return Err(ApiError::NotFound(format!("Mod id {} not found", path.id)));
     }
@@ -139,6 +148,10 @@ pub async fn add_developer_to_mod(
             "No developer found with username {}",
             json.username
         )))?;
+
+    if let Some(_) = developers::check_ban(target.id, &mut pool).await? {
+        return Err(ApiError::Banned(Some("The developer being added is banned".into())));
+    }
 
     mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
 
@@ -464,6 +477,151 @@ pub async fn update_developer(
         &mut pool,
     )
     .await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: result,
+    }))
+}
+
+
+#[derive(Deserialize, IntoParams)]
+struct CreateDeveloperBanPath {
+    id: i32,
+}
+
+/// Ban a developer from mod submissions (admin only)
+#[utoipa::path(
+    post,
+    path = "/v1/developers/{id}/ban",
+    tag = "developers",
+    params(CreateDeveloperBanPath),
+    request_body = DeveloperBanPayload,
+    responses(
+        (status = 200, description = "Developer banned", body = inline(ApiResponse<DeveloperBan>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 404, description = "Developer not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[post("v1/developers/ban")]
+pub async fn ban_developer(
+    auth: Auth,
+    data: web::Data<AppData>,
+    path: web::Path<CreateDeveloperBanPath>,
+    payload: web::Json<DeveloperBanPayload>,
+) -> Result<impl Responder, ApiError> {
+    let dev = auth.developer()?;
+    auth.check_admin()?;
+
+    let mut pool = data.db().acquire().await?;
+
+    // check dev exists (we don't need the result)
+    developers::get_one(path.id, &mut pool)
+        .await?
+        .ok_or(ApiError::NotFound("Developer not found".into()))?;
+
+    // check ban exists
+    if let None = developers::check_ban(path.id, &mut pool).await? {
+        return Err(ApiError::BadRequest("This developer is already banned".into()));
+    }
+
+    let result = developers::create_ban(
+        path.id,
+        dev.id,
+        payload.reason.as_deref(),
+        &mut pool,
+    )
+    .await?;
+
+    Ok(web::Json(ApiResponse {
+        error: "".to_string(),
+        payload: result,
+    }))
+}
+
+#[derive(Deserialize, IntoParams)]
+struct DeleteDeveloperBanPath {
+    id: i32,
+}
+
+/// Remove a developer ban (admin only)
+#[utoipa::path(
+    delete,
+    path = "/v1/developers/{id}/ban",
+    tag = "developers",
+    params(DeleteDeveloperBanPath),
+    responses(
+        (status = 204, description = "Ban deleted"),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[delete("/v1/developers/{id}/ban")]
+pub async fn unban_developer(
+    auth: Auth,
+    data: web::Data<AppData>,
+    path: web::Path<DeleteDeveloperBanPath>,
+) -> Result<impl Responder, ApiError> {
+    auth.check_admin()?;
+
+    let mut pool = data.db().acquire().await?;
+
+    developers::delete_ban(
+        path.id,
+        &mut pool,
+    )
+    .await?;
+
+    Ok(HttpResponse::NoContent())
+}
+
+#[derive(Deserialize, IntoParams)]
+struct GetDeveloperBanPath {
+    id: i32,
+}
+
+/// Check if a developer is banned (admin only)
+#[utoipa::path(
+    get,
+    path = "/v1/developers/{id}/ban",
+    tag = "developers",
+    params(GetDeveloperBanPath),
+    responses(
+        (status = 200, description = "Ban object", body = inline(ApiResponse<DeveloperBan>)),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - Admin only"),
+        (status = 404, description = "Ban not found")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[get("/v1/developers/{id}/ban")]
+pub async fn get_developer_ban(
+    auth: Auth,
+    data: web::Data<AppData>,
+    path: web::Path<DeleteDeveloperBanPath>,
+) -> Result<impl Responder, ApiError> {
+    auth.check_admin()?;
+
+    let mut pool = data.db().acquire().await?;
+
+    let result = developers::check_ban(
+        path.id,
+        &mut pool,
+    )
+    .await?
+    .ok_or(ApiError::NotFound("Ban was not found".into()))?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),
