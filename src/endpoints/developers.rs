@@ -1,6 +1,7 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
+use chrono::{DateTime, Utc};
 
 use super::ApiError;
 use crate::config::AppData;
@@ -72,6 +73,7 @@ struct DeveloperIndexQuery {
 #[derive(Deserialize, ToSchema)]
 struct DeveloperBanPayload {
     reason: Option<String>,
+    revoked_at: Option<DateTime<Utc>>,
 }
 
 /// List all developers with optional search and pagination
@@ -547,6 +549,7 @@ pub async fn ban_developer(
         path.id,
         dev.id,
         payload.reason.as_deref(),
+        payload.revoked_at,
         &mut pool,
     )
     .await?;
