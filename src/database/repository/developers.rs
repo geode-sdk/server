@@ -2,6 +2,7 @@ use crate::database::DatabaseError;
 use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, DeveloperBan, ModDeveloper};
 use sqlx::PgConnection;
+use sqlx::types::chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -432,14 +433,15 @@ pub async fn create_ban(
     dev_id: i32,
     admin_id: i32,
     reason: Option<&str>,
+    revoked_at: Option<DateTime<Utc>>,
     conn: &mut PgConnection,
 ) -> Result<DeveloperBan, DatabaseError> {
     sqlx::query_as!(DeveloperBan,
-        "INSERT INTO bans (developer_id, reason, admin_id)
-            VALUES ($1, $2, $3)
+        "INSERT INTO bans (developer_id, reason, admin_id, revoked_at)
+            VALUES ($1, $2, $3, $4)
         RETURNING
-            developer_id, reason, admin_id, created_at",
-        dev_id, reason, admin_id
+            id, developer_id, reason, admin_id, created_at, revoked_at",
+        dev_id, reason, admin_id, revoked_at
     )
     .fetch_one(&mut *conn)
     .await
@@ -452,7 +454,7 @@ pub async fn check_ban(
     conn: &mut PgConnection,
 ) -> Result<Option<DeveloperBan>, DatabaseError> {
     sqlx::query_as!(DeveloperBan,
-        "SELECT developer_id, reason, admin_id, created_at FROM bans WHERE developer_id=$1", dev_id
+        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST LIMIT 1", dev_id
     )
     .fetch_optional(&mut *conn)
     .await
@@ -461,10 +463,12 @@ pub async fn check_ban(
 }
 
 pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
-    sqlx::query!("DELETE FROM bans WHERE developer_id = $1", dev_id)
-        .execute(conn)
-        .await
-        .inspect_err(|e| log::error!("Failed to delete developer ban: {e}"))?;
+    if let Some(current_ban) = check_ban(dev_id, conn).await? {
+        sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)
+            .execute(conn)
+            .await
+        .inspect_err(|e| log::error!("Failed to revoke developer ban: {e}"))?;
+    }
 
     Ok(())
 }
