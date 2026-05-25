@@ -462,6 +462,19 @@ pub async fn check_ban(
     .map_err(|e| e.into())
 }
 
+pub async fn update_ban_revoke_time(ban_id: i32, revoked_at: Option<DateTime<Utc>>, conn: &mut PgConnection) -> Result<Option<DeveloperBan>, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "UPDATE bans
+            SET revoked_at=$2 WHERE id=$1
+        RETURNING
+            id, developer_id, reason, admin_id, created_at, revoked_at",
+        ban_id, revoked_at)
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| log::error!("Failed to update developer ban: {e}"))
+    .map_err(|e| e.into())
+}
+
 pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     if let Some(current_ban) = check_ban(dev_id, conn).await? {
         sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)

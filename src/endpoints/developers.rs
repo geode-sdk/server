@@ -528,8 +528,15 @@ pub async fn ban_developer(
         .ok_or(ApiError::NotFound("Developer not found".into()))?;
 
     // check ban exists
-    if let None = developers::check_ban(path.id, &mut pool).await? {
-        return Err(ApiError::BadRequest("This developer is already banned".into()));
+    if let Some(ban) = developers::check_ban(path.id, &mut pool).await? {
+        let result = developers::update_ban_revoke_time(ban.id, payload.revoked_at, &mut pool)
+            .await?
+            .ok_or(ApiError::InternalError("Ban was deleted between asserting its existence and updating it".into()))?;
+
+        return Ok(web::Json(ApiResponse {
+            error: "".to_string(),
+            payload: result,
+        }))
     }
 
     let result = developers::create_ban(
