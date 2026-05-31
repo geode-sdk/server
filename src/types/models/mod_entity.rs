@@ -354,15 +354,15 @@ impl Mod {
 
         let ret = records
             .into_iter()
-            .map(|x| {
-                let mut version = versions.remove(&x.id).unwrap();
+            .filter_map(|x| {
+                let mut version = versions.remove(&x.id)?;
                 version.gd = gd_versions.remove(&version.id).unwrap_or_default();
 
                 let devs = developers.remove(&x.id).unwrap_or_default();
                 let tags = tags.remove(&x.id).unwrap_or_default();
                 let links = links.iter().find(|link| link.mod_id == x.id).cloned();
 
-                Mod {
+                Some(Mod {
                     id: x.id,
                     repository: x.repository,
                     download_count: x.download_count.into(),
@@ -375,7 +375,7 @@ impl Mod {
                     about: None,
                     changelog: None,
                     links,
-                }
+                })
             })
             .collect();
         Ok(PaginatedData { data: ret, count })
