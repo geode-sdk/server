@@ -345,14 +345,13 @@ impl Mod {
             "SELECT q.id, q.repository, q.about, q.changelog,
                 q.download_count, q.featured, q.created_at, q.updated_at
             FROM (
-                SELECT m.id, mv.name, m.repository, m.about, m.changelog,
-                    m.download_count, m.featured, m.created_at, m.updated_at,
-                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn",
+                SELECT DISTINCT ON (m.id) m.id, mv.name, m.repository, m.about, m.changelog,
+                    m.download_count, m.featured, m.created_at, m.updated_at ",
         );
 
         core_query(&mut records_builder);
 
-        records_builder.push(") q WHERE q.rn = 1");
+        records_builder.push(" ORDER BY m.id, mv.id DESC) q ");
         records_builder.push(format!(" ORDER BY {} ", order));
         records_builder.push(" LIMIT ").push_bind(limit);
         records_builder.push(" OFFSET ").push_bind(offset);
