@@ -1,0 +1,4 @@
+drop index idx_mod_version_statuses_status_version;
+drop index idx_mod_versions_mod_id_id_desc;
+drop index idx_mv_alpha_optimization;
+drop index idx_mgv_platform_gd_mod;

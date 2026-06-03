@@ -1,7 +1,7 @@
 use super::{
     dependency::ResponseDependency,
-    download_count::DownloadCount,
     developer::ModDeveloper,
+    download_count::DownloadCount,
     incompatibility::{Replacement, ResponseIncompatibility},
     mod_gd_version::{DetailedGDVersion, GDVersionEnum, ModGDVersion, VerPlatform},
     mod_link::ModLinks,
@@ -24,12 +24,12 @@ use crate::{
 };
 use semver::Version;
 use serde::Serialize;
-use utoipa::ToSchema;
 use sqlx::{
     PgConnection,
     types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 #[derive(Serialize, Debug, Clone, sqlx::FromRow, ToSchema)]
 pub struct Mod {
@@ -219,107 +219,161 @@ impl Mod {
 
         let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
-        // VERY IMPORTANT MESSAGE BELOW.
-        // This beautiful chunk of code below uses format!() to reuse the same joins / where clauses
-        // in 2 queries. This uses prepared statements, the parameters are bound in the queries at the end.
-        //
-        // DO NOT, I repeat, DO NOT enter any user input inside the format!().
-        // I will find you personally if you do so.
-        //
-        // - Flame
+        let core_query = |builder: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>| {
+            // clone these due to silly lifetime rules, the closure lives till the
+            // end of the function and the only other solution is ugly scopes
+            let gd = gd.clone();
+            let platforms = platforms.clone();
+            let tags = tags.clone();
+            let search_str = query.query.clone();
+            let meta = geode_meta.clone();
 
-        let joins_filters = r#"
-            INNER JOIN mod_versions mv ON m.id = mv.mod_id
-            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-            LEFT JOIN mods_mod_tags mmt ON mmt.mod_id = m.id
-            INNER JOIN mods_developers md ON md.mod_id = m.id
-            WHERE ($1 IS NULL OR mmt.tag_id = ANY($1))
-            AND ($2 IS NULL OR m.featured = $2)
-            AND ($3 IS NULL OR md.developer_id = $3)
-            AND ($13 IS NULL OR mvs.status = $13)
-            AND ($14 IS NULL OR mv.requires_patching = $14)
-            AND ($4 IS NULL OR $4 = mv.geode_major)
-            AND ($5 IS NULL OR $5 >= mv.geode_minor)
-            AND (
-                ($7 IS NULL AND mv.geode_meta NOT ILIKE 'alpha%')
-                OR (
-                    $7 ILIKE 'alpha%'
-                    AND $5 = mv.geode_minor
-                    AND $6 = mv.geode_patch
-                    AND $7 = mv.geode_meta
-                )
-                OR (
-                    mv.geode_meta IS NULL
-                    OR $5 > mv.geode_minor
-                    OR $6 > mv.geode_patch
-                    OR (mv.geode_meta NOT ILIKE 'alpha%' AND $7 >= mv.geode_meta)
-                )
-            )
-            AND ($8 IS NULL OR mv.name ILIKE '%' || $8 || '%' OR m.id = $8)
-            AND ($9 IS NULL OR mgv.gd = ANY($9))
-            AND ($10 IS NULL OR mgv.platform = ANY($10))
-        "#;
+            builder.push(" FROM MODS m ");
 
-        let records: Vec<ModRecord> = sqlx::query_as(&format!(
+            // joins: only join tables if they are necessary
+            builder.push(" INNER JOIN mod_versions mv ON m.id = mv.mod_id ");
+            builder.push(" INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id ");
+
+            if gd.is_some() || platforms.is_some() {
+                builder.push(" INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id ");
+            }
+
+            if tags.is_some() {
+                builder.push(" LEFT JOIN mods_mod_tags mmt ON mmt.mod_id = m.id ");
+            }
+
+            if developer.is_some() {
+                builder.push(" INNER JOIN mods_developers md ON md.mod_id = m.id ");
+            }
+
+            // filters
+            builder.push(" WHERE true ");
+
+            if let Some(t) = tags {
+                builder
+                    .push(" AND mmt.tag_id = ANY(")
+                    .push_bind(t)
+                    .push(") ");
+            }
+
+            if let Some(f) = query.featured {
+                builder.push(" AND m.featured = ").push_bind(f);
+            }
+
+            if let Some(d) = &developer {
+                builder.push(" AND md.developer_id = ").push_bind(d.id);
+            }
+
+            builder.push(" AND mvs.status = ").push_bind(status);
+
+            if let Some(rp) = requires_patching {
+                builder.push(" AND mv.requires_patching = ").push_bind(rp);
+            }
+
+            if let Some(major) = geode_major {
+                builder.push(" AND mv.geode_major = ").push_bind(major);
+            }
+
+            if let Some(minor) = geode_minor {
+                builder.push(" AND mv.geode_minor <= ").push_bind(minor);
+            }
+
+            if let Some(s) = search_str {
+                builder
+                    .push(" AND (mv.name ILIKE '%' || ")
+                    .push_bind(s.clone())
+                    .push(" || '%' OR m.id = ")
+                    .push_bind(s)
+                    .push(") ");
+            }
+
+            if let Some(g) = gd {
+                builder.push(" AND mgv.gd = ANY(").push_bind(g).push(") ");
+            }
+
+            if let Some(p) = platforms {
+                builder
+                    .push(" AND mgv.platform = ANY(")
+                    .push_bind(p)
+                    .push(") ");
+            }
+
+            // the cursed version comparison
+
+            match meta {
+                Some(meta) if meta.to_lowercase().starts_with("alpha") => {
+                    builder
+                        .push(" AND ( ")
+                        .push("   (mv.geode_minor = ")
+                        .push_bind(geode_minor)
+                        .push("    AND mv.geode_patch = ")
+                        .push_bind(geode_patch)
+                        .push("    AND mv.geode_meta = ")
+                        .push_bind(meta)
+                        .push("   ) ")
+                        .push("   OR mv.geode_meta IS NULL ")
+                        .push("   OR mv.geode_minor < ")
+                        .push_bind(geode_minor);
+
+                    builder.push(" ) ");
+                }
+
+                Some(meta) => {
+                    builder
+                        .push(
+                            " AND (mv.geode_meta IS NULL OR (mv.geode_meta NOT ILIKE 'alpha%' AND ",
+                        )
+                        .push_bind(meta)
+                        .push(" >= mv.geode_meta)) ");
+                }
+
+                None => {
+                    builder
+                        .push(" AND (mv.geode_meta IS NULL OR mv.geode_meta NOT ILIKE 'alpha%') ");
+
+                    if let Some(minor) = geode_minor {
+                        builder
+                            .push(" AND (mv.geode_minor <= ")
+                            .push_bind(minor)
+                            .push(") ");
+                    }
+                }
+            }
+        };
+
+        let mut records_builder = sqlx::QueryBuilder::new(
             "SELECT q.id, q.repository, q.about, q.changelog,
                 q.download_count, q.featured, q.created_at, q.updated_at
             FROM (
-                SELECT m.id, mv.name, m.repository, m.about, m.changelog,
-                    m.download_count, m.featured, m.created_at, m.updated_at,
-                    ROW_NUMBER() OVER (PARTITION BY m.id ORDER BY mv.id DESC) rn
-                FROM mods m
-                {}
-            ) q
-            WHERE q.rn = 1
-            ORDER BY {}
-            LIMIT $11
-            OFFSET $12
-            ",
-            joins_filters, order
-        ))
-        .bind(tags.as_ref())
-        .bind(query.featured)
-        .bind(developer.as_ref().map(|x| x.id))
-        .bind(geode_major)
-        .bind(geode_minor)
-        .bind(geode_patch)
-        .bind(geode_meta.as_ref())
-        .bind(query.query.as_ref())
-        .bind(gd.as_ref())
-        .bind(platforms.as_ref())
-        .bind(limit)
-        .bind(offset)
-        .bind(status)
-        .bind(requires_patching)
-        .fetch_all(&mut *pool)
-        .await
-        .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))?;
+                SELECT DISTINCT ON (m.id) m.id, mv.name, m.repository, m.about, m.changelog,
+                    m.download_count, m.featured, m.created_at, m.updated_at ",
+        );
 
-        let count: i64 = sqlx::query_scalar(&format!(
-            "SELECT COUNT(DISTINCT m.id)
-            FROM mods m
-            {}",
-            joins_filters
-        ))
-        .bind(&tags)
-        .bind(query.featured)
-        .bind(developer.as_ref().map(|x| x.id))
-        .bind(geode_major)
-        .bind(geode_minor)
-        .bind(geode_patch)
-        .bind(&geode_meta)
-        .bind(&query.query)
-        .bind(&gd)
-        .bind(&platforms)
-        .bind(limit)
-        .bind(offset)
-        .bind(status)
-        .bind(requires_patching)
-        .fetch_optional(&mut *pool)
-        .await
-        .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))?
-        .unwrap_or_default();
+        core_query(&mut records_builder);
+
+        records_builder.push(" ORDER BY m.id, mv.id DESC) q ");
+        records_builder.push(format!(" ORDER BY {} ", order));
+        records_builder.push(" LIMIT ").push_bind(limit);
+        records_builder.push(" OFFSET ").push_bind(offset);
+
+        // log::debug!("sql: {}", records_builder.sql());
+
+        let records: Vec<ModRecord> = records_builder
+            .build_query_as()
+            .fetch_all(&mut *pool)
+            .await
+            .inspect_err(|e| log::error!("Failed to fetch mod index: {}", e))?;
+
+        let mut count_builder = sqlx::QueryBuilder::new("SELECT COUNT(DISTINCT m.id) ");
+
+        core_query(&mut count_builder);
+
+        let count: i64 = count_builder
+            .build_query_scalar()
+            .fetch_optional(&mut *pool)
+            .await
+            .inspect_err(|e| log::error!("Failed to fetch mod index count: {}", e))?
+            .unwrap_or_default();
 
         if records.is_empty() {
             return Ok(PaginatedData {
