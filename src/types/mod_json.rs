@@ -579,6 +579,13 @@ impl ModJson {
                 }
             }
         }
+
+        if !self.windows && !self.ios && !self.android32 && !self.android64 && !self.mac_intel && !self.mac_arm {
+            return Err(ModZipError::InvalidModJson(
+                "Mod has no binaries".to_string()
+            ));
+        }
+
         Ok(())
     }
 }
