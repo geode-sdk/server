@@ -361,7 +361,7 @@ pub async fn update_version_status(
     updated_by: &Developer,
     conn: &mut PgConnection,
 ) -> Result<ModVersion, DatabaseError> {
-    if version.status == status {
+    if version.status == status && version.info.as_deref() == info {
         return Ok(version);
     }
 
