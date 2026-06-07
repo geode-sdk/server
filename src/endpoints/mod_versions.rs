@@ -300,6 +300,10 @@ pub async fn create_version(
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+
     let id = path.into_inner();
 
     let the_mod = mods::get_one(&id, false, &mut pool)
