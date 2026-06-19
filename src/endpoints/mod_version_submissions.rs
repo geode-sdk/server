@@ -756,20 +756,35 @@ pub async fn upload_attachments(
         return Err(ApiError::Authorization);
     }
 
+    let existing =
+        mod_version_submissions::count_attachments_for_comment(path.comment_id, &mut tx).await?;
+
+    const MAX_ATTACHMENTS_PER_COMMENT: i64 = 5;
+
     // Collect all `image` fields from the multipart stream
     const MAX_BYTES: usize = 5 * 1024 * 1024;
+    let mut count = 0;
     let mut images: Vec<bytes::Bytes> = Vec::new();
     while let Some(field) = multipart.next().await {
         let mut field = field.map_err(|e| ApiError::BadRequest(e.to_string()))?;
         if field.name() != Some("image") {
             continue;
         }
+        count += 1;
+
+        if existing + count > MAX_ATTACHMENTS_PER_COMMENT {
+            return Err(ApiError::BadRequest(format!(
+                "Comment already has {} attachment(s); adding {} would exceed the limit of 5",
+                existing,
+                count
+            )));
+        }
         let mut buf = bytes::BytesMut::new();
         while let Some(chunk) = field.next().await {
             let chunk = chunk.map_err(|e| ApiError::BadRequest(e.to_string()))?;
             buf.extend_from_slice(&chunk);
             if buf.len() > MAX_BYTES {
-                return Err(ApiError::BadRequest("Image exceeds 5 MB limit".into()));
+                return Err(ApiError::BadRequest("Image exceeds {} MB limit".into()));
             }
         }
         images.push(buf.freeze());
@@ -779,16 +794,6 @@ pub async fn upload_attachments(
         return Err(ApiError::BadRequest(
             "At least one image field is required".into(),
         ));
-    }
-
-    let existing =
-        mod_version_submissions::count_attachments_for_comment(path.comment_id, &mut tx).await?;
-    if existing + images.len() as i64 > 5 {
-        return Err(ApiError::BadRequest(format!(
-            "Comment already has {} attachment(s); adding {} would exceed the limit of 5",
-            existing,
-            images.len()
-        )));
     }
 
     // Decode -> encode WebP -> hash, all in a blocking thread
