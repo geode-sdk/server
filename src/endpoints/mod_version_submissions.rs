@@ -637,12 +637,11 @@ pub async fn delete_comment(
 
     tx.commit().await?;
 
-    for (filename, count) in references {
-        if count == 0
-            && let Err(e) = data.static_storage().delete(&filename).await
-        {
-            log::error!("Failed to delete attachment file {filename}: {e}");
-        }
+    for filename in attachment_filenames {
+        if !references.contains_key(&filename)
+            && let Err(e) = data.public_storage().delete(&filename).await {
+                log::error!("Failed to delete attachment file {filename}: {e}");
+            }
     }
 
     Ok(HttpResponse::NoContent())
