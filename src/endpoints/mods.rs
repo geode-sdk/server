@@ -402,16 +402,10 @@ pub async fn get_logo(
     let mut pool = data.db().acquire().await?;
     let image: Option<Vec<u8>> = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
-    match image {
-        Some(i) => {
-            if i.is_empty() {
-                Ok(HttpResponse::NotFound().body(""))
-            } else {
-                Ok(HttpResponse::Ok().content_type("image/png").body(i))
-            }
-        }
-        None => Err(ApiError::NotFound("".into())),
-    }
+    Ok(match image {
+        Some(i) => HttpResponse::Ok().content_type("image/png").body(i),
+        None => HttpResponse::NotFound().body(""),
+    })
 }
 
 #[derive(Deserialize, ToSchema)]

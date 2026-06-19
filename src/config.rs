@@ -61,7 +61,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .parse::<u32>()
         .unwrap_or(250);
     let mods_cache = Cache::builder()
-        .max_capacity(128)
+        .max_capacity(256)
         .time_to_idle(Duration::from_mins(5))
         .time_to_live(Duration::from_mins(10))
         .build();

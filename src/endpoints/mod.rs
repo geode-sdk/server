@@ -64,7 +64,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Authorization => StatusCode::FORBIDDEN,
             ApiError::Json(..) => StatusCode::BAD_REQUEST,
             ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
-            ApiError::NotFound(..) => StatusCode::NOT_FOUND,
+            ApiError::NotFound(_) => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
