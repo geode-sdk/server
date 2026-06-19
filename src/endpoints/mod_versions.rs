@@ -463,7 +463,7 @@ pub async fn create_version(
         NewUnverifiedModVersionCreated {
             id: the_mod.id.clone(),
             name: version.name.clone(),
-            version: version.name.clone(),
+            version: version.version.clone(),
             owner: dev.clone(),
         }
         .to_discord_webhook()
