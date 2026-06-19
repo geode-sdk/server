@@ -819,34 +819,45 @@ pub async fn upload_attachments(
         .map_err(|_| ApiError::InternalError("Something very bad happened!".into()))??;
 
     let mut result = Vec::with_capacity(processed.len());
-    for webp_bytes in &processed {
-        let filename = data
-            .static_storage()
-            .store_hashed_with_extension("submission-attachments", webp_bytes, Some("webp"))
-            .await?;
-        let row =
-            mod_version_submissions::create_attachment(path.comment_id, &filename, &mut tx).await?;
-        result.push(row.into_attachment(data.app_url()));
+    let mut stored_filenames: Vec<String> = Vec::with_capacity(processed.len());
+
+    let outcome: Result<_, ApiError> = async {
+        for webp_bytes in &processed {
+            let filename = data
+                .public_storage()
+                .store_hashed_with_extension("submission-attachments", webp_bytes, Some("webp"))
+                .await?;
+            stored_filenames.push(filename.clone());
+            let row =
+                mod_version_submissions::create_attachment(path.comment_id, &filename, &mut tx).await?;
+            result.push(row.into_attachment(data.app_url()));
+        }
+        mod_version_submissions::insert_comment_audit(
+            comment_row.id,
+            AuditAction::Updated,
+            Some(&format!(
+                "Attached {} file{}",
+                result.len(),
+                if result.len() > 1 || result.is_empty() {
+                    "s"
+                } else {
+                    ""
+                }
+            )),
+            Some(dev.id),
+            &mut tx,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }.await;
+
+    if let Err(e) = outcome {
+        for filename in &stored_filenames {
+            let _ = data.public_storage().delete(filename).await;
+        }
+        return Err(e);
     }
-
-    mod_version_submissions::insert_comment_audit(
-        comment_row.id,
-        AuditAction::Updated,
-        Some(&format!(
-            "Attached {} file{}",
-            result.len(),
-            if result.len() > 1 || result.is_empty() {
-                "s"
-            } else {
-                ""
-            }
-        )),
-        Some(dev.id),
-        &mut tx,
-    )
-    .await?;
-
-    tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
         error: "".into(),
@@ -940,7 +951,7 @@ pub async fn delete_attachment(
     if remaining == 0 {
         // TODO: implement a cleanup job for orphaned attachment files
         // If this fails it's fine to still return a 204 to the user
-        let r = data.static_storage().delete(&filename).await;
+        let r = data.public_storage().delete(&filename).await;
         if let Err(e) = r {
             error!("Failed to delete attachment: {e}");
         }
