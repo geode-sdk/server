@@ -8,6 +8,7 @@ use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::developer::Developer;
+use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
     ModVersionSubmissionComment, ModVersionSubmissionLock, UpdateCommentPayload,
@@ -90,7 +91,7 @@ async fn check_submission_lock(
     })
 }
 
-/// Get the submission for a mod version
+/// Get the submission for a mod version, or create one if the mod version is pending and has no submission
 #[utoipa::path(
     get,
     path = "/v1/mods/{id}/versions/{version}/submission",
@@ -110,24 +111,33 @@ pub async fn get_submission(
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
 
-    if !mods::exists(&path.id, &mut pool).await? {
+    let mut tx = pool.begin().await?;
+
+    if !mods::exists(&path.id, &mut tx).await? {
         return Err(ApiError::NotFound(format!("Mod {} not found", path.id)));
     }
 
-    let version_id = resolve_version_id(&path.id, &path.version, &mut pool).await?;
+    let version = mod_versions::get_by_version_str(&path.id, &path.version, &mut tx).await?
+        .ok_or_else(|| ApiError::NotFound("Version doesn't exist".into()))?;
 
-    let row = mod_version_submissions::get_for_mod_version(version_id, &mut pool)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Submission not found".into()))?;
+    let mut row = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await?;
+
+    if let None = row && version.status == ModVersionStatusEnum::Pending {
+        row = Some(mod_version_submissions::create(version.id, &mut tx).await?);
+    }
+
+    let row = row.ok_or(ApiError::NotFound("Submission not found".into()))?;
 
     let locked_by = match row.locked_by {
         Some(dev_id) => Some(
-            developers::get_one(dev_id, &mut pool)
+            developers::get_one(dev_id, &mut tx)
                 .await?
                 .ok_or_else(|| ApiError::InternalError("Locked-by developer not found".into()))?,
         ),
         None => None,
     };
+
+    tx.commit().await?;
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
