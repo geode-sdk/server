@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            action as \"action: _\", details, performed_by, performed_at\n        FROM mod_version_submissions_audit\n        WHERE submission_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "action: _",
+        "type_info": {
+          "Custom": {
+            "name": "audit_action",
+            "kind": {
+              "Enum": [
+                "created",
+                "updated",
+                "deleted",
+                "restored"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "details",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "performed_by",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "performed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "6be04be9bbf53814144d17355ba47ba12f948e60e815ad917846d7ff6733245a"
+}

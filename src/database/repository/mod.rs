@@ -10,6 +10,7 @@ pub mod mod_gd_versions;
 pub mod mod_links;
 pub mod mod_tags;
 pub mod mod_version_statuses;
+pub mod mod_version_submissions;
 pub mod mod_versions;
 pub mod mods;
 pub mod refresh_tokens;

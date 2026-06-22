@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n            filename, COUNT(*) as count\n        FROM mod_version_submission_comment_attachments\n        WHERE filename = ANY($1)\n        GROUP BY filename",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "filename",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "b248e326b0e2d3c803bedffef28fa22a00f19dca10f573b3f9331a830b0884d7"
+}

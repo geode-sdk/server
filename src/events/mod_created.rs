@@ -1,6 +1,13 @@
 use crate::types::models::developer::Developer;
 use crate::webhook::discord::{DiscordMessage, DiscordWebhook};
 
+pub struct NewUnverifiedModVersionCreated {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub owner: Developer,
+}
+
 pub struct NewModAcceptedEvent {
     pub id: String,
     pub name: String,
@@ -51,7 +58,23 @@ impl DiscordWebhook for NewModVersionAcceptedEvent {
                 "https://geode-sdk.org/mods/{}\n\nOwned by [{}](https://github.com/{})\n{}",
                 self.id, self.owner.display_name, self.owner.username, accepted_msg
             )),
-            Some(&format!("{}/v1/mods/{}/logo?version={}", self.base_url, self.id, self.version)),
+            Some(&format!(
+                "{}/v1/mods/{}/logo?version={}",
+                self.base_url, self.id, self.version
+            )),
+        )
+    }
+}
+
+impl DiscordWebhook for NewUnverifiedModVersionCreated {
+    fn to_discord_webhook(&self) -> DiscordMessage {
+        DiscordMessage::new().embed(
+            &format!("✅ New mod version pending: {} {}", self.name, self.version),
+            Some(&format!(
+                "https://geode-sdk.org/mods/{}?version={}\n\nOwned by [{}](https://github.com/{})",
+                self.id, self.version, self.owner.display_name, self.owner.username
+            )),
+            None,
         )
     }
 }
