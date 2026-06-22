@@ -50,11 +50,17 @@ pub struct ModVersionSubmissionComment {
     pub submission_id: i32,
     pub comment: String,
     pub author: Developer,
-    pub attachments: Vec<String>,
+    pub attachments: Vec<ModVersionSubmissionCommentAttachment>,
     #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
     #[serde(with = "chrono_dt_secs::option")]
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, ToSchema, Debug, Clone)]
+pub struct ModVersionSubmissionCommentAttachment {
+    pub id: i64,
+    pub url: String
 }
 
 pub struct ModVersionSubmissionCommentRow {
@@ -70,14 +76,16 @@ impl ModVersionSubmissionCommentRow {
     pub fn into_comment(
         self,
         author: Developer,
-        attachment_links: Vec<String>,
+        attachments: Vec<(i64, String)>,
     ) -> ModVersionSubmissionComment {
         ModVersionSubmissionComment {
             id: self.id,
             submission_id: self.submission_id,
             comment: self.comment,
             author,
-            attachments: attachment_links,
+            attachments: attachments.into_iter()
+                .map(|(id, url)| ModVersionSubmissionCommentAttachment {id, url})
+                .collect(),
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

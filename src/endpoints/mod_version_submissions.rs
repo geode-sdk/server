@@ -21,7 +21,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::{Acquire, PgConnection};
 use std::collections::HashMap;
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 
 fn sanitize_comment(raw: &str) -> String {
     ammonia::Builder::default()
@@ -299,11 +299,11 @@ pub async fn get_comments(
             .map(|(k, v)| {
                 let transformed = v
                     .into_iter()
-                    .map(|i| data.public_storage().asset_url(&i.filename))
+                    .map(|i| (i.id, data.public_storage().asset_url(&i.filename)))
                     .collect();
                 (k, transformed)
             })
-            .collect::<HashMap<i64, Vec<String>>>();
+            .collect::<HashMap<i64, Vec<(i64, String)>>>();
 
     let comments = rows
         .into_iter()
@@ -550,8 +550,8 @@ pub async fn update_comment(
         mod_version_submissions::get_attachments_for_comment(path.comment_id, &mut tx)
             .await?
             .into_iter()
-            .map(|i| data.public_storage().asset_url(&i.filename))
-            .collect::<Vec<String>>();
+            .map(|i| (i.id, data.public_storage().asset_url(&i.filename)))
+            .collect::<Vec<(i64, String)>>();
 
     tx.commit().await?;
 
@@ -703,12 +703,24 @@ pub async fn get_attachments(
     }))
 }
 
+/// Documentation-only struct
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub struct UploadAttachmentsForm {
+    #[schema(value_type = Vec<String>, format = Binary)]
+    image: Vec<Vec<u8>>
+}
+
 /// Upload attachments to a submission comment
 #[utoipa::path(
     post,
     path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments",
     tag = "mod_version_submissions",
     params(CommentPath),
+    request_body(
+        content = UploadAttachmentsForm,
+        content_type = "multipart/form-data"
+    ),
     responses(
         (status = 201, description = "Attachments uploaded", body = inline(ApiResponse<Vec<ModVersionSubmissionAttachment>>)),
         (status = 400, description = "Bad request - no images, file too large, or attachment limit exceeded"),
