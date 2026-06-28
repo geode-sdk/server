@@ -150,6 +150,8 @@ async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
     let mut response = reqwest::get(url)
         .await
+        .inspect_err(|e| log::error!("Failed to fetch .geode file: {e}"))?
+        .error_for_status()
         .inspect_err(|e| log::error!("Failed to fetch .geode file: {e}"))?;
 
     // Check Content-Length, but the server can lie about this, so we'll also stream the file
