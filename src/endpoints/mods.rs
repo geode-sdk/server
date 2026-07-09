@@ -40,6 +40,7 @@ pub enum IndexSortType {
     Oldest,
     Name,
     NameReverse,
+    Random
 }
 
 #[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
