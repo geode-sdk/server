@@ -10,8 +10,9 @@ use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
-use crate::database::repository::{dependencies, deprecations};
+use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
 use crate::endpoints::ApiError;
+use crate::events::mod_created::NewUnverifiedModVersionCreated;
 use crate::events::mod_feature::ModFeaturedEvent;
 use crate::extractors::auth::Auth;
 use crate::mod_zip;
@@ -28,7 +29,7 @@ use actix_web::{HttpResponse, Responder, get, post, put, web};
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -79,8 +80,8 @@ pub struct CreateQueryParams {
         (status = 403, description = "Forbidden")
     )
 )]
-
 #[get("/v1/mods")]
+#[tracing::instrument(skip_all)]
 pub async fn index(
     data: web::Data<AppData>,
     query: web::Query<IndexQueryParams>,
@@ -128,6 +129,7 @@ pub async fn index(
     )
 )]
 #[get("/v1/mods/{id}")]
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn get(
     data: web::Data<AppData>,
     id: web::Path<String>,
@@ -202,6 +204,7 @@ pub async fn get(
     )
 )]
 #[post("/v1/mods")]
+#[tracing::instrument(skip_all)]
 pub async fn create(
     data: web::Data<AppData>,
     payload: web::Json<CreateQueryParams>,
@@ -216,7 +219,9 @@ pub async fn create(
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
-        return Err(ApiError::BadRequest("Only index admins may use mod ids that start with 'geode.'".into()));
+        return Err(ApiError::BadRequest(
+            "Only index admins may use mod ids that start with 'geode.'".into(),
+        ));
     }
 
     if let Some(m) = &existing {
@@ -279,7 +284,20 @@ pub async fn create(
     the_mod.developers = developers::get_all_for_mod(&the_mod.id, &mut tx).await?;
     the_mod.versions.insert(0, version);
 
+    // First version is always pending, so always open a submission for review
+    let first_version = the_mod.versions.first().unwrap();
+    mod_version_submissions::create(first_version.id, &mut tx).await?;
+
     tx.commit().await?;
+
+    NewUnverifiedModVersionCreated {
+        id: the_mod.id.clone(),
+        name: first_version.name.clone(),
+        version: first_version.version.clone(),
+        owner: dev.clone(),
+    }
+    .to_discord_webhook()
+    .send(data.index_admin_webhook_url());
 
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), false);
@@ -320,6 +338,7 @@ enum UpdateQueryResponse {
     )
 )]
 #[get("/v1/mods/updates")]
+#[tracing::instrument(skip_all, fields(ids = %query.ids, geode = %query.geode))]
 pub async fn get_mod_updates(
     data: web::Data<AppData>,
     query: web::Query<UpdateQueryParams>,
@@ -380,6 +399,7 @@ pub async fn get_mod_updates(
     )
 )]
 #[get("/v1/mods/{id}/logo")]
+#[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn get_logo(
     data: web::Data<AppData>,
     path: web::Path<String>,
@@ -419,6 +439,7 @@ struct UpdateModPayload {
     )
 )]
 #[put("/v1/mods/{id}")]
+#[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn update_mod(
     data: web::Data<AppData>,
     path: web::Path<String>,
@@ -444,22 +465,20 @@ pub async fn update_mod(
 
     if featured != payload.featured {
         let item = Mod::get_one(&id, true, &mut pool).await?;
-        if let Some(item) = item {
-            if let Some(owner) = developers::get_owner_for_mod(&id, &mut pool).await? {
-                let first_ver = item.versions.first();
-                if let Some(ver) = first_ver {
-                    ModFeaturedEvent {
-                        id: item.id,
-                        name: ver.name.clone(),
-                        owner,
-                        admin: dev,
-                        base_url: data.app_url().to_string(),
-                        featured: payload.featured,
-                    }
-                    .to_discord_webhook()
-                    .send(data.webhook_url());
-                }
+        if let Some(item) = item
+            && let Some(owner) = developers::get_owner_for_mod(&id, &mut pool).await?
+            && let Some(ver) = item.versions.first()
+        {
+            ModFeaturedEvent {
+                id: item.id,
+                name: ver.name.clone(),
+                owner,
+                admin: dev,
+                base_url: data.app_url().to_string(),
+                featured: payload.featured,
             }
+            .to_discord_webhook()
+            .send(data.webhook_url());
         }
     }
 

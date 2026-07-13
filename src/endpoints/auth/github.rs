@@ -1,16 +1,16 @@
 use actix_web::http::StatusCode;
-use actix_web::{dev::ConnectionInfo, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, dev::ConnectionInfo, post, web};
 use serde::Deserialize;
-use sqlx::{types::ipnetwork::IpNetwork, Acquire};
-use uuid::Uuid;
+use sqlx::{Acquire, types::ipnetwork::IpNetwork};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::config::AppData;
 use crate::database::repository::{
     auth_tokens, developers, github_login_attempts, github_web_logins, refresh_tokens,
 };
-use crate::endpoints::auth::TokensResponse;
 use crate::endpoints::ApiError;
+use crate::endpoints::auth::TokensResponse;
 use crate::{auth::github, types::api::ApiResponse};
 
 #[derive(Deserialize, ToSchema)]
@@ -40,6 +40,7 @@ struct CallbackParams {
     )
 )]
 #[post("v1/login/github")]
+#[tracing::instrument(skip_all)]
 pub async fn start_github_login(
     data: web::Data<AppData>,
     info: ConnectionInfo,
@@ -77,6 +78,7 @@ pub async fn start_github_login(
     )
 )]
 #[post("v1/login/github/web")]
+#[tracing::instrument(skip_all)]
 pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
 
@@ -106,6 +108,7 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
     )
 )]
 #[post("v1/login/github/callback")]
+#[tracing::instrument(skip_all)]
 pub async fn github_web_callback(
     json: web::Json<CallbackParams>,
     data: web::Data<AppData>,
@@ -163,6 +166,7 @@ pub async fn github_web_callback(
     )
 )]
 #[post("v1/login/github/poll")]
+#[tracing::instrument(skip_all)]
 pub async fn poll_github_login(
     json: web::Json<PollParams>,
     data: web::Data<AppData>,
@@ -219,7 +223,7 @@ pub async fn poll_github_login(
     let user = client
         .get_user(&token)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch user from GitHub: {e}"))
+        .inspect_err(|e| tracing::error!("Failed to fetch user from GitHub: {e}"))
         .map_err(|_| ApiError::InternalError("Failed to fetch user data from GitHub".into()))?;
 
     let mut tx = pool.begin().await?;
@@ -267,6 +271,7 @@ pub async fn poll_github_login(
     )
 )]
 #[post("v1/login/github/token")]
+#[tracing::instrument(skip_all)]
 pub async fn github_token_login(
     json: web::Json<TokenLoginParams>,
     data: web::Data<AppData>,
@@ -277,10 +282,10 @@ pub async fn github_token_login(
     );
 
     let user = match client.get_user(&json.token).await {
-        Err(_) => client
-            .get_installation(&json.token)
-            .await
-            .map_err(|_| ApiError::BadRequest(format!("Invalid access token: {}", json.token)))?,
+        Err(_) => client.get_installation(&json.token).await.map_err(|e| {
+            tracing::error!(error = ?e, "invalid access token");
+            ApiError::BadRequest(format!("Invalid access token: {}", json.token))
+        })?,
 
         Ok(u) => u,
     };

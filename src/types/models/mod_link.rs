@@ -14,6 +14,7 @@ pub struct ModLinks {
 }
 
 impl ModLinks {
+    #[tracing::instrument(skip_all, fields(mod_id = %mod_id))]
     pub async fn fetch(
         mod_id: &str,
         pool: &mut PgConnection,
@@ -28,10 +29,11 @@ impl ModLinks {
         )
         .fetch_optional(pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod links for mod {}. Error: {}", mod_id, e))
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map_err(|e| e.into())
     }
 
+    #[tracing::instrument(skip_all, fields(mod_ids = ?mod_ids))]
     pub async fn fetch_for_mods(
         mod_ids: &Vec<String>,
         pool: &mut PgConnection,
@@ -50,7 +52,7 @@ impl ModLinks {
         )
         .fetch_all(pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod links for multiple mods. Error: {}", e))
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map_err(|e| e.into())
     }
 }

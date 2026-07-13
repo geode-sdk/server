@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt::Display};
 
+use crate::database::DatabaseError;
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 use utoipa::ToSchema;
-use crate::database::DatabaseError;
 
 use super::mod_gd_version::{GDVersionEnum, VerPlatform};
 
@@ -46,7 +46,7 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
-            required: self.importance == DependencyImportance::Required
+            required: self.importance == DependencyImportance::Required,
         }
     }
     pub fn to_response(&self) -> ResponseDependency {
@@ -60,7 +60,7 @@ impl FetchedDependency {
                 }
             },
             importance: self.importance,
-            required: self.importance == DependencyImportance::Required
+            required: self.importance == DependencyImportance::Required,
         }
     }
 }
@@ -108,6 +108,7 @@ pub enum DependencyImportance {
 }
 
 impl Dependency {
+    #[tracing::instrument(skip_all, fields(mod_version_ids = ?ids))]
     pub async fn get_for_mod_versions(
         ids: &Vec<i32>,
         platform: Option<VerPlatform>,
@@ -191,7 +192,7 @@ impl Dependency {
         .bind(geode_pre)
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|x| log::error!("Failed to fetch dependencies: {x}"))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         let mut ret: HashMap<i32, Vec<FetchedDependency>> = HashMap::new();
         for i in result {

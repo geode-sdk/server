@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE mod_version_submissions\n        SET lock = $1, locked_by = $2, updated_at = NOW()\n        WHERE mod_version_id = $3\n        RETURNING mod_version_id, lock as \"lock: _\", locked_by, created_at, updated_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mod_version_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "lock: _",
+        "type_info": {
+          "Custom": {
+            "name": "submission_lock",
+            "kind": {
+              "Enum": [
+                "none",
+                "internal",
+                "locked"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "locked_by",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "submission_lock",
+            "kind": {
+              "Enum": [
+                "none",
+                "internal",
+                "locked"
+              ]
+            }
+          }
+        },
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "3a9e0f2e4c810e63811251c2da5a387a44c47030bcac9aba859ed5080dcc165e"
+}

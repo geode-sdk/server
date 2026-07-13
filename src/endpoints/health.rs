@@ -1,4 +1,4 @@
-use actix_web::get;
+use actix_web::route;
 
 /// Health check endpoint
 #[utoipa::path(
@@ -9,7 +9,8 @@ use actix_web::get;
         (status = 200, description = "Service is healthy", body = String, content_type = "text/plain")
     )
 )]
-#[get("/")]
+#[route("/", method = "GET", method = "HEAD")]
+#[tracing::instrument(skip_all)]
 pub async fn health() -> &'static str {
     r#"
  _____                                                                        _____

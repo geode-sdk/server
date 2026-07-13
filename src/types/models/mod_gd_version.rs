@@ -231,6 +231,7 @@ impl DetailedGDVersion {
 
 impl ModGDVersion {
     // to be used for GET mods/{id}/version/{version}
+    #[tracing::instrument(skip_all, fields(mod_version_id = %id))]
     pub async fn get_for_mod_version(
         id: i32,
         pool: &mut PgConnection,
@@ -246,9 +247,7 @@ impl ModGDVersion {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| {
-            log::error!("Failed to fetch mod_gd_versions for mod_version {id}: {e}")
-        })?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
         let mut ret = DetailedGDVersion {
             win: None,
             mac: None,
@@ -282,6 +281,7 @@ impl ModGDVersion {
     }
 
     // hello
+    #[tracing::instrument(skip_all, fields(mod_version_ids = ?versions))]
     pub async fn get_for_mod_versions(
         versions: &[i32],
         pool: &mut PgConnection,
@@ -300,7 +300,7 @@ impl ModGDVersion {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod_gd_versions: {}", e))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         let mut ret: HashMap<i32, DetailedGDVersion> = HashMap::new();
         for i in result {

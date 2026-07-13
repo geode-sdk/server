@@ -2,24 +2,25 @@ use crate::{
     mod_zip::ModZipError,
     types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
 };
-use actix_web::{http::StatusCode, HttpResponse};
+use actix_web::{HttpResponse, http::StatusCode};
 
 pub mod auth;
+pub mod deprecations;
 pub mod developers;
 pub mod health;
 pub mod loader;
-pub mod mod_versions;
 pub mod mod_status_badge;
+pub mod mod_version_submissions;
+pub mod mod_versions;
 pub mod mods;
 pub mod stats;
 pub mod tags;
-pub mod deprecations;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
     #[error("Authentication error: {0}")]
     Authentication(#[from] crate::auth::AuthenticationError),
-    #[error("You do not have acces to this resource")]
+    #[error("You do not have access to this resource")]
     Authorization,
     #[error("{0}")]
     Database(#[from] crate::database::DatabaseError),
@@ -43,6 +44,8 @@ pub enum ApiError {
     Zip(#[from] zip::result::ZipError),
     #[error("Failed to contact external resource: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("I/O error: {0}")]
+    IO(#[from] std::io::Error),
 }
 
 impl ApiError {
@@ -62,6 +65,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Json(..) => StatusCode::BAD_REQUEST,
             ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
             ApiError::NotFound(_) => StatusCode::NOT_FOUND,
+            ApiError::BadRequest(..) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

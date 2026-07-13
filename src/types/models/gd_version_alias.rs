@@ -6,7 +6,7 @@ use crate::{
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use sqlx::{types::Uuid, PgConnection, Postgres, QueryBuilder};
+use sqlx::{PgConnection, Postgres, QueryBuilder, types::Uuid};
 
 #[derive(Serialize, ToSchema)]
 pub struct GDVersionAlias {
@@ -20,6 +20,7 @@ pub struct GDVersionAlias {
 }
 
 impl GDVersionAlias {
+    #[tracing::instrument(skip_all, fields(platform = ?platform, identifier = %identifier))]
     pub async fn find(
         platform: VerPlatform,
         identifier: &str,
@@ -85,6 +86,7 @@ impl GDVersionAlias {
             .build_query_scalar::<GDVersionEnum>()
             .fetch_optional(&mut *pool)
             .await
+            .inspect_err(|e| tracing::error!("{:?}", e))
             .map_err(|e| e.into())
     }
 }

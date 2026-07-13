@@ -42,6 +42,7 @@ impl ModRecordGetOne {
 /// Fetches information for a mod, without versions or other added info.
 ///
 /// The second parameter decides if about.md and changelog.md are fetched from the database. Those are pretty big files, so only fetch them if needed.
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn get_one(
     id: &str,
     include_md: bool,
@@ -59,7 +60,7 @@ pub async fn get_one(
         )
         .fetch_optional(conn)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod {id}: {e}"))
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map_err(|e| e.into())
         .map(|x| x.map(|x| x.into_mod()))
     } else {
@@ -74,13 +75,14 @@ pub async fn get_one(
         )
         .fetch_optional(conn)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch mod {}: {}", id, e))
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map_err(|e| e.into())
         .map(|x| x.map(|x| x.into_mod()))
     }
 }
 
 /// Does NOT check if the target mod exists
+#[tracing::instrument(skip_all, fields(mod_id = %json.id))]
 pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, DatabaseError> {
     sqlx::query_as!(
         ModRecordGetOne,
@@ -104,11 +106,12 @@ pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, Data
     )
     .fetch_one(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to created mod {}: {e}", &json.id))
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
     .map(|x| x.into_mod())
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id, developer_id = %developer_id))]
 pub async fn assign_owner(
     id: &str,
     developer_id: i32,
@@ -117,6 +120,7 @@ pub async fn assign_owner(
     assign_developer(id, developer_id, true, conn).await
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id, developer_id = %developer_id, owner = %owner))]
 pub async fn assign_developer(
     id: &str,
     developer_id: i32,
@@ -132,13 +136,12 @@ pub async fn assign_developer(
     )
     .execute(conn)
     .await
-    .inspect_err(|x| {
-        log::error!("Couldn't assign developer {developer_id} on mod {id} (owner {owner}): {x}")
-    })
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map(|_| ())
     .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id, developer_id = %developer_id))]
 pub async fn unassign_developer(
     id: &str,
     developer_id: i32,
@@ -153,38 +156,34 @@ pub async fn unassign_developer(
     )
     .execute(conn)
     .await
-    .inspect_err(|x| {
-        log::error!(
-            "Couldn't unassign developer {} from mod {}: {}",
-            developer_id,
-            id,
-            x
-        )
-    })
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map(|_| ())
     .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn is_featured(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
     Ok(sqlx::query!("SELECT featured FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to check if mod {id} is featured: {e}"))?
+        .inspect_err(|e| tracing::error!("{:?}", e))?
         .map(|row| row.featured)
         .unwrap_or(false))
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn exists(id: &str, conn: &mut PgConnection) -> Result<bool, DatabaseError> {
     Ok(sqlx::query!("SELECT id FROM mods WHERE id = $1", id)
         .fetch_optional(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("Failed to check if mod {} exists: {}", id, e))?
+        .inspect_err(|e| tracing::error!("{:?}", e))?
         .is_some())
 }
 
 /// Checks if multiple ids exist in the database.
 ///
 /// Returns a tuple with (existing ids, missing ids).
+#[tracing::instrument(skip_all, fields(mod_ids = ?ids))]
 pub async fn exists_multiple(
     ids: &[String],
     conn: &mut PgConnection,
@@ -192,7 +191,7 @@ pub async fn exists_multiple(
     let mods: HashSet<String> = sqlx::query!("SELECT id FROM mods WHERE id = ANY($1)", ids)
         .fetch_all(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("mods::exists_multiple failed: {e}"))?
+        .inspect_err(|e| tracing::error!("{:?}", e))?
         .into_iter()
         .map(|x| x.id)
         .collect();
@@ -211,6 +210,7 @@ pub async fn exists_multiple(
     Ok((existing, missing))
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, DatabaseError> {
     struct QueryResult {
         image: Option<Vec<u8>>,
@@ -228,7 +228,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
     )
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to fetch mod logo for {id}: {e}"))?
+    .inspect_err(|e| tracing::error!("{:?}", e))?
     .and_then(|optional| optional.image);
 
     // Empty vec means no image
@@ -239,6 +239,7 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
     }
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mods
@@ -248,11 +249,12 @@ pub async fn increment_downloads(id: &str, conn: &mut PgConnection) -> Result<()
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to increment downloads for mod {id}: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %the_mod.id))]
 pub async fn update_with_json(
     mut the_mod: Mod,
     json: &ModJson,
@@ -274,7 +276,7 @@ pub async fn update_with_json(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to update mod: {}", e))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     the_mod.repository = json.repository.clone();
     the_mod.about = json.about.clone();
@@ -283,6 +285,7 @@ pub async fn update_with_json(
     Ok(the_mod)
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %the_mod.id))]
 pub async fn update_with_json_moved(
     mut the_mod: Mod,
     json: ModJson,
@@ -304,7 +307,7 @@ pub async fn update_with_json_moved(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to update mod: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     the_mod.repository = json.repository;
     the_mod.about = json.about;
@@ -315,6 +318,7 @@ pub async fn update_with_json_moved(
 
 /// Used when first version goes from pending to accepted.
 /// Makes it so versions that stay a lot in pending appear at the top of the newly created lists
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mods
@@ -324,7 +328,7 @@ pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), D
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("Failed to touch created_at for mod {id}: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(())
 }

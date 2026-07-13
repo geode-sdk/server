@@ -1,9 +1,9 @@
 use crate::openapi::ApiDoc;
+use crate::storage::StorageDisk;
 use crate::types::api;
 use actix_cors::Cors;
 use actix_web::{
     App, HttpServer,
-    middleware::Logger,
     web::{self, QueryConfig},
 };
 use utoipa::OpenApi;
@@ -18,34 +18,36 @@ mod endpoints;
 mod events;
 mod extractors;
 mod jobs;
+mod logging;
 mod mod_zip;
 mod openapi;
+mod storage;
 mod types;
 mod webhook;
-mod storage;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    log4rs::init_file("config/log4rs.yaml", Default::default())
-        .map_err(|e| e.context("Failed to read log4rs config"))?;
+    logging::init();
 
     let app_data = config::build_config().await?;
+    app_data.static_storage().init().await?;
+    app_data.private_storage().init().await?;
 
     if cli::maybe_cli(&app_data).await? {
         return Ok(());
     }
 
-    log::info!("Running migrations");
+    tracing::info!("Running migrations");
     sqlx::migrate!("./migrations").run(app_data.db()).await?;
 
     let port = app_data.port();
     let debug = app_data.debug();
 
-    log::info!("Starting server on 0.0.0.0:{}", port);
+    tracing::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         let openapi = ApiDoc::openapi();
 
-        App::new()
+        let app = App::new()
             .app_data(web::Data::new(app_data.clone()))
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .service(
@@ -59,8 +61,14 @@ async fn main() -> anyhow::Result<()> {
                     .supports_credentials()
                     .max_age(3600),
             )
-            .wrap(Logger::default())
-            .service(endpoints::mods::index)
+            .wrap(tracing_actix_web::TracingLogger::default());
+
+        #[cfg(feature = "dev-tools")]
+        let app = app
+            .service(actix_files::Files::new("/static", "static"))
+            .service(actix_files::Files::new("/storage", "storage/public"));
+
+        app.service(endpoints::mods::index)
             .service(endpoints::mods::get_mod_updates)
             .service(endpoints::mods::get)
             .service(endpoints::mods::create)
@@ -72,6 +80,17 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::mod_versions::download_version)
             .service(endpoints::mod_versions::create_version)
             .service(endpoints::mod_versions::update_version)
+            .service(endpoints::mod_version_submissions::get_submission)
+            .service(endpoints::mod_version_submissions::get_submission_audit)
+            .service(endpoints::mod_version_submissions::update_submission)
+            .service(endpoints::mod_version_submissions::get_comments)
+            .service(endpoints::mod_version_submissions::get_comment_audit)
+            .service(endpoints::mod_version_submissions::create_comment)
+            .service(endpoints::mod_version_submissions::update_comment)
+            .service(endpoints::mod_version_submissions::delete_comment)
+            .service(endpoints::mod_version_submissions::get_attachments)
+            .service(endpoints::mod_version_submissions::upload_attachments)
+            .service(endpoints::mod_version_submissions::delete_attachment)
             .service(endpoints::deprecations::index)
             .service(endpoints::deprecations::store)
             .service(endpoints::deprecations::update)
@@ -104,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
     .bind(("0.0.0.0", port))?;
 
     if debug {
-        log::info!("Running in debug mode, using 1 thread.");
+        tracing::info!("Running in debug mode, using 1 thread.");
         server.workers(1).run().await?;
     } else {
         server.run().await?;

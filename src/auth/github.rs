@@ -1,10 +1,10 @@
 use crate::auth::AuthenticationError;
 use crate::database::repository::github_login_attempts;
 use crate::types::models::github_login_attempt::StoredLoginAttempt;
-use reqwest::{header::HeaderValue, Client};
+use reqwest::{Client, header::HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
+use sqlx::{PgConnection, types::ipnetwork::IpNetwork};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -108,10 +108,12 @@ impl GithubClient {
             }))
             .send()
             .await
-            .inspect_err(|e| log::error!("Failed to start OAuth device flow with GitHub: {e}"))?;
+            .inspect_err(|e| {
+                tracing::error!("Failed to start OAuth device flow with GitHub: {e}")
+            })?;
 
         if !res.status().is_success() {
-            log::error!(
+            tracing::error!(
                 "GitHub OAuth device flow failed to start. Error code: {}. Body: {}",
                 res.status(),
                 res.text().await.unwrap_or("No body received".into())
@@ -125,7 +127,7 @@ impl GithubClient {
             .json::<GithubStartAuth>()
             .await
             .inspect_err(|e| {
-                log::error!("Failed to parse OAuth device flow response from GitHub: {e}")
+                tracing::error!("Failed to parse OAuth device flow response from GitHub: {e}")
             })
             .or(Err(AuthenticationError::InternalError(
                 "Failed to parse response from GitHub".into(),
@@ -183,18 +185,18 @@ impl GithubClient {
             .send()
             .await
             .inspect_err(|e| {
-                log::error!("Failed to poll GitHub for developer access token: {e}")
+                tracing::error!("Failed to poll GitHub for developer access token: {e}")
             })?;
 
         Ok(resp
             .json::<serde_json::Value>()
             .await
-            .inspect_err(|e| log::error!("Failed to decode GitHub response: {e}"))?
+            .inspect_err(|e| tracing::error!("Failed to decode GitHub response: {e}"))?
             .get("access_token")
             .ok_or(AuthenticationError::UserAuthPending)?
             .as_str()
             .ok_or_else(|| {
-                log::error!("Invalid access_token received from GitHub");
+                tracing::error!("Invalid access_token received from GitHub");
                 AuthenticationError::InternalError(
                     "Failed to retrieve access token from GitHub".into(),
                 )
@@ -211,7 +213,7 @@ impl GithubClient {
             .await?;
 
         if !resp.status().is_success() {
-            log::error!(
+            tracing::error!(
                 "github::get_user: received non-2xx response: {}. Body: {}",
                 resp.status(),
                 resp.text().await.unwrap_or("No response body".into())
@@ -223,7 +225,7 @@ impl GithubClient {
 
         resp.json::<GitHubFetchedUser>()
             .await
-            .inspect_err(|e| log::error!("github::get_user: failed to parse response: {e}"))
+            .inspect_err(|e| tracing::error!("github::get_user: failed to parse response: {e}"))
             .or(Err(AuthenticationError::InternalError(
                 "Failed to parse user JSON received from GitHub".into(),
             )))
@@ -242,11 +244,11 @@ impl GithubClient {
             .send()
             .await
             .inspect_err(|e| {
-                log::error!("github::get_installation: failed to fetch repositories: {e}")
+                tracing::error!("github::get_installation: failed to fetch repositories: {e}")
             })?;
 
         if !resp.status().is_success() {
-            log::error!(
+            tracing::error!(
                 "github::get_installation: received non-2xx response: {}. Body: {}",
                 resp.status(),
                 resp.text().await.unwrap_or("No response body".into())
@@ -259,7 +261,9 @@ impl GithubClient {
         let body = resp
             .json::<serde_json::Value>()
             .await
-            .inspect_err(|e| log::error!("github::get_installation: failed to parse response: {e}"))
+            .inspect_err(|e| {
+                tracing::error!("github::get_installation: failed to parse response: {e}")
+            })
             .or(Err(AuthenticationError::InternalError(
                 "Failed to parse response from GitHub".into(),
             )))?;
@@ -285,7 +289,7 @@ impl GithubClient {
 
         serde_json::from_value(owner)
             .inspect_err(|e| {
-                log::error!(
+                tracing::error!(
                     "github::get_installation: failed to extract owner from serde_json value: {e}"
                 )
             })

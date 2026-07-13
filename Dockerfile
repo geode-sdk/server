@@ -3,32 +3,32 @@
 ARG LIBC=musl
 
 # 1. shared toolchain (Rust + Zig + cargo-chef + cargo-zigbuild)
-FROM --platform=$BUILDPLATFORM debian:trixie-slim AS builder-tools
+# rust:1.97.0-slim-trixie
+FROM --platform=$BUILDPLATFORM rust@sha256:7284e7501ed1b80ae3d2f826024e8384749bb860c46d7989d3b70033b56bf31e AS builder-tools
 
 ARG ZIG_VERSION=0.15.2
-ARG CARGO_ZIGBUILD_VERSION=0.22.1
+ARG ZIG_SHA256=02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239
+ARG CARGO_ZIGBUILD_VERSION=0.23.0
 ARG CARGO_CHEF_VERSION=0.1.77
 
-ENV CARGO_HOME=/cargo \
-    RUSTUP_HOME=/rustup \
-    PATH=/cargo/bin:/zig:$PATH
+ENV PATH=/zig:$PATH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config ca-certificates curl xz-utils build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust (minimal profile, stable toolchain)
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable \
-    && rustup target add \
+RUN rustup target add \
         x86_64-unknown-linux-musl \
         aarch64-unknown-linux-musl \
         x86_64-unknown-linux-gnu \
         aarch64-unknown-linux-gnu
 
 # Install Zig (used by cargo-zigbuild as the cross-linker)
-RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
-        | tar -xJ \
-    && mv "zig-x86_64-linux-${ZIG_VERSION}" /zig
+RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz \
+    && echo "${ZIG_SHA256}  /tmp/zig.tar.xz" | sha256sum -c - \
+    && tar -xJf /tmp/zig.tar.xz \
+    && mv "zig-x86_64-linux-${ZIG_VERSION}" /zig \
+    && rm /tmp/zig.tar.xz
 
 # Install cargo-chef and cargo-zigbuild
 RUN cargo install --locked cargo-chef --version ${CARGO_CHEF_VERSION} \
@@ -88,33 +88,54 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /app/geode-index ./geode-index
 COPY migrations ./migrations
-COPY config ./config
+COPY static ./static
+COPY docker/sync-static.sh /usr/local/bin/sync-static.sh
 
-RUN addgroup -S geode && adduser -S geode -G geode \
+RUN addgroup -S -g 1000 geode && adduser -S -u 1000 geode -G geode \
+    && chmod +x /usr/local/bin/sync-static.sh \
     && chown -R geode:geode /app
 USER geode
 
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q --spider "http://127.0.0.1:${PORT:-3000}/" || exit 1
 ENTRYPOINT ["./geode-index"]
 
 # 4b. Debian slim runtime (glibc / dynamically linked)
 FROM debian:trixie-slim AS runtime-gnu
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates tzdata \
+        ca-certificates tzdata wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/geode-index ./geode-index
 COPY migrations ./migrations
-COPY config ./config
+COPY static ./static
+COPY docker/sync-static.sh /usr/local/bin/sync-static.sh
 
-RUN groupadd --system geode && useradd --system --gid geode geode \
+RUN groupadd --system --gid 1000 geode && useradd --system --uid 1000 --gid geode geode \
+    && chmod +x /usr/local/bin/sync-static.sh \
     && chown -R geode:geode /app
 USER geode
 
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q --spider "http://127.0.0.1:${PORT:-3000}/" || exit 1
 ENTRYPOINT ["./geode-index"]
 
 FROM runtime-${LIBC:-musl} AS runtime
 ARG LIBC
+
+# Overriden in CI
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG BUILD_DATE=unknown
+
+LABEL org.opencontainers.image.title="geode-index" \
+      org.opencontainers.image.description="Geode SDK mod index server" \
+      org.opencontainers.image.source="https://github.com/geode-sdk/server" \
+      org.opencontainers.image.documentation="https://github.com/geode-sdk/server#environment-variables" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${BUILD_DATE}"

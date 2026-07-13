@@ -7,4 +7,3 @@ pub async fn cleanup_downloads(conn: &mut PgConnection) -> Result<(), ApiError> 
 
     Ok(())
 }
-

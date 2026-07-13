@@ -1,7 +1,7 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use serde::Deserialize;
 use std::str::FromStr;
-use utoipa::{ToSchema, IntoParams};
+use utoipa::{IntoParams, ToSchema};
 
 use sqlx::Acquire;
 
@@ -44,6 +44,7 @@ struct GetOnePath {
     )
 )]
 #[get("v1/loader/versions/{version}")]
+#[tracing::instrument(skip_all, fields(version = %path.version))]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
     data: web::Data<AppData>,
@@ -108,6 +109,7 @@ struct CreateVersionBody {
     )
 )]
 #[post("v1/loader/versions")]
+#[tracing::instrument(skip_all, fields(tag = %payload.tag))]
 pub async fn create_version(
     data: web::Data<AppData>,
     payload: web::Json<CreateVersionBody>,
@@ -160,6 +162,7 @@ struct GetManyQuery {
     )
 )]
 #[get("v1/loader/versions")]
+#[tracing::instrument(skip_all)]
 pub async fn get_many(
     data: web::Data<AppData>,
     query: web::Query<GetManyQuery>,

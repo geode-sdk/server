@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mods.id FROM mods\n        INNER JOIN mod_versions ON mods.id = mod_versions.mod_id\n        INNER JOIN mod_version_statuses ON mod_version_statuses.id = mod_versions.status_id\n        INNER JOIN mods_developers ON mods.id = mods_developers.mod_id\n        WHERE mods_developers.developer_id = $1\n        AND mod_version_statuses.status = 'accepted'\n        LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f2c57d8bc7752c080fc45a6dd5b1fcc9f5ebe72d4948e0403ef5d488a9c8a370"
+}

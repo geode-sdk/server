@@ -83,6 +83,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -90,7 +96,11 @@ jobs:
           context: .
           push: true
           platforms: ${{ matrix.platform }}
-          build-args: LIBC=${{ matrix.libc }}
+          build-args: |
+            LIBC=${{ matrix.libc }}
+            VERSION=${{ needs.resolve-tag.outputs.tag }}
+            REVISION=${{ steps.meta.outputs.revision }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
           # Push to a digest-only ref (no tag) so the merge job can assemble
           # the final multi-arch manifest cleanly
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true

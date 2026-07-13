@@ -46,13 +46,13 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
 
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
-        .inspect_err(|e| log::error!("logo.png read fail: {}", e))?;
+        .inspect_err(|e| tracing::error!("logo.png read fail: {}", e))?;
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
     let mut img = PngDecoder::new(&mut reader)
         .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| log::error!("Failed to create PngDecoder: {}", e))?;
+        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -79,7 +79,7 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
 
     encoder
         .write_image(img.as_bytes(), width, height, img.color().into())
-        .inspect_err(|e| log::error!("Failed to downscale image to 336x336: {}", e))?;
+        .inspect_err(|e| tracing::error!("Failed to downscale image to 336x336: {}", e))?;
 
     cursor.seek(std::io::SeekFrom::Start(0)).unwrap();
 
@@ -99,13 +99,13 @@ pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZip
 
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut logo)
-        .inspect_err(|e| log::error!("logo.png read fail: {}", e))?;
+        .inspect_err(|e| tracing::error!("logo.png read fail: {}", e))?;
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
     let img = PngDecoder::new(&mut reader)
         .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| log::error!("Failed to create PngDecoder: {}", e))?;
+        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -142,7 +142,7 @@ pub async fn download_mod_hash_comp(
 
 pub fn bytes_to_ziparchive(bytes: Bytes) -> Result<ZipArchive<Cursor<Bytes>>, ModZipError> {
     ZipArchive::new(Cursor::new(bytes))
-        .inspect_err(|e| log::error!("Failed to create ZipArchive: {}", e))
+        .inspect_err(|e| tracing::error!("Failed to create ZipArchive: {}", e))
         .map_err(|e| e.into())
 }
 
@@ -150,9 +150,9 @@ async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
     let mut response = reqwest::get(url)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch .geode file: {e}"))?
+        .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?
         .error_for_status()
-        .inspect_err(|e| log::error!("Failed to fetch .geode file: {e}"))?;
+        .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?;
 
     // Check Content-Length, but the server can lie about this, so we'll also stream the file
     // If the header is somehow unavailable, we'll just check the size when streaming

@@ -5,5 +5,5 @@ pub enum DatabaseError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
     #[error("Unknown database error")]
-    SqlxError(#[from] sqlx::Error)
+    SqlxError(#[from] sqlx::Error),
 }

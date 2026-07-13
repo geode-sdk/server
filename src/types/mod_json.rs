@@ -217,7 +217,7 @@ impl ModJson {
         }
 
         let mut json = serde_json::from_reader::<ZipFile<Cursor<Bytes>>, ModJson>(json_file)
-            .inspect_err(|e| log::error!("Failed to parse mod.json: {e}"))?;
+            .inspect_err(|e| tracing::error!("Failed to parse mod.json: {e}"))?;
 
         json.version = json.version.trim_start_matches('v').to_string();
         json.hash = hash;
@@ -247,7 +247,9 @@ impl ModJson {
 
                     json.about = Some(
                         parse_zip_entry_to_str(&mut file)
-                            .inspect_err(|e| log::error!("Failed to parse about.md for mod: {e}"))
+                            .inspect_err(|e| {
+                                tracing::error!("Failed to parse about.md for mod: {e}")
+                            })
                             .map_err(|e| {
                                 ModZipError::InvalidModJson(format!("Failed to read about.md: {e}"))
                             })?,
@@ -262,7 +264,7 @@ impl ModJson {
 
                     json.changelog = Some(
                         parse_zip_entry_to_str(&mut file)
-                            .inspect_err(|e| log::error!("Failed to parse changelog.md: {e}"))
+                            .inspect_err(|e| tracing::error!("Failed to parse changelog.md: {e}"))
                             .map_err(|e| {
                                 ModZipError::InvalidModJson(format!(
                                     "Failed to read changelog.md: {e}"
@@ -306,7 +308,8 @@ impl ModJson {
                         continue;
                     }
                     let (dependency_ver, compare) = split_version_and_compare(&(i.version))
-                        .map_err(|_| {
+                        .map_err(|e| {
+                            tracing::error!(error = ?e, "invalid semver in dependency version");
                             ModZipError::InvalidModJson(format!("Invalid semver {}", i.version))
                         })?;
                     ret.push(DependencyCreate {
@@ -329,7 +332,11 @@ impl ModJson {
                     match dep {
                         ModJsonDependencyType::Version(version) => {
                             let (dependency_ver, compare) = split_version_and_compare(version)
-                                .map_err(|_| {
+                                .map_err(|e| {
+                                    tracing::error!(
+                                        error = ?e,
+                                        "invalid semver in dependency version"
+                                    );
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         version
@@ -359,7 +366,11 @@ impl ModJson {
                                 }
                             };
                             let (dependency_ver, compare) = split_version_and_compare(dep_ver)
-                                .map_err(|_| {
+                                .map_err(|e| {
+                                    tracing::error!(
+                                        error = ?e,
+                                        "invalid semver in dependency version"
+                                    );
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         dep_ver
@@ -406,7 +417,8 @@ impl ModJson {
                         continue;
                     }
 
-                    let (ver, compare) = split_version_and_compare(&(i.version)).map_err(|_| {
+                    let (ver, compare) = split_version_and_compare(&(i.version)).map_err(|e| {
+                        tracing::error!(error = ?e, "invalid semver in incompatibility version");
                         ModZipError::InvalidModJson(format!("Invalid semver: {}", i.version))
                     })?;
                     ret.push(IncompatibilityCreate {
@@ -430,7 +442,11 @@ impl ModJson {
                     match item {
                         ModJsonIncompatibilityType::Version(version) => {
                             let (ver, compare) =
-                                split_version_and_compare(version).map_err(|_| {
+                                split_version_and_compare(version).map_err(|e| {
+                                    tracing::error!(
+                                        error = ?e,
+                                        "invalid semver in incompatibility version"
+                                    );
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         version
@@ -460,7 +476,11 @@ impl ModJson {
                                 }
                             };
                             let (ver, compare) =
-                                split_version_and_compare(inc_ver).map_err(|_| {
+                                split_version_and_compare(inc_ver).map_err(|e| {
+                                    tracing::error!(
+                                        error = ?e,
+                                        "invalid semver in incompatibility version"
+                                    );
                                     ModZipError::InvalidModJson(format!(
                                         "Invalid semver {}",
                                         inc_ver
@@ -483,7 +503,7 @@ impl ModJson {
 
     pub fn validate(&self) -> Result<(), ModZipError> {
         if let Err(e) = <Self as Validate>::validate(self) {
-            log::warn!("mod.json validation error: {e}");
+            tracing::warn!("mod.json validation error: {e}");
             let useful_error = extract_validation_error(&e);
             return Err(ModZipError::InvalidModJson(format!(
                 "validation error: {useful_error}"
@@ -532,8 +552,10 @@ impl ModJson {
         }
 
         let v5: bool = {
-            let geode = Version::parse(self.geode.trim_start_matches('v'))
-                .map_err(|_| ModZipError::InvalidModJson("Invalid geode version".into()))?;
+            let geode = Version::parse(self.geode.trim_start_matches('v')).map_err(|e| {
+                tracing::error!(error = ?e, "invalid semver in geode version");
+                ModZipError::InvalidModJson("Invalid geode version".into())
+            })?;
             geode.major >= 5
         };
 
@@ -580,9 +602,15 @@ impl ModJson {
             }
         }
 
-        if !self.windows && !self.ios && !self.android32 && !self.android64 && !self.mac_intel && !self.mac_arm {
+        if !self.windows
+            && !self.ios
+            && !self.android32
+            && !self.android64
+            && !self.mac_intel
+            && !self.mac_arm
+        {
             return Err(ModZipError::InvalidModJson(
-                "Mod has no binaries".to_string()
+                "Mod has no binaries".to_string(),
             ));
         }
 
@@ -595,7 +623,7 @@ fn parse_zip_entry_to_str(file: &mut ZipFile<Cursor<Bytes>>) -> Result<String, S
     match file.read_to_string(&mut string) {
         Ok(_) => Ok(string),
         Err(e) => {
-            log::error!("{}", e);
+            tracing::error!("{}", e);
             Err(format!("Failed to parse {}", file.name()))
         }
     }
@@ -636,7 +664,7 @@ fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), M
     // 12 bytes is all we need
     let mut bytes: Vec<u8> = vec![0; 12];
     file.read_exact(&mut bytes).map_err(|e| {
-        log::error!("Failed to read MacOS binary: {}", e);
+        tracing::error!("Failed to read MacOS binary: {}", e);
         ModZipError::InvalidBinaries(format!("Failed to read macOS binary: {e}"))
     })?;
 

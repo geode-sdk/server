@@ -23,7 +23,7 @@ impl DiscordMessage {
     pub fn content(self, content: &str) -> Self {
         DiscordMessage {
             embeds: self.embeds,
-            content: Some(content.into())
+            content: Some(content.into()),
         }
     }
 
@@ -36,7 +36,7 @@ impl DiscordMessage {
         if self.embeds.len() == 10 {
             return DiscordMessage {
                 content: self.content,
-                embeds: self.embeds
+                embeds: self.embeds,
             };
         }
 
@@ -61,29 +61,23 @@ impl DiscordMessage {
 
         DiscordMessage {
             content: self.content,
-            embeds
+            embeds,
         }
     }
 
     pub fn send(&self, url: &str) {
         if url.is_empty() {
-            log::error!("Not sending webhook since URL is empty");
+            tracing::error!("Not sending webhook since URL is empty");
             return;
         }
 
-        log::debug!("Sending {:?} to webhook url {}", self, url);
+        tracing::debug!("Sending {:?} to webhook url {}", self, url);
         let url = String::from(url);
         let copy = self.clone();
 
         tokio::spawn(async move {
-
-            if let Err(e) = reqwest::Client::new()
-                .post(&url)
-                .json(&copy)
-                .send()
-                .await
-            {
-                log::error!("Failed to broadcast Discord webhook {}: {}", url, e);
+            if let Err(e) = reqwest::Client::new().post(&url).json(&copy).send().await {
+                tracing::error!("Failed to broadcast Discord webhook {}: {}", url, e);
             }
         });
     }

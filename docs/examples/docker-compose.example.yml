@@ -1,0 +1,79 @@
+# Example production setup: app + nginx + postgres sharing a storage volume.
+#
+# See nginx.example.conf for the corresponding nginx config, and the
+# "Running with Docker" section of the README for environment variables.
+
+services:
+  # Re-syncs static assets from whichever image tag is currently pulled into
+  # the geode-static volume, so nginx always serves assets matching the
+  # deployed (or rolled-back) app version. Runs once per `docker compose up`.
+  static-init:
+    image: ghcr.io/geode-sdk/server:latest-alpine
+    entrypoint: ["/usr/local/bin/sync-static.sh", "/shared-static"]
+    user: "0:0"
+    volumes:
+      - geode-static:/shared-static
+
+  app:
+    image: ghcr.io/geode-sdk/server:latest-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      PORT: "3000"
+      APP_URL: https://api.sapphire-sdk.org
+      FRONT_URL: https://sapphire-sdk.org
+    volumes:
+      - geode-storage-public:/app/storage/public
+      - geode-storage-private:/app/storage/private
+    networks:
+      - geode
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+      static-init:
+        condition: service_completed_successfully
+    volumes:
+      - geode-static:/app/static:ro
+      - geode-storage-public:/app/storage/public:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # include only if you want to make this available on the host machine
+    # (if your reverse proxy is on the host, not inside docker)
+    # ports:
+      # - "127.0.0.1:8080:80"
+    networks:
+      - geode
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # you should probably not keep those variables inside this
+    # compose file, maybe define a .env file for it
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - geode-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - geode
+
+volumes:
+  geode-postgres:
+  geode-static:
+  geode-storage-public:
+  geode-storage-private:
+
+networks:
+  geode:

@@ -18,6 +18,7 @@ pub struct AppData {
     front_url: String,
     github: GitHubClientData,
     webhook_url: String,
+    index_admin_webhook_url: String,
     static_storage: StaticStorage,
     public_storage: PublicStorage,
     private_storage: PrivateStorage,
@@ -43,6 +44,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
 
     let pool = sqlx::postgres::PgPoolOptions::default()
         .max_connections(pg_connections)
+        .acquire_timeout(Duration::from_secs(10))
         .connect(&env_url)
         .await?;
     let port = dotenvy::var("PORT").map_or(8080, |x: String| x.parse::<u16>().unwrap());
@@ -52,6 +54,8 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
+    let index_admin_webhook_url =
+        dotenvy::var("INDEX_ADMIN_DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
     let disable_downloads =
         dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
     let max_download_mb = dotenvy::var("MAX_MOD_FILESIZE_MB")
@@ -73,6 +77,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             client_secret: github_secret,
         },
         webhook_url,
+        index_admin_webhook_url,
         static_storage: StaticStorage::new(app_url.clone()),
         public_storage: PublicStorage::new(app_url.clone()),
         private_storage: PrivateStorage::new(),
@@ -113,6 +118,10 @@ impl AppData {
 
     pub fn webhook_url(&self) -> &str {
         &self.webhook_url
+    }
+
+    pub fn index_admin_webhook_url(&self) -> &str {
+        &self.index_admin_webhook_url
     }
 
     pub fn disable_downloads(&self) -> bool {

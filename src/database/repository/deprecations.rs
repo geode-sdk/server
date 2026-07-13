@@ -3,6 +3,7 @@ use crate::types::models::deprecations::Deprecation;
 use crate::types::models::developer::Developer;
 use sqlx::PgConnection;
 
+#[tracing::instrument(skip_all, fields(mod_ids = ?ids))]
 pub async fn get_for_mods(
     ids: &[String],
     conn: &mut PgConnection,
@@ -15,7 +16,7 @@ pub async fn get_for_mods(
     )
     .fetch_all(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::get_for_mods failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     let mut bys: Vec<_> = sqlx::query!(
         "SELECT dby.deprecation_id, dby.by_mod_id
@@ -25,7 +26,7 @@ pub async fn get_for_mods(
     )
     .fetch_all(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::get_for_mods failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(deps
         .into_iter()
@@ -41,6 +42,7 @@ pub async fn get_for_mods(
         .collect())
 }
 
+#[tracing::instrument(skip_all, fields(deprecation_id = %id))]
 pub async fn get(id: i32, conn: &mut PgConnection) -> Result<Option<Deprecation>, DatabaseError> {
     let dep = sqlx::query!(
         "SELECT
@@ -53,7 +55,7 @@ pub async fn get(id: i32, conn: &mut PgConnection) -> Result<Option<Deprecation>
     )
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::get failed: {e}"))?
+    .inspect_err(|e| tracing::error!("{:?}", e))?
     .map(|x| Deprecation {
         id,
         mod_id: x.mod_id,
@@ -75,13 +77,14 @@ pub async fn get(id: i32, conn: &mut PgConnection) -> Result<Option<Deprecation>
     )
     .fetch_all(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::get failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     dep.by = deprecated_by.into_iter().map(|b| b.by_mod_id).collect();
 
     Ok(Some(dep))
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %mod_id))]
 pub async fn create(
     mod_id: &str,
     by: &[String],
@@ -99,7 +102,7 @@ pub async fn create(
     )
     .fetch_one(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::create failed: {e}"))?
+    .inspect_err(|e| tracing::error!("{:?}", e))?
     .id;
 
     if !by.is_empty() {
@@ -114,6 +117,7 @@ pub async fn create(
     })
 }
 
+#[tracing::instrument(skip_all, fields(deprecation_id = %deprecation.id))]
 pub async fn update(
     mut deprecation: Deprecation,
     by: Option<&[String]>,
@@ -140,7 +144,7 @@ pub async fn update(
         )
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("deprecations::update failed: {e}"))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         deprecation.reason = reason.to_string();
 
@@ -155,7 +159,7 @@ pub async fn update(
         )
         .execute(&mut *conn)
         .await
-        .inspect_err(|e| log::error!("deprecations::update failed: {e}"))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         insert_deprecated_by(deprecation.id, by, &mut *conn).await?;
 
@@ -172,12 +176,14 @@ pub async fn update(
             deprecation.id
         )
         .execute(&mut *conn)
-        .await?;
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
     }
 
     Ok(deprecation)
 }
 
+#[tracing::instrument(skip_all, fields(deprecation_id = %id))]
 pub async fn delete(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM deprecations
@@ -186,11 +192,12 @@ pub async fn delete(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseErro
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::delete failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(mod_id = %mod_id))]
 pub async fn clear_all(mod_id: &str, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM deprecations
@@ -199,11 +206,12 @@ pub async fn clear_all(mod_id: &str, conn: &mut PgConnection) -> Result<(), Data
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::clear_all failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(deprecation_id = %id))]
 async fn insert_deprecated_by(
     id: i32,
     by: &[String],
@@ -227,7 +235,7 @@ async fn insert_deprecated_by(
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("deprecations::insert_deprecated_by failed: {e}"))
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map(|_| ())
     .map_err(|e| e.into())
 }

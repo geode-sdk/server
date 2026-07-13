@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::database::{repository::mod_tags, DatabaseError};
+use crate::database::{DatabaseError, repository::mod_tags};
 use crate::endpoints::ApiError;
 use sqlx::PgConnection;
 use utoipa::ToSchema;
@@ -14,6 +14,7 @@ pub struct Tag {
 }
 
 impl Tag {
+    #[tracing::instrument(skip_all, fields(mod_id = %mod_id))]
     pub async fn get_tags_for_mod(
         mod_id: &str,
         pool: &mut PgConnection,
@@ -26,11 +27,12 @@ impl Tag {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("{}", e))
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map(|tags| tags.into_iter().map(|t| t.name).collect::<Vec<_>>())
         .map_err(|e| e.into())
     }
 
+    #[tracing::instrument(skip_all, fields(mod_ids = ?ids))]
     pub async fn get_tags_for_mods(
         ids: &Vec<String>,
         pool: &mut PgConnection,
@@ -43,7 +45,7 @@ impl Tag {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("{}", e))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         let mut ret: HashMap<String, Vec<String>> = HashMap::new();
         for tag in tags {
@@ -57,6 +59,7 @@ impl Tag {
         Ok(ret)
     }
 
+    #[tracing::instrument(skip_all, fields(tags = %tags))]
     pub async fn parse_tags(tags: &str, pool: &mut PgConnection) -> Result<Vec<i32>, ApiError> {
         let tags = tags
             .split(',')
@@ -69,7 +72,7 @@ impl Tag {
         )
         .fetch_all(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("Failed to fetch tags: {}", e))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
 
         let fetched_ids = fetched.iter().map(|t| t.id).collect::<Vec<i32>>();
         let fetched_names = fetched

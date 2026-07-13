@@ -1,4 +1,4 @@
-use actix_web::{get, web, Responder};
+use actix_web::{Responder, get, web};
 
 use super::ApiError;
 use crate::config::AppData;
@@ -14,6 +14,7 @@ use crate::types::{api::ApiResponse, models::stats::Stats};
     )
 )]
 #[get("/v1/stats")]
+#[tracing::instrument(skip_all)]
 pub async fn get_stats(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
     Ok(web::Json(ApiResponse {

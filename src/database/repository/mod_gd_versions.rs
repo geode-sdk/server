@@ -8,6 +8,7 @@ use crate::{
     },
 };
 
+#[tracing::instrument(skip_all, fields(mod_version_id = %mod_version_id))]
 pub async fn create(
     mod_version_id: i32,
     json: &ModJson,
@@ -33,11 +34,12 @@ pub async fn create(
     )
     .execute(conn)
     .await
-    .inspect_err(|e| log::error!("mod_gd_versions::create query failed: {e}"))?;
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(json.gd.clone())
 }
 
+#[tracing::instrument(skip_all, fields(mod_version_id = %mod_version_id))]
 pub async fn clear(mod_version_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(
         "DELETE FROM mod_gd_versions mgv
@@ -46,7 +48,7 @@ pub async fn clear(mod_version_id: i32, conn: &mut PgConnection) -> Result<(), D
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("incompatibilities::clear query failed: {e}"))
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
     .map(|_| ())
 }

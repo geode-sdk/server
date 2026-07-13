@@ -29,6 +29,7 @@ pub struct Stats {
 }
 
 impl Stats {
+    #[tracing::instrument(skip_all)]
     pub async fn get_cached(pool: &mut PgConnection) -> Result<Stats, ApiError> {
         let mod_stats = Mod::get_stats(&mut *pool).await?;
         Ok(Stats {
@@ -40,6 +41,7 @@ impl Stats {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn get_latest_github_release_download_count(
         pool: &mut PgConnection,
     ) -> Result<i64, ApiError> {
@@ -51,6 +53,7 @@ impl Stats {
         )
         .fetch_one(&mut *pool)
         .await
+        .inspect_err(|e| tracing::error!("{:?}", e))
         .map(|d| (d.checked_at, d.total_download_count))
         {
             if Utc::now().signed_duration_since(cache_time).num_days() < 1 {
@@ -68,7 +71,7 @@ impl Stats {
         )
         .execute(&mut *pool)
         .await
-        .inspect_err(|e| log::error!("{}", e))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
         Ok(new.0)
     }
 
@@ -82,7 +85,7 @@ impl Stats {
             .send()
             .await
             .inspect_err(|e| {
-                log::error!("Failed to request Geode release stats from GitHub: {}", e)
+                tracing::error!("Failed to request Geode release stats from GitHub: {}", e)
             })?;
 
         if !resp.status().is_success() {

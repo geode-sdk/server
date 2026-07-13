@@ -6,7 +6,7 @@ use crate::database::repository::developers;
 use crate::endpoints::ApiError;
 use crate::types::models::developer::Developer;
 use actix_web::http::header::HeaderMap;
-use actix_web::{web, FromRequest, HttpRequest};
+use actix_web::{FromRequest, HttpRequest, web};
 use futures::Future;
 use uuid::Uuid;
 
