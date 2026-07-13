@@ -17,6 +17,7 @@ pub struct AppData {
     app_url: String,
     front_url: String,
     github: GitHubClientData,
+    s3: Option<S3ClientData>,
     webhook_url: String,
     index_admin_webhook_url: String,
     static_storage: StaticStorage,
@@ -34,6 +35,12 @@ pub struct AppData {
 pub struct GitHubClientData {
     client_id: String,
     client_secret: String,
+}
+
+#[derive(Clone)]
+pub struct S3ClientData {
+    client: aws_sdk_s3::Client,
+    bucket_name: String,
 }
 
 pub async fn build_config() -> anyhow::Result<AppData> {
@@ -68,6 +75,11 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .time_to_live(Duration::from_mins(10))
         .build();
 
+    // https://developers.cloudflare.com/r2/reference/data-location
+    let s3_endpoint = dotenvy::var("S3_ENDPOINT_URL").unwrap_or("".to_string());
+    let s3_region = dotenvy::var("S3_REGION").unwrap_or("auto".to_string());
+    let s3_bucket = dotenvy::var("S3_BUCKET_NAME").unwrap_or("".to_string());
+
     Ok(AppData {
         db: pool,
         app_url: app_url.clone(),
@@ -75,6 +87,18 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         github: GitHubClientData {
             client_id: github_client,
             client_secret: github_secret,
+        },
+        s3: if s3_endpoint.is_empty() { None } else { 
+            let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                .region(aws_config::Region::new(s3_region))
+                //.credentials_provider(credentials)
+                .endpoint_url(&s3_endpoint)
+                .load()
+                .await;
+            Some(S3ClientData {
+                client: aws_sdk_s3::Client::new(&config),
+                bucket_name: s3_bucket
+            })
         },
         webhook_url,
         index_admin_webhook_url,
@@ -114,6 +138,10 @@ impl AppData {
 
     pub fn github(&self) -> &GitHubClientData {
         &self.github
+    }
+
+    pub fn s3(&self) -> &Option<S3ClientData> {
+        &self.s3
     }
 
     pub fn webhook_url(&self) -> &str {
