@@ -46,3 +46,6 @@ utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }
 uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
 validator = { version = "0.20.0", features = ["derive"] }
 zip = "8.6.0"
+
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = "0.1.52"
