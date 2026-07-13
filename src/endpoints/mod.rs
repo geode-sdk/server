@@ -25,6 +25,8 @@ pub enum ApiError {
     #[error("{0}")]
     Database(#[from] crate::database::DatabaseError),
     #[error("{0}")]
+    Storage(#[from] crate::storage::StorageError),
+    #[error("{0}")]
     ModZip(#[from] ModZipError),
     #[error("Database error")]
     SqlxError(#[from] sqlx::Error),

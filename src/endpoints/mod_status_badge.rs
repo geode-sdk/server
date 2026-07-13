@@ -4,7 +4,6 @@ use actix_web::{HttpResponse, Responder, get, web};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::storage::StorageDisk;
 use urlencoding;
 
 const LABEL_COLOR: &str = "#0c0811";

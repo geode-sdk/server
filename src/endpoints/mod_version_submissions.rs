@@ -4,7 +4,6 @@ use crate::database::DatabaseError;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::events::thread_comment::NewThreadComment;
 use crate::extractors::auth::Auth;
-use crate::storage::StorageDisk;
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::developer::Developer;
@@ -863,7 +862,7 @@ pub async fn upload_attachments(
         for webp_bytes in &processed {
             let filename = data
                 .public_storage()
-                .store_hashed_with_extension("submission-attachments", webp_bytes, Some("webp"))
+                .store_hashed("submission-attachments", webp_bytes, Some("webp"))
                 .await?;
             stored_filenames.push(filename.clone());
             let row =

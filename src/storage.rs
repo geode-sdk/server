@@ -1,112 +1,86 @@
-use std::path::{Path, PathBuf};
+use std::{path::PathBuf, pin::Pin, sync::Arc};
 
-#[derive(Clone, Debug)]
-pub struct StaticStorage {
-    base_path: PathBuf,
-    app_url: String,
+#[derive(thiserror::Error, Debug)]
+pub enum StorageError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-impl StaticStorage {
-    pub fn new(app_url: String) -> Self {
-        Self {
-            base_path: PathBuf::from("static"),
-            app_url,
-        }
-    }
+pub type StorageResult<T> = Result<T, StorageError>;
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-    pub fn asset_url(&self, relative_path: &str) -> String {
-        format!(
-            "{}/static/{}",
-            self.app_url.trim_end_matches('/'),
-            relative_path
-        )
+pub trait StorageBackend: Send + Sync {
+    fn init(&self) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Ok(())
+        })
     }
+    fn store<'a>(&'a self, path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>>;
+    fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>>;
+    fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>>;
+    fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>>;
 }
 
-impl StorageDisk for StaticStorage {
-    fn base_path(&self) -> &Path {
-        &self.base_path
-    }
-}
+pub struct LocalBackend { base_path: PathBuf }
 
-#[derive(Clone, Debug)]
-pub struct PublicStorage {
-    base_path: PathBuf,
-    app_url: String,
-}
-
-impl PublicStorage {
-    pub fn new(app_url: String) -> Self {
-        Self {
-            base_path: PathBuf::from("storage/public"),
-            app_url,
-        }
-    }
-
-    pub fn asset_url(&self, relative_path: &str) -> String {
-        format!(
-            "{}/storage/{}",
-            self.app_url.trim_end_matches('/'),
-            relative_path
-        )
+impl LocalBackend {
+    pub fn new(base_path: impl Into<PathBuf>) -> LocalBackend {
+        LocalBackend { base_path: base_path.into() }
     }
 }
 
-impl StorageDisk for PublicStorage {
-    fn base_path(&self) -> &Path {
-        &self.base_path
+impl StorageBackend for LocalBackend {
+    fn store<'a>(&'a self, relative_path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>> {
+        Box::pin(async move {
+            let path = self.base_path.join(relative_path);
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+
+            tokio::fs::write(path, data).await.map_err(|e| e.into())
+        })
+    }
+    
+    fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>> {
+        Box::pin(async move {
+            let path = self.base_path.join(path);
+            match tokio::fs::read(path).await {
+                Ok(data) => Ok(data),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+                Err(e) => Err(e),
+            }.map_err(|e| e.into())
+        })
+    }
+    
+    fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>> {
+        Box::pin(async move {
+            let path = self.base_path.join(path);
+            Ok(tokio::fs::metadata(path).await.is_ok())
+        })
+    }
+    
+    fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>> {
+        Box::pin(async move {
+            let path = self.base_path.join(path);
+            match tokio::fs::remove_file(path).await {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e),
+            }.map_err(|e| e.into())
+        })
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PrivateStorage {
-    base_path: PathBuf,
+#[derive(Clone)]
+struct DiskCore {
+    backend: Arc<dyn StorageBackend>,
 }
 
-impl PrivateStorage {
-    pub fn new() -> Self {
-        Self {
-            base_path: PathBuf::from("storage/private"),
-        }
+impl DiskCore {
+    pub async fn init(&self) -> StorageResult<()> {
+        self.backend.init().await
     }
-}
-
-impl StorageDisk for PrivateStorage {
-    fn base_path(&self) -> &Path {
-        &self.base_path
-    }
-}
-
-pub trait StorageDisk {
-    async fn init(&self) -> std::io::Result<()> {
-        tokio::fs::create_dir_all(self.base_path()).await?;
-        Ok(())
-    }
-    fn base_path(&self) -> &Path;
-    fn path(&self, relative_path: &str) -> PathBuf {
-        self.base_path().join(relative_path)
-    }
-    async fn store(&self, relative_path: &str, data: &[u8]) -> std::io::Result<()> {
-        let path = self.path(relative_path);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        tokio::fs::write(path, data).await
-    }
-    /// Store data at a path calculated from the hash of the data. Uses content-addressable storage with 2 levels
-    async fn store_hashed(&self, relative_path: &str, data: &[u8]) -> std::io::Result<String> {
-        self.store_hashed_with_extension(relative_path, data, None)
-            .await
-    }
-    /// Store data at a path calculated from the hash of the data. Uses content-addressable storage with 2 levels.
-    /// Extension should not include the dot, and will be added to the end of the filename if provided.
-    async fn store_hashed_with_extension(
-        &self,
-        relative_path: &str,
-        data: &[u8],
-        extension: Option<&str>,
-    ) -> std::io::Result<String> {
+    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
         let hash = sha256::digest(data);
 
         let hashed_path = format!(
@@ -122,32 +96,78 @@ pub trait StorageDisk {
         self.store(&hashed_path, data).await?;
         Ok(hashed_path)
     }
-    async fn read(&self, relative_path: &str) -> std::io::Result<Vec<u8>> {
-        match tokio::fs::read(self.path(relative_path)).await {
-            Ok(data) => Ok(data),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-            Err(e) => Err(e),
-        }
+    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
+        self.backend.store(path, data).await
     }
-    async fn read_to_string(&self, relative_path: &str) -> std::io::Result<String> {
-        match tokio::fs::read_to_string(self.path(relative_path)).await {
-            Ok(data) => Ok(data),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-            Err(e) => Err(e),
-        }
+    pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
+        self.backend.read(path).await
     }
-    async fn read_stream(&self, relative_path: &str) -> std::io::Result<tokio::fs::File> {
-        tokio::fs::File::open(self.path(relative_path)).await
+    pub async fn exists(&self, path: &str) -> StorageResult<bool> {
+        self.backend.exists(path).await
     }
-    async fn exists(&self, relative_path: &str) -> std::io::Result<bool> {
-        let path = self.path(relative_path);
-        Ok(tokio::fs::metadata(path).await.is_ok())
+    pub async fn delete(&self, path: &str) -> StorageResult<()> {
+        self.backend.delete(path).await
     }
-    async fn delete(&self, relative_path: &str) -> std::io::Result<()> {
-        match tokio::fs::remove_file(self.path(relative_path)).await {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e),
-        }
+}
+
+#[derive(Clone)]
+pub struct PublicDisk {
+    core: DiskCore,
+    public_url: String
+}
+
+impl PublicDisk {
+    pub fn new(backend: Arc<dyn StorageBackend>, public_url: String) -> PublicDisk {
+        PublicDisk { core: DiskCore { backend }, public_url }
+    }
+    pub fn asset_url(&self, path: &str) -> String {
+        format!("{}/{}", self.public_url, path)
+    }
+    pub async fn init(&self) -> StorageResult<()> {
+        self.core.init().await
+    }
+    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
+        self.core.store_hashed(relative_path, data, extension).await
+    }
+    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
+        self.core.store(path, data).await
+    }
+    pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
+        self.core.read(path).await
+    }
+    pub async fn exists(&self, path: &str) -> StorageResult<bool> {
+        self.core.exists(path).await
+    }
+    pub async fn delete(&self, path: &str) -> StorageResult<()> {
+        self.core.delete(path).await
+    }
+}
+
+#[derive(Clone)]
+pub struct PrivateDisk {
+    core: DiskCore
+}
+
+impl PrivateDisk {
+    pub fn new(backend: Arc<dyn StorageBackend>) -> PrivateDisk {
+        PrivateDisk { core: DiskCore { backend } }
+    }
+    pub async fn init(&self) -> StorageResult<()> {
+        self.core.init().await
+    }
+    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
+        self.core.store_hashed(relative_path, data, extension).await
+    }
+    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
+        self.core.store(path, data).await
+    }
+    pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
+        self.core.read(path).await
+    }
+    pub async fn exists(&self, path: &str) -> StorageResult<bool> {
+        self.core.exists(path).await
+    }
+    pub async fn delete(&self, path: &str) -> StorageResult<()> {
+        self.core.delete(path).await
     }
 }

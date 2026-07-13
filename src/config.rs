@@ -1,11 +1,9 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use moka::future::Cache;
 
-use crate::storage::{PrivateStorage, PublicStorage, StaticStorage};
 use crate::{
-    endpoints::mods::IndexQueryParams,
-    types::{
+    endpoints::mods::IndexQueryParams, storage::{LocalBackend, PrivateDisk, PublicDisk}, types::{
         api::{ApiResponse, PaginatedData},
         models::mod_entity::Mod,
     },
@@ -19,9 +17,9 @@ pub struct AppData {
     github: GitHubClientData,
     webhook_url: String,
     index_admin_webhook_url: String,
-    static_storage: StaticStorage,
-    public_storage: PublicStorage,
-    private_storage: PrivateStorage,
+    static_storage: PublicDisk,
+    public_storage: PublicDisk,
+    private_storage: PrivateDisk,
     disable_downloads: bool,
     max_download_mb: u32,
     port: u16,
@@ -78,9 +76,9 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         },
         webhook_url,
         index_admin_webhook_url,
-        static_storage: StaticStorage::new(app_url.clone()),
-        public_storage: PublicStorage::new(app_url.clone()),
-        private_storage: PrivateStorage::new(),
+        static_storage: PublicDisk::new(Arc::new(LocalBackend::new("static")), format!("{app_url}/static")),
+        public_storage: PublicDisk::new(Arc::new(LocalBackend::new("storage/public")), format!("{app_url}/storage")),
+        private_storage: PrivateDisk::new(Arc::new(LocalBackend::new("storage/private"))),
         disable_downloads,
         max_download_mb,
         port,
@@ -140,15 +138,15 @@ impl AppData {
         self.debug
     }
 
-    pub fn static_storage(&self) -> &StaticStorage {
+    pub fn static_storage(&self) -> &PublicDisk {
         &self.static_storage
     }
 
-    pub fn public_storage(&self) -> &PublicStorage {
+    pub fn public_storage(&self) -> &PublicDisk {
         &self.public_storage
     }
 
-    pub fn private_storage(&self) -> &PrivateStorage {
+    pub fn private_storage(&self) -> &PrivateDisk {
         &self.private_storage
     }
 
