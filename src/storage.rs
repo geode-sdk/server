@@ -11,9 +11,7 @@ type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait StorageBackend: Send + Sync {
     fn init(&self) -> BoxFuture<'_, StorageResult<()>> {
-        Box::pin(async {
-            Ok(())
-        })
+        Box::pin(async { Ok(()) })
     }
     fn store<'a>(&'a self, path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>>;
     fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>>;
@@ -21,16 +19,24 @@ pub trait StorageBackend: Send + Sync {
     fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>>;
 }
 
-pub struct LocalBackend { base_path: PathBuf }
+pub struct LocalBackend {
+    base_path: PathBuf,
+}
 
 impl LocalBackend {
     pub fn new(base_path: impl Into<PathBuf>) -> LocalBackend {
-        LocalBackend { base_path: base_path.into() }
+        LocalBackend {
+            base_path: base_path.into(),
+        }
     }
 }
 
 impl StorageBackend for LocalBackend {
-    fn store<'a>(&'a self, relative_path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>> {
+    fn store<'a>(
+        &'a self,
+        relative_path: &'a str,
+        data: &'a [u8],
+    ) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
             let path = self.base_path.join(relative_path);
             if let Some(parent) = path.parent() {
@@ -40,7 +46,7 @@ impl StorageBackend for LocalBackend {
             tokio::fs::write(path, data).await.map_err(|e| e.into())
         })
     }
-    
+
     fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>> {
         Box::pin(async move {
             let path = self.base_path.join(path);
@@ -48,17 +54,18 @@ impl StorageBackend for LocalBackend {
                 Ok(data) => Ok(data),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
                 Err(e) => Err(e),
-            }.map_err(|e| e.into())
+            }
+            .map_err(|e| e.into())
         })
     }
-    
+
     fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>> {
         Box::pin(async move {
             let path = self.base_path.join(path);
             Ok(tokio::fs::metadata(path).await.is_ok())
         })
     }
-    
+
     fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
             let path = self.base_path.join(path);
@@ -66,7 +73,8 @@ impl StorageBackend for LocalBackend {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
                 Err(e) => Err(e),
-            }.map_err(|e| e.into())
+            }
+            .map_err(|e| e.into())
         })
     }
 }
@@ -80,7 +88,12 @@ impl DiskCore {
     pub async fn init(&self) -> StorageResult<()> {
         self.backend.init().await
     }
-    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
+    pub async fn store_hashed(
+        &self,
+        relative_path: &str,
+        data: &[u8],
+        extension: Option<&str>,
+    ) -> StorageResult<String> {
         let hash = sha256::digest(data);
 
         let hashed_path = format!(
@@ -113,12 +126,15 @@ impl DiskCore {
 #[derive(Clone)]
 pub struct PublicDisk {
     core: DiskCore,
-    public_url: String
+    public_url: String,
 }
 
 impl PublicDisk {
     pub fn new(backend: Arc<dyn StorageBackend>, public_url: String) -> PublicDisk {
-        PublicDisk { core: DiskCore { backend }, public_url }
+        PublicDisk {
+            core: DiskCore { backend },
+            public_url,
+        }
     }
     pub fn asset_url(&self, path: &str) -> String {
         format!("{}/{}", self.public_url, path)
@@ -126,7 +142,12 @@ impl PublicDisk {
     pub async fn init(&self) -> StorageResult<()> {
         self.core.init().await
     }
-    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
+    pub async fn store_hashed(
+        &self,
+        relative_path: &str,
+        data: &[u8],
+        extension: Option<&str>,
+    ) -> StorageResult<String> {
         self.core.store_hashed(relative_path, data, extension).await
     }
     pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
@@ -145,17 +166,24 @@ impl PublicDisk {
 
 #[derive(Clone)]
 pub struct PrivateDisk {
-    core: DiskCore
+    core: DiskCore,
 }
 
 impl PrivateDisk {
     pub fn new(backend: Arc<dyn StorageBackend>) -> PrivateDisk {
-        PrivateDisk { core: DiskCore { backend } }
+        PrivateDisk {
+            core: DiskCore { backend },
+        }
     }
     pub async fn init(&self) -> StorageResult<()> {
         self.core.init().await
     }
-    pub async fn store_hashed(&self, relative_path: &str, data: &[u8], extension: Option<&str>) -> StorageResult<String> {
+    pub async fn store_hashed(
+        &self,
+        relative_path: &str,
+        data: &[u8],
+        extension: Option<&str>,
+    ) -> StorageResult<String> {
         self.core.store_hashed(relative_path, data, extension).await
     }
     pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
