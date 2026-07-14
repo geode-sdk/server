@@ -17,11 +17,11 @@ pub fn set_url_exp(url: &mut Url, exp: u64) {
 /// # Example
 ///
 /// ```rust
-/// let url = Url::parse("https://example.com?test=1");
+/// let mut url = Url::parse("https://example.com?test=1").unwrap();
 ///
 /// let signed = urlsign::sign_url(url.clone(), "Wmfd2893gb7"); // signed without an expiration
 ///
-/// urlsign::set_url_exp(url, 1691084580);
+/// urlsign::set_url_exp(&mut url, 1691084580);
 /// let signed_with_exp = urlsign::sign_url(url.clone(), "Wmfd2893gb7"); // signed with expiration date
 /// ```
 pub fn sign_url(mut url: Url, salt: &str) -> Url {
@@ -40,11 +40,13 @@ pub fn sign_url(mut url: Url, salt: &str) -> Url {
 /// # Example
 ///
 /// ```rust
-/// let url = Url::parse("https://example.com?test=1");
+/// let url = Url::parse("https://example.com?test=1").unwrap();
 ///
 /// let signed = urlsign::sign_url(url, "Wmfd2893gb7");
 ///
-/// let valid = urlsign::check_signed_url(signed, "Wmfd2893gb7"); // should be `true`
+/// let valid = urlsign::check_signed_url(signed, "Wmfd2893gb7");
+///
+/// assert_eq!(valid, true);
 /// ```
 pub fn check_signed_url(url: &Url, salt: &str) -> bool {
     let existing_signature = match url.query_pairs().find(|p| p.0 == "s") {
