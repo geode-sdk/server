@@ -42,11 +42,15 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    tracing::info!("Running migrations");
-    sqlx::migrate!("./migrations").run(app_data.db()).await?;
-
     let port = app_data.port();
     let debug = app_data.debug();
+
+    if !debug {
+        tracing::info!("Running migrations");
+        sqlx::migrate!("./migrations").run(app_data.db()).await?;
+    } else {
+        tracing::info!("Running in debug mode, skipping migrations");
+    }
 
     tracing::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
