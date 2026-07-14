@@ -73,3 +73,86 @@ fn do_sign_url(url: &mut Url, salt: &str) -> String {
 
     sha256::digest(format!("{}{}", salt, url))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signed_url_is_valid() {
+        let url = Url::parse("https://example.com?test=1").unwrap();
+        let signed = sign_url(url, "salt");
+
+        assert!(check_signed_url(&signed, "salt"));
+    }
+
+    #[test]
+    fn wrong_salt_is_rejected() {
+        let url = Url::parse("https://example.com?test=1").unwrap();
+        let signed = sign_url(url, "salt");
+
+        assert!(!check_signed_url(&signed, "wrong-salt"));
+    }
+
+    #[test]
+    fn missing_signature_is_rejected() {
+        let url = Url::parse("https://example.com?test=1").unwrap();
+
+        assert!(!check_signed_url(&url, "salt"));
+    }
+
+    #[test]
+    fn tampered_query_is_rejected() {
+        let url = Url::parse("https://example.com?test=1").unwrap();
+        let signed = sign_url(url, "salt");
+        let existing_sig = signed
+            .query_pairs()
+            .find(|(k, _)| k == "s")
+            .unwrap()
+            .1
+            .to_string();
+
+        let mut tampered = signed.clone();
+        tampered.set_query(Some(&format!("test=2&s={}", existing_sig)));
+
+        assert!(!check_signed_url(&tampered, "salt"));
+    }
+
+    #[test]
+    fn tampered_signature_is_rejected() {
+        let url = Url::parse("https://example.com?test=1").unwrap();
+        let signed = sign_url(url, "salt");
+        let existing_sig = signed
+            .query_pairs()
+            .find(|(k, _)| k == "s")
+            .unwrap()
+            .1
+            .to_string();
+
+        let mut tampered = signed.clone();
+        let bogus_sig = "0".repeat(existing_sig.len());
+        tampered.set_query(Some(&format!("test=1&s={}", bogus_sig)));
+
+        assert!(!check_signed_url(&tampered, "salt"));
+    }
+
+    #[test]
+    fn signing_ignores_existing_s_param() {
+        let url = Url::parse("https://example.com?test=1&s=bogus").unwrap();
+        let signed = sign_url(url, "salt");
+
+        assert!(check_signed_url(&signed, "salt"));
+    }
+
+    #[test]
+    fn exp_param_changes_signature() {
+        let mut url = Url::parse("https://example.com?test=1").unwrap();
+        let signed_without_exp = sign_url(url.clone(), "salt");
+
+        set_url_exp(&mut url, 1691084580);
+        let signed_with_exp = sign_url(url, "salt");
+
+        assert_ne!(signed_without_exp, signed_with_exp);
+        assert!(check_signed_url(&signed_with_exp, "salt"));
+    }
+}
