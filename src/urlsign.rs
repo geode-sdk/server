@@ -49,8 +49,8 @@ pub fn sign_url(mut url: Url, salt: &str) -> Url {
 /// assert_eq!(valid, true);
 /// ```
 pub fn check_signed_url(url: &Url, salt: &str) -> bool {
-    let existing_signature = match url.query_pairs().find(|p| p.0 == "s") {
-        Some(found) => found.1.to_string(),
+    let existing_signature = match url.query_pairs().find(|(k, _)| k == "s") {
+        Some((_, value)) => value.to_string(),
         None => return false,
     };
 
@@ -63,12 +63,12 @@ pub fn check_signed_url(url: &Url, salt: &str) -> bool {
 
 fn do_sign_url(url: &mut Url, salt: &str) -> String {
     let clone = url.clone();
-    let new_query: Vec<(_, _)> = clone.query_pairs().filter(|p| p.0 != "s").collect();
+    let new_query: Vec<(_, _)> = clone.query_pairs().filter(|(k, _)| k != "s").collect();
 
     url.set_query(None);
-    for pair in new_query {
+    for (k, v) in new_query {
         url.query_pairs_mut()
-            .append_pair(&pair.0.to_string()[..], &pair.1.to_string()[..]);
+            .append_pair(&k.to_string()[..], &v.to_string()[..]);
     }
 
     sha256::digest(format!("{}{}", salt, url))
