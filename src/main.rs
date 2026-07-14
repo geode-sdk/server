@@ -22,6 +22,7 @@ mod mod_zip;
 mod openapi;
 mod storage;
 mod types;
+mod urlsign;
 mod webhook;
 
 // Avoid musl's default allocator due to lackluster performance
