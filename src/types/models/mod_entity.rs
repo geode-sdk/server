@@ -222,7 +222,7 @@ impl Mod {
 
         let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
-        let core_query = |builder: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>| {
+        let core_query = |builder: &mut sqlx::QueryBuilder<sqlx::Postgres>| {
             // clone these due to silly lifetime rules, the closure lives till the
             // end of the function and the only other solution is ugly scopes
             let gd = gd.clone();
