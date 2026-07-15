@@ -41,7 +41,7 @@ pub enum IndexSortType {
     Oldest,
     Name,
     NameReverse,
-    Random
+    Random,
 }
 
 #[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
@@ -110,7 +110,12 @@ pub async fn index(
         payload: result.clone(),
     };
 
-    data.mods_cache().insert(query.0, resp.clone()).await;
+    if query
+        .status
+        .is_none_or(|status| status == ModVersionStatusEnum::Accepted)
+    {
+        data.mods_cache().insert(query.0, resp.clone()).await;
+    }
 
     Ok(web::Json(resp))
 }
