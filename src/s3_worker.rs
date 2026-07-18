@@ -53,7 +53,48 @@ async fn process_task(data: &AppData, task: S3WorkerTask) -> anyhow::Result<()> 
 }
 
 async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
-    // TODO
+    let supported_gd = GDVersionEnum::supported_for_storage();
+    let storage = data.mod_storage().expect("mod storage must be set by now");
+
+    let mut db = data.db().acquire().await?;
+
+    let versions = sqlx::query!(
+        "SELECT mv.id, mv.version, mv.managed_download_link, mv.mod_id FROM mod_versions mv
+        WHERE managed_download_link IS NOT NULL
+            AND mv.id NOT IN (
+                SELECT DISTINCT ON (q.mv_id) q.mv_id FROM (
+                    SELECT DISTINCT ON (m.id, mgv.gd, mv.geode_major) m.id, mv.name, mv.version, mv.download_link, mv.managed_download_link, mv.id as mv_id, mgv.gd
+                    FROM MODS m
+                    INNER JOIN mod_versions mv ON m.id = mv.mod_id
+                    INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+                    INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
+                    WHERE mvs.status = 'accepted' AND mgv.gd = ANY($1::gd_version[])
+                    ORDER BY m.id, mgv.gd DESC, mv.geode_major DESC, mv.id DESC
+                ) q
+                ORDER BY q.mv_id
+            )
+        ",
+        supported_gd as &[GDVersionEnum]
+    )
+    .fetch_all(&mut *db)
+    .await?;
+
+    tracing::info!("Cleaning up {} old S3 files", versions.len());
+
+    for record in versions {
+        let path = path_for_mod(&record.mod_id, &record.version);
+        if let Err(e) = storage.delete(&path).await {
+            tracing::error!("error deleting old S3 file for mod {} {} at {:?}: {e:?}", record.mod_id, record.version, record.managed_download_link);
+            continue;
+        }
+
+        tracing::debug!("Deleted S3 file at path {}", path);
+
+        let mut tx = data.db().begin().await?;
+        update_managed_download_link(record.id, None, &mut tx).await?;
+        tx.commit().await?;
+    }
+
     Ok(())
 }
 

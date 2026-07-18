@@ -398,12 +398,8 @@ pub async fn update_managed_download_link(
     conn: &mut PgConnection,
 ) -> Result<(), DatabaseError> {
     sqlx::query!(
-        "UPDATE mod_versions
-        SET managed_download_link = $1,
-        updated_at = NOW()
-        WHERE id = $2",
-        link,
-        id
+        "UPDATE mod_versions SET managed_download_link = $1 WHERE id = $2",
+        link, id
     )
     .execute(&mut *conn)
     .await
