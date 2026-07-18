@@ -55,14 +55,16 @@ pub enum GDVersionEnum {
 
 impl GDVersionEnum {
     /// GD versions that are currently actively supported
+    #[allow(unused)]
     pub fn latest_supported() -> &'static [GDVersionEnum] {
-        &[GDVersionEnum::GD22081, GDVersionEnum::GD22082]
+        &[GDVersionEnum::All, GDVersionEnum::GD22081, GDVersionEnum::GD22082]
     }
 
     /// GD versions for which we apply auto-migration to S3 storage
     /// Generally should include versions that some users might still be using
     pub fn supported_for_storage() -> &'static [GDVersionEnum] {
         &[
+            GDVersionEnum::All,
             GDVersionEnum::GD2206,
             GDVersionEnum::GD22074,
             GDVersionEnum::GD22081,

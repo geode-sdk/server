@@ -93,16 +93,15 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     let versions = sqlx::query!(
         "SELECT final_q.id, final_q.version, final_q.download_link, final_q.mv_id FROM (
             SELECT DISTINCT ON (q.mv_id) q.id, q.version, q.download_link, q.mv_id, q.gd FROM (
-                SELECT DISTINCT ON (m.id, mgv.gd) m.id, mv.name, mv.version, mv.download_link, mv.id as mv_id, mgv.gd
+                SELECT DISTINCT ON (m.id, mgv.gd) m.id, mv.name, mv.version, mv.download_link, mv.managed_download_link, mv.id as mv_id, mgv.gd
                 FROM MODS m
                 INNER JOIN mod_versions mv ON m.id = mv.mod_id
                 INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
                 INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id
-                WHERE mvs.status = 'accepted'
-                AND mgv.gd = ANY($1::gd_version[])
-                AND mv.managed_download_link IS NULL
-                ORDER BY m.id, mgv.gd, mv.id DESC
+                WHERE mvs.status = 'accepted' AND mgv.gd = ANY($1::gd_version[])
+                ORDER BY m.id, mgv.gd DESC, mv.id DESC
             ) q
+            WHERE q.managed_download_link IS NULL
             ORDER BY q.mv_id, q.gd DESC
         ) final_q",
         supported_gd as &[GDVersionEnum]
