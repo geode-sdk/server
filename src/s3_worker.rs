@@ -85,7 +85,7 @@ async fn migrate_one(
 }
 
 async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
-    let supported_gd = GDVersionEnum::latest_supported();
+    let supported_gd = GDVersionEnum::supported_for_storage();
 
     let mut db = data.db().acquire().await?;
 
