@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO mod_versions\n        (name, version, description, download_link,\n        hash, geode_major, geode_minor, geode_patch, geode_meta,\n        early_load, api, mod_id, status_id, requires_patching,\n        created_at, updated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13,\n        NOW(), NOW())\n        RETURNING\n            id, name, version, description,\n            download_link, hash,\n            early_load, requires_patching, api, mod_id,\n            created_at, updated_at",
+  "query": "SELECT\n            mv.id, mv.name, mv.description, mv.version,\n            mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,\n            format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,\n            mv.created_at, mv.updated_at,\n            mvs.status as \"status: _\", mvs.info\n        FROM mod_versions mv\n        INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n        WHERE mv.mod_id = $1\n        AND mv.version = $2",
   "describe": {
     "columns": [
       {
@@ -27,23 +27,23 @@
       },
       {
         "ordinal": 2,
-        "name": "version",
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "mod_versions",
-            "name": "version"
-          }
-        }
-      },
-      {
-        "ordinal": 3,
         "name": "description",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "mod_versions",
             "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
           }
         }
       },
@@ -60,6 +60,28 @@
       },
       {
         "ordinal": 5,
+        "name": "managed_download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "managed_download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "download_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_count"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "hash",
         "type_info": "Text",
         "origin": {
@@ -70,7 +92,13 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
+        "name": "geode!: _",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
         "name": "early_load",
         "type_info": "Bool",
         "origin": {
@@ -81,7 +109,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 10,
         "name": "requires_patching",
         "type_info": "Bool",
         "origin": {
@@ -92,7 +120,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 11,
         "name": "api",
         "type_info": "Bool",
         "origin": {
@@ -103,7 +131,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 12,
         "name": "mod_id",
         "type_info": "Text",
         "origin": {
@@ -114,7 +142,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 13,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -125,7 +153,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 14,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -134,39 +162,67 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 15,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "info",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "info"
+          }
+        }
       }
     ],
     "parameters": {
       "Left": [
         "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Int4",
-        "Int4",
-        "Int4",
-        "Text",
-        "Bool",
-        "Bool",
-        "Text",
-        "Bool"
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
+      true,
+      false,
       false,
       true,
       false,
       false,
+      null,
       false,
       false,
       false,
       false,
       true,
+      true,
+      false,
       true
     ]
   },
-  "hash": "cc4706434166bf9d5d6c3fde308fb3855ab4c697528a1b4ff8d074595ee82413"
+  "hash": "343cc93a2b99bed5e20d46ce54eba34475ebf9db478c8c1debeed64552bb6fd7"
 }

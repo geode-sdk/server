@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "mod_version_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "dependencies",
+            "name": "dependent_id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "dependency_id",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dependencies",
+            "name": "dependency_id"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "version",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dependencies",
+            "name": "version"
+          }
+        }
       },
       {
         "ordinal": 3,
@@ -34,6 +52,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "dependencies",
+            "name": "compare"
+          }
         }
       },
       {
@@ -49,6 +73,12 @@
                 "suggested"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "dependencies",
+            "name": "importance"
           }
         }
       }

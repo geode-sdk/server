@@ -6,32 +6,68 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "username",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "username"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "display_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "display_name"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "verified",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "verified"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "admin",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "admin"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "github_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "developers",
+            "name": "github_user_id"
+          }
+        }
       }
     ],
     "parameters": {
