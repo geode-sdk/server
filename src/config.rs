@@ -4,7 +4,7 @@ use moka::future::Cache;
 
 use crate::{
     endpoints::mods::IndexQueryParams,
-    storage::{LocalBackend, PrivateDisk, PublicDisk},
+    storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{
         api::{ApiResponse, PaginatedData},
         models::mod_entity::Mod,
@@ -17,12 +17,12 @@ pub struct AppData {
     app_url: String,
     front_url: String,
     github: GitHubClientData,
-    s3: Option<S3ClientData>,
     webhook_url: String,
     index_admin_webhook_url: String,
     static_storage: PublicDisk,
     public_storage: PublicDisk,
     private_storage: PrivateDisk,
+    mod_storage: Option<PublicDisk>,
     disable_downloads: bool,
     max_download_mb: u32,
     port: u16,
@@ -39,8 +39,7 @@ pub struct GitHubClientData {
 
 #[derive(Clone)]
 pub struct S3ClientData {
-    client: aws_sdk_s3::Client,
-    bucket_name: String,
+    bucket: Box<s3::Bucket>,
 }
 
 pub async fn build_config() -> anyhow::Result<AppData> {
@@ -75,10 +74,12 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .time_to_live(Duration::from_mins(10))
         .build();
 
-    // https://developers.cloudflare.com/r2/reference/data-location
-    let s3_endpoint = dotenvy::var("S3_ENDPOINT_URL").unwrap_or("".to_string());
-    let s3_region = dotenvy::var("S3_REGION").unwrap_or("auto".to_string());
-    let s3_bucket = dotenvy::var("S3_BUCKET_NAME").unwrap_or("".to_string());
+    let mod_storage = if let Some(s3_config) = S3Configuration::from_env()? {
+        let backend = Arc::new(S3Backend::new(&s3_config)?);
+        Some(PublicDisk::new(backend, s3_config.public_url))
+    } else {
+        None
+    };
 
     Ok(AppData {
         db: pool,
@@ -87,18 +88,6 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         github: GitHubClientData {
             client_id: github_client,
             client_secret: github_secret,
-        },
-        s3: if s3_endpoint.is_empty() { None } else { 
-            let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-                .region(aws_config::Region::new(s3_region))
-                //.credentials_provider(credentials)
-                .endpoint_url(&s3_endpoint)
-                .load()
-                .await;
-            Some(S3ClientData {
-                client: aws_sdk_s3::Client::new(&config),
-                bucket_name: s3_bucket
-            })
         },
         webhook_url,
         index_admin_webhook_url,
@@ -111,6 +100,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             format!("{app_url}/storage"),
         ),
         private_storage: PrivateDisk::new(Arc::new(LocalBackend::new("storage/private"))),
+        mod_storage,
         disable_downloads,
         max_download_mb,
         port,
@@ -144,10 +134,6 @@ impl AppData {
 
     pub fn github(&self) -> &GitHubClientData {
         &self.github
-    }
-
-    pub fn s3(&self) -> &Option<S3ClientData> {
-        &self.s3
     }
 
     pub fn webhook_url(&self) -> &str {
@@ -184,6 +170,10 @@ impl AppData {
 
     pub fn private_storage(&self) -> &PrivateDisk {
         &self.private_storage
+    }
+
+    pub fn mod_storage(&self) -> Option<&PublicDisk> {
+        self.mod_storage.as_ref()
     }
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {
