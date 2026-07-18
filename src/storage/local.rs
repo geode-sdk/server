@@ -1,6 +1,5 @@
-use std::path::PathBuf;
 use super::*;
-
+use std::path::PathBuf;
 
 pub struct LocalBackend {
     base_path: PathBuf,

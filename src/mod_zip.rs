@@ -36,7 +36,7 @@ pub enum ModZipError {
     InvalidBinaries(String),
 }
 
-pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, ModZipError> {
+pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZipError> {
     const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
     if file.size() > FIVE_MEGABYTES {
         return Err(ModZipError::InvalidLogo(
@@ -89,7 +89,7 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
     Ok(bytes)
 }
 
-pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZipError> {
+pub fn validate_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<(), ModZipError> {
     const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
     if file.size() > FIVE_MEGABYTES {
         return Err(ModZipError::InvalidLogo(
@@ -119,16 +119,21 @@ pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZip
     }
 }
 
-pub async fn download_mod(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
-    download(url, limit_mb).await
+pub async fn download_mod(
+    http_client: &reqwest::Client,
+    url: &str,
+    limit_mb: u32,
+) -> Result<Bytes, ModZipError> {
+    download(http_client, url, limit_mb).await
 }
 
 pub async fn download_mod_hash_comp(
+    http_client: &reqwest::Client,
     url: &str,
     hash: &str,
     limit_mb: u32,
 ) -> Result<Bytes, ModZipError> {
-    let bytes = download(url, limit_mb).await?;
+    let bytes = download(http_client, url, limit_mb).await?;
 
     let slice: &[u8] = &bytes;
 
@@ -140,15 +145,21 @@ pub async fn download_mod_hash_comp(
     Ok(bytes)
 }
 
-pub fn bytes_to_ziparchive(bytes: Bytes) -> Result<ZipArchive<Cursor<Bytes>>, ModZipError> {
+pub fn bytes_to_ziparchive(bytes: &[u8]) -> Result<ZipArchive<Cursor<&[u8]>>, ModZipError> {
     ZipArchive::new(Cursor::new(bytes))
         .inspect_err(|e| tracing::error!("Failed to create ZipArchive: {}", e))
         .map_err(|e| e.into())
 }
 
-async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
+async fn download(
+    http_client: &reqwest::Client,
+    url: &str,
+    limit_mb: u32,
+) -> Result<Bytes, ModZipError> {
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
-    let mut response = reqwest::get(url)
+    let mut response = http_client
+        .get(url)
+        .send()
         .await
         .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?
         .error_for_status()

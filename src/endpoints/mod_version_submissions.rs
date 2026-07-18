@@ -466,7 +466,7 @@ pub async fn create_comment(
             username: dev.username.clone(),
         }
         .to_discord_webhook()
-        .send(data.index_admin_webhook_url());
+        .send(data.http_client(), data.index_admin_webhook_url());
     }
 
     Ok(HttpResponse::Created().json(ApiResponse {

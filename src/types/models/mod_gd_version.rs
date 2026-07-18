@@ -53,6 +53,13 @@ pub enum GDVersionEnum {
     GD22082,
 }
 
+impl GDVersionEnum {
+    pub fn latest_supported() -> &'static [GDVersionEnum] {
+        // please do not forget to update this with the versions we currently support!
+        &[GDVersionEnum::GD22081, GDVersionEnum::GD22082]
+    }
+}
+
 impl FromStr for GDVersionEnum {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, ()> {

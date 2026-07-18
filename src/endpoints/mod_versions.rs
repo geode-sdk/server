@@ -16,6 +16,7 @@ use crate::events::mod_created::{
     NewUnverifiedModVersionCreated,
 };
 use crate::mod_zip::{self, download_mod};
+use crate::s3_worker::S3WorkerTask;
 use crate::types::models;
 use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
@@ -235,7 +236,10 @@ pub async fn download_version(
     .ok_or(ApiError::NotFound(
         "Couldn't find valid mod version for given filters".into(),
     ))?;
-    let url = mod_version.download_link;
+
+    let url = mod_version
+        .managed_download_link
+        .unwrap_or(mod_version.download_link);
 
     if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
         // whatever
@@ -346,8 +350,8 @@ pub async fn create_version(
         .filter(|c| c.is_ascii() && *c != '\0')
         .collect();
 
-    let bytes = download_mod(&download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &download_link, make_accepted)
+    let bytes = download_mod(data.http_client(), &download_link, data.max_download_mb()).await?;
+    let json = ModJson::from_zip(&bytes, &download_link, make_accepted)
         .inspect_err(|e| tracing::error!("Failed to parse mod.json: {e}"))?;
     if json.id != the_mod.id {
         return Err(ApiError::BadRequest(format!(
@@ -463,7 +467,14 @@ pub async fn create_version(
             base_url: data.app_url().to_string(),
         }
         .to_discord_webhook()
-        .send(data.webhook_url());
+        .send(data.http_client(), data.webhook_url());
+
+        data.send_s3_task(S3WorkerTask::UploadMod {
+            data: bytes,
+            mod_id: the_mod.id,
+            version: version.version.clone(),
+            version_id: version.id,
+        });
     } else {
         NewUnverifiedModVersionCreated {
             id: the_mod.id.clone(),
@@ -472,7 +483,7 @@ pub async fn create_version(
             owner: dev.clone(),
         }
         .to_discord_webhook()
-        .send(data.index_admin_webhook_url());
+        .send(data.http_client(), data.index_admin_webhook_url());
     }
 
     version.modify_metadata(data.app_url(), false);
@@ -516,6 +527,7 @@ pub async fn update_version(
     let the_mod = mods::get_one(&path.id, false, &mut pool)
         .await?
         .ok_or(ApiError::NotFound(format!("Mod {} not found", path.id)))?;
+    let mod_id = the_mod.id.clone();
 
     if !dev.admin {
         return Err(ApiError::Authorization);
@@ -560,18 +572,19 @@ pub async fn update_version(
         }
 
         let bytes = mod_zip::download_mod_hash_comp(
+            data.http_client(),
             &version.download_link,
             &version.hash,
             data.max_download_mb(),
         )
         .await?;
 
-        let json = ModJson::from_zip(bytes, &version.download_link, true)?;
+        let json = ModJson::from_zip(&bytes, &version.download_link, true)?;
 
         // Update links with data from mod.json
         if let Some(links) = json.links.clone() {
             mod_links::upsert(
-                the_mod.id.as_str(),
+                &mod_id,
                 links.community,
                 links.homepage,
                 links.source,
@@ -579,7 +592,7 @@ pub async fn update_version(
             )
             .await?;
         } else {
-            mod_links::upsert(the_mod.id.as_str(), None, None, None, &mut tx).await?;
+            mod_links::upsert(&mod_id, None, None, None, &mut tx).await?;
         }
 
         // Update tags with data from mod.json
@@ -592,6 +605,13 @@ pub async fn update_version(
         mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
 
         mods::update_with_json_moved(the_mod, json, &mut tx).await?;
+
+        data.send_s3_task(S3WorkerTask::UploadMod {
+            data: bytes,
+            mod_id,
+            version: version.version.clone(),
+            version_id: version.id,
+        });
 
         // Let's also maybe lock the thread if it exists!
         let thread = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await?;
@@ -629,7 +649,7 @@ pub async fn update_version(
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(data.webhook_url());
+            .send(data.http_client(), data.webhook_url());
         } else {
             NewModVersionAcceptedEvent {
                 id: version.mod_id,
@@ -640,7 +660,7 @@ pub async fn update_version(
                 base_url: data.app_url().to_string(),
             }
             .to_discord_webhook()
-            .send(data.webhook_url());
+            .send(data.http_client(), data.webhook_url());
         }
     }
 

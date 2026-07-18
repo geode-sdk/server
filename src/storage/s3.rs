@@ -83,7 +83,9 @@ impl S3Backend {
 
     fn new_cloudflare(config: &S3Configuration) -> anyhow::Result<S3Backend> {
         let Some(account_id) = config.account_id.clone() else {
-            return Err(anyhow::anyhow!("STORAGE_ACCOUNT_ID is required for Cloudflare R2"));
+            return Err(anyhow::anyhow!(
+                "STORAGE_ACCOUNT_ID is required for Cloudflare R2"
+            ));
         };
 
         let credentials = Credentials::new(
@@ -117,7 +119,10 @@ impl StorageBackend for S3Backend {
             let data = self.bucket.get_object(path).await?;
 
             if data.status_code() != 200 {
-                return Err(StorageError::Other(format!("S3 API returned HTTP error {}", data.status_code())));
+                return Err(StorageError::Other(format!(
+                    "S3 API returned HTTP error {}",
+                    data.status_code()
+                )));
             }
 
             Ok(data.to_vec())
@@ -125,9 +130,7 @@ impl StorageBackend for S3Backend {
     }
 
     fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>> {
-        Box::pin(async move {
-            Ok(self.bucket.object_exists(path).await?)
-        })
+        Box::pin(async move { Ok(self.bucket.object_exists(path).await?) })
     }
 
     fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>> {

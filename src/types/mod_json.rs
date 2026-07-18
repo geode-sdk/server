@@ -180,12 +180,11 @@ pub struct OldModJsonIncompatibility {
 
 impl ModJson {
     pub fn from_zip(
-        file: Bytes,
+        file: &[u8],
         download_url: &str,
         store_image: bool,
     ) -> Result<ModJson, ModZipError> {
-        let slice: &[u8] = &file;
-        let hash = sha256::digest(slice);
+        let hash = sha256::digest(file);
         let mut archive = mod_zip::bytes_to_ziparchive(file)?;
 
         // check total size of the zip file
@@ -216,7 +215,7 @@ impl ModJson {
             )));
         }
 
-        let mut json = serde_json::from_reader::<ZipFile<Cursor<Bytes>>, ModJson>(json_file)
+        let mut json = serde_json::from_reader::<ZipFile<Cursor<&[u8]>>, ModJson>(json_file)
             .inspect_err(|e| tracing::error!("Failed to parse mod.json: {e}"))?;
 
         json.version = json.version.trim_start_matches('v').to_string();
@@ -618,7 +617,7 @@ impl ModJson {
     }
 }
 
-fn parse_zip_entry_to_str(file: &mut ZipFile<Cursor<Bytes>>) -> Result<String, String> {
+fn parse_zip_entry_to_str<R: Read>(file: &mut ZipFile<R>) -> Result<String, String> {
     let mut string: String = String::from("");
     match file.read_to_string(&mut string) {
         Ok(_) => Ok(string),
@@ -660,9 +659,9 @@ fn parse_download_url(url: &str) -> String {
     String::from(url.trim_end_matches("\\/"))
 }
 
-fn check_mac_binary(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(bool, bool), ModZipError> {
+fn check_mac_binary<R: Read>(file: &mut ZipFile<R>) -> Result<(bool, bool), ModZipError> {
     // 12 bytes is all we need
-    let mut bytes: Vec<u8> = vec![0; 12];
+    let mut bytes = [0u8; 12];
     file.read_exact(&mut bytes).map_err(|e| {
         tracing::error!("Failed to read MacOS binary: {}", e);
         ModZipError::InvalidBinaries(format!("Failed to read macOS binary: {e}"))

@@ -30,6 +30,8 @@ pub struct ModVersion {
     pub description: Option<String>,
     pub version: String,
     pub download_link: String,
+    #[serde(skip_serializing)]
+    pub managed_download_link: Option<String>,
     pub hash: String,
     pub geode: String,
     #[schema(value_type = i32)]
@@ -67,6 +69,7 @@ struct ModVersionGetOne {
     description: Option<String>,
     version: String,
     download_link: String,
+    managed_download_link: Option<String>,
     download_count: i32,
     hash: String,
     geode: String,
@@ -99,6 +102,7 @@ impl ModVersionGetOne {
             description: self.description.clone(),
             version: self.version.clone(),
             download_link: self.download_link.clone(),
+            managed_download_link: self.managed_download_link.clone(),
             hash: self.hash.clone(),
             geode: self.geode.clone(),
             early_load: self.early_load,
@@ -318,13 +322,13 @@ impl ModVersion {
         sqlx::query_as(
             "SELECT
                 q.name, q.id, q.description, q.version,
-                q.download_link, q.hash, q.geode,
+                q.download_link, q.managed_download_link, q.hash, q.geode,
                 q.download_count, q.early_load, q.requires_patching, q.api, q.mod_id,
                 'accepted'::mod_version_status as status,
                 q.created_at, q.updated_at
             FROM (
                 SELECT
-                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link, mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
                     mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at,
                     mv.updated_at,
@@ -396,7 +400,7 @@ impl ModVersion {
         let records = sqlx::query_as!(
             ModVersionGetOne,
             r#"SELECT DISTINCT
-                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                 'pending'::mod_version_status as "status!: _", NULL as info
@@ -523,7 +527,7 @@ impl ModVersion {
         let result = sqlx::query_as!(
             ModVersionGetOne,
             r#"SELECT mv.id, mv.name, mv.description, mv.version,
-                mv.download_link, mv.download_count,
+                mv.download_link, mv.managed_download_link, mv.download_count,
                 mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.early_load, mv.requires_patching, mv.api,

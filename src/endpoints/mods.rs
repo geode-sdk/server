@@ -217,8 +217,13 @@ pub async fn create(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
-    let bytes = mod_zip::download_mod(&payload.download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &payload.download_link, false)?;
+    let bytes = mod_zip::download_mod(
+        data.http_client(),
+        &payload.download_link,
+        data.max_download_mb(),
+    )
+    .await?;
+    let json = ModJson::from_zip(&bytes, &payload.download_link, false)?;
     json.validate()?;
 
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
@@ -302,7 +307,7 @@ pub async fn create(
         owner: dev.clone(),
     }
     .to_discord_webhook()
-    .send(data.index_admin_webhook_url());
+    .send(data.http_client(), data.index_admin_webhook_url());
 
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), false);
@@ -485,7 +490,7 @@ pub async fn update_mod(
                 featured: payload.featured,
             }
             .to_discord_webhook()
-            .send(data.webhook_url());
+            .send(data.http_client(), data.webhook_url());
         }
     }
 

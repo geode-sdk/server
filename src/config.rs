@@ -1,9 +1,14 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use moka::future::Cache;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     endpoints::mods::IndexQueryParams,
+    s3_worker::S3WorkerTask,
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{
         api::{ApiResponse, PaginatedData},
@@ -29,6 +34,9 @@ pub struct AppData {
     debug: bool,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
+    http_client: reqwest::Client,
+
+    s3_sender: OnceLock<Sender<S3WorkerTask>>,
 }
 
 #[derive(Clone)]
@@ -106,6 +114,8 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         port,
         debug,
         mods_cache,
+        http_client: reqwest::Client::builder().build()?,
+        s3_sender: OnceLock::new(),
     })
 }
 
@@ -178,5 +188,23 @@ impl AppData {
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {
         &self.mods_cache
+    }
+
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.http_client
+    }
+
+    pub fn init_s3_sender(&self, sender: Sender<S3WorkerTask>) {
+        self.s3_sender
+            .set(sender)
+            .expect("init_s3_sender must be called only once");
+    }
+
+    pub fn send_s3_task(&self, task: S3WorkerTask) -> bool {
+        if let Some(sender) = self.s3_sender.get() {
+            sender.try_send(task).is_ok()
+        } else {
+            false
+        }
     }
 }
