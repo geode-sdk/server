@@ -45,11 +45,6 @@ pub struct GitHubClientData {
     client_secret: String,
 }
 
-#[derive(Clone)]
-pub struct S3ClientData {
-    bucket: Box<s3::Bucket>,
-}
-
 pub async fn build_config() -> anyhow::Result<AppData> {
     let env_url = dotenvy::var("DATABASE_URL")?;
 

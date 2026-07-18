@@ -2,14 +2,14 @@ use super::*;
 use ::s3::{Bucket, Region, creds::Credentials};
 
 pub enum S3Provider {
-    AWS,
+    Aws,
     Cloudflare,
 }
 
 impl S3Provider {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "aws" => Some(S3Provider::AWS),
+            "aws" => Some(S3Provider::Aws),
             "cloudflare" => Some(S3Provider::Cloudflare),
             _ => None,
         }
@@ -58,7 +58,7 @@ pub struct S3Backend {
 impl S3Backend {
     pub fn new(config: &S3Configuration) -> anyhow::Result<S3Backend> {
         match config.provider {
-            S3Provider::AWS => S3Backend::new_aws(config),
+            S3Provider::Aws => S3Backend::new_aws(config),
             S3Provider::Cloudflare => S3Backend::new_cloudflare(config),
         }
     }
