@@ -109,7 +109,11 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         port,
         debug,
         mods_cache,
-        http_client: reqwest::Client::builder().build()?,
+        http_client: reqwest::Client::builder()
+            .pool_max_idle_per_host(4)
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(30))
+            .build()?,
         s3_sender: OnceLock::new(),
     })
 }

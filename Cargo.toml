@@ -28,6 +28,7 @@ reqwest = { version = "0.13", default-features = false, features = [
   "gzip",
   "rustls",
   "query",
+  "http2"
 ] }
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
