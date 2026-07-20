@@ -399,7 +399,8 @@ pub async fn update_managed_download_link(
 ) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE mod_versions SET managed_download_link = $1 WHERE id = $2",
-        link, id
+        link,
+        id
     )
     .execute(&mut *conn)
     .await

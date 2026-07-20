@@ -4,7 +4,8 @@ use actix_web::web;
 use bytes::Bytes;
 
 use crate::{
-    config::AppData, database::repository::mod_versions::update_managed_download_link, mod_zip, types::models::mod_gd_version::GDVersionEnum
+    config::AppData, database::repository::mod_versions::update_managed_download_link, mod_zip,
+    types::models::mod_gd_version::GDVersionEnum,
 };
 
 pub enum S3WorkerTask {
@@ -83,7 +84,12 @@ async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     for record in versions {
         let path = path_for_mod(&record.mod_id, &record.version);
         if let Err(e) = storage.delete(&path).await {
-            tracing::error!("error deleting old S3 file for mod {} {} at {:?}: {e:?}", record.mod_id, record.version, record.managed_download_link);
+            tracing::error!(
+                "error deleting old S3 file for mod {} {} at {:?}: {e:?}",
+                record.mod_id,
+                record.version,
+                record.managed_download_link
+            );
             continue;
         }
 
@@ -104,7 +110,8 @@ async fn migrate_one(
     version: &str,
     version_id: i32,
 ) -> anyhow::Result<()> {
-    let bytes = mod_zip::download_mod(data.http_client(), original_url, data.max_download_mb()).await?;
+    let bytes =
+        mod_zip::download_mod(data.http_client(), original_url, data.max_download_mb()).await?;
 
     process_task(
         data,
