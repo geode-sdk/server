@@ -353,7 +353,12 @@ pub async fn create_version(
         .filter(|c| c.is_ascii() && *c != '\0')
         .collect();
 
-    let bytes = download_mod(data.http_client(), &download_link, data.max_download_mb()).await?;
+    let bytes = download_mod(
+        data.mod_download_http_client(),
+        &download_link,
+        data.max_download_mb(),
+    )
+    .await?;
     let json = ModJson::from_zip(&bytes, &download_link, make_accepted)
         .inspect_err(|e| tracing::error!("Failed to parse mod.json: {e}"))?;
     if json.id != the_mod.id {
@@ -575,7 +580,7 @@ pub async fn update_version(
         }
 
         let bytes = mod_zip::download_mod_hash_comp(
-            data.http_client(),
+            data.mod_download_http_client(),
             &version.download_link,
             &version.hash,
             data.max_download_mb(),

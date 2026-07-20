@@ -20,6 +20,7 @@ mod jobs;
 mod logging;
 mod mod_zip;
 mod openapi;
+mod pin_dns;
 mod s3_worker;
 mod storage;
 mod types;

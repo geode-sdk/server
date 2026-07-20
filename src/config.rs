@@ -8,6 +8,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     endpoints::mods::IndexQueryParams,
+    pin_dns::PinDnsResolver,
     s3_worker::S3WorkerTask,
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{
@@ -35,6 +36,9 @@ pub struct AppData {
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
+    // Client used only for downloading mods.
+    // Has a custom DNS resolver that protects against DNS rebinding.
+    mod_download_http_client: reqwest::Client,
 
     s3_sender: OnceLock<Sender<S3WorkerTask>>,
 }
@@ -84,6 +88,13 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         None
     };
 
+    let mod_download_http_client = reqwest::Client::builder()
+        .dns_resolver(Arc::new(PinDnsResolver))
+        .pool_max_idle_per_host(4)
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(30))
+        .build()?;
+
     Ok(AppData {
         db: pool,
         app_url: app_url.clone(),
@@ -114,6 +125,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30))
             .build()?,
+        mod_download_http_client,
         s3_sender: OnceLock::new(),
     })
 }
@@ -191,6 +203,10 @@ impl AppData {
 
     pub fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub fn mod_download_http_client(&self) -> &reqwest::Client {
+        &self.mod_download_http_client
     }
 
     pub fn init_s3_sender(&self, sender: Sender<S3WorkerTask>) {

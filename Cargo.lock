@@ -1570,6 +1570,7 @@ dependencies = [
  "tracing",
  "tracing-actix-web",
  "tracing-subscriber",
+ "url",
  "urlencoding",
  "utoipa",
  "utoipa-swagger-ui",

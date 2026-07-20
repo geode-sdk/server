@@ -110,8 +110,12 @@ async fn migrate_one(
     version: &str,
     version_id: i32,
 ) -> anyhow::Result<()> {
-    let bytes =
-        mod_zip::download_mod(data.http_client(), original_url, data.max_download_mb()).await?;
+    let bytes = mod_zip::download_mod(
+        data.mod_download_http_client(),
+        original_url,
+        data.max_download_mb(),
+    )
+    .await?;
 
     process_task(
         data,
