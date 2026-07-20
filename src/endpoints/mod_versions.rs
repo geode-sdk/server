@@ -237,9 +237,12 @@ pub async fn download_version(
         "Couldn't find valid mod version for given filters".into(),
     ))?;
 
+    // use managed link if it's set AND mod storage is enabled right now, otherwise fall back
     let url = mod_version
         .managed_download_link
-        .unwrap_or(mod_version.download_link);
+        .as_deref()
+        .take_if(|_| data.mod_storage().is_some())
+        .unwrap_or(&mod_version.download_link);
 
     if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
         // whatever
