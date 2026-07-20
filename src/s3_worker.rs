@@ -4,8 +4,7 @@ use actix_web::web;
 use bytes::Bytes;
 
 use crate::{
-    config::AppData, database::repository::mod_versions::update_managed_download_link,
-    types::models::mod_gd_version::GDVersionEnum,
+    config::AppData, database::repository::mod_versions::update_managed_download_link, mod_zip, types::models::mod_gd_version::GDVersionEnum
 };
 
 pub enum S3WorkerTask {
@@ -105,13 +104,7 @@ async fn migrate_one(
     version: &str,
     version_id: i32,
 ) -> anyhow::Result<()> {
-    let resp = data
-        .http_client()
-        .get(original_url)
-        .send()
-        .await?
-        .error_for_status()?;
-    let bytes = resp.bytes().await?;
+    let bytes = mod_zip::download_mod(data.http_client(), original_url, data.max_download_mb()).await?;
 
     process_task(
         data,
