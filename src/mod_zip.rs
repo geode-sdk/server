@@ -173,12 +173,16 @@ async fn download(
 ) -> Result<Bytes, ModZipError> {
     let mut current_url = Url::parse(url).map_err(|_| ModZipError::InvalidModFileUrl)?;
 
+    tracing::debug!("fetching mod from {current_url}");
+
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
 
-    for _ in 0..MAX_REDIRECTS {
+    for i in 0..MAX_REDIRECTS {
+        tracing::debug!("starting hop {}", i + 1);
         let addrs = validate_download_url(&current_url)?;
         let port = current_url.port_or_known_default().unwrap_or(443);
         let addr = std::net::SocketAddr::new(addrs[0], port);
+        tracing::debug!("DNS validated as {addr}");
 
         // Pin the validated ip address in our cool custom resolver
         let response = PINNED_ADDR.scope(Cell::new(Some(addr)), async {
