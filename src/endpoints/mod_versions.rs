@@ -354,7 +354,7 @@ pub async fn create_version(
         .collect();
 
     let bytes = download_mod(
-        data.mod_download_http_client(),
+        data.pin_dns_http_client(),
         &download_link,
         data.max_download_mb(),
     )
@@ -580,7 +580,7 @@ pub async fn update_version(
         }
 
         let bytes = mod_zip::download_mod_hash_comp(
-            data.mod_download_http_client(),
+            data.pin_dns_http_client(),
             &version.download_link,
             &version.hash,
             data.max_download_mb(),

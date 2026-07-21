@@ -218,7 +218,7 @@ pub async fn create(
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
     let bytes = mod_zip::download_mod(
-        data.mod_download_http_client(),
+        data.pin_dns_http_client(),
         &payload.download_link,
         data.max_download_mb(),
     )

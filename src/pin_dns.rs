@@ -3,6 +3,21 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use reqwest::dns::{Name, Resolve, Resolving};
 
 tokio::task_local! {
+    /// Used to pin an IP address for the resolver.
+    ///
+    /// # Example (assumes you have an http client that uses PinDnsResolver)
+    ///
+    /// ```rust
+    /// // Let's assume addr is an address we confirmed is safe to call.
+    /// let addr = std::net::SocketAddr::new("127.0.0.1", port);
+    ///
+    /// let response = PINNED_ADDR.scope(Cell::new(Some(addr)), async {
+    ///     http_client.get(url).send().await
+    /// }).await?;
+    /// ```
+    ///
+    /// Make sure to only run **the one request you need** inside the callback.
+    /// This design is a little brittle, but works for our purposes.
     pub static PINNED_ADDR: std::cell::Cell<Option<SocketAddr>>;
 }
 

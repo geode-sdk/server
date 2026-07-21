@@ -36,9 +36,7 @@ pub struct AppData {
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
-    // Client used only for downloading mods.
-    // Has a custom DNS resolver that protects against DNS rebinding.
-    mod_download_http_client: reqwest::Client,
+    pin_dns_http_client: reqwest::Client,
 
     s3_sender: OnceLock<Sender<S3WorkerTask>>,
 }
@@ -88,7 +86,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         None
     };
 
-    let mod_download_http_client = reqwest::Client::builder()
+    let pin_dns_http_client = reqwest::Client::builder()
         .dns_resolver(Arc::new(PinDnsResolver))
         .pool_max_idle_per_host(4)
         .connect_timeout(Duration::from_secs(10))
@@ -125,7 +123,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30))
             .build()?,
-        mod_download_http_client,
+        pin_dns_http_client,
         s3_sender: OnceLock::new(),
     })
 }
@@ -205,8 +203,19 @@ impl AppData {
         &self.http_client
     }
 
-    pub fn mod_download_http_client(&self) -> &reqwest::Client {
-        &self.mod_download_http_client
+    /// Client that allows pinning DNS queries to a certain ip address.
+    /// Useful for preventing Server Side Request Forgery.
+    ///
+    /// To pin an address, you have to use pin_dns::PINNED_ADDR.
+    ///
+    /// Basically, if you have a URL as user input, *always* use this client.
+    ///
+    /// The downside is that you get worse DNS performance, doesn't matter when
+    /// security is involved though.
+    ///
+    /// For an example, check mod_zip::download()
+    pub fn pin_dns_http_client(&self) -> &reqwest::Client {
+        &self.pin_dns_http_client
     }
 
     pub fn init_s3_sender(&self, sender: Sender<S3WorkerTask>) {
