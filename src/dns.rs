@@ -2,9 +2,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use reqwest::dns::{Name, Resolve, Resolving};
 
-const DOWNLOAD_DENYLIST_DOMAINS: [&str; 1] = ["localhost"];
-const DOWNLOAD_DENYLIST_TLDS: [&str; 4] = [".host", ".lan", ".local", ".internal"];
-
 #[derive(thiserror::Error, Debug)]
 pub enum ValidateDnsError {
     #[error("couldn't resolve DNS")]
@@ -33,31 +30,13 @@ impl Resolve for ValidateDnsResolver {
 }
 
 async fn parse_name_to_ips(name: &Name) -> Result<Vec<IpAddr>, ValidateDnsError> {
-    if is_denied_host(name.as_str()) {
-        return Ok(vec![]);
-    }
-
-    let addrs: Vec<IpAddr> = tokio::net::lookup_host(name.as_str())
+    Ok(tokio::net::lookup_host(name.as_str())
         .await
         .inspect_err(|e| tracing::warn!("ValidateDnsResolver DNS lookup failed: {:?}", e))
         .map_err(|_| ValidateDnsError::CantResolveDns)?
         .map(|s| s.ip())
         .filter(|&ip| !is_disallowed_ip(ip))
-        .collect();
-
-    Ok(addrs)
-}
-
-fn is_denied_host(host: &str) -> bool {
-    DOWNLOAD_DENYLIST_DOMAINS.contains(&host)
-        || DOWNLOAD_DENYLIST_TLDS
-            .iter()
-            .any(|&i| ends_with_label(host, i))
-}
-
-fn ends_with_label(host: &str, suffix_with_dot: &str) -> bool {
-    let label = &suffix_with_dot[1..];
-    host == label || host.ends_with(suffix_with_dot)
+        .collect())
 }
 
 /// Most of this function has been stolen from IpAddr::is_global().
@@ -118,41 +97,6 @@ fn is_benchmarking(v4: Ipv4Addr) -> bool {
 mod tests {
     use super::*;
     use std::net::IpAddr;
-
-    #[test]
-    fn exact_domain_match() {
-        assert!(is_denied_host("localhost"));
-    }
-
-    #[test]
-    fn exact_domain_is_case_sensitive_by_design() {
-        // url::Url normalizes host to lowercase during parsing, so this
-        // function assumes lowercase input. Document that assumption here.
-        assert!(!is_denied_host("LOCALHOST"));
-    }
-
-    #[test]
-    fn tld_exact_match() {
-        // host == the bare suffix itself, no subdomain
-        assert!(is_denied_host("internal"));
-        assert!(is_denied_host("local"));
-    }
-
-    #[test]
-    fn tld_subdomain_match() {
-        assert!(is_denied_host("foo.internal"));
-        assert!(is_denied_host("service.lan"));
-        assert!(is_denied_host("printer.local"));
-        assert!(is_denied_host("db.host"));
-        assert!(is_denied_host("deep.nested.sub.internal"));
-    }
-
-    #[test]
-    fn allows_unrelated_domains() {
-        assert!(!is_denied_host("example.com"));
-        assert!(!is_denied_host("github.com"));
-        assert!(!is_denied_host("sub.example.com"));
-    }
 
     #[test]
     fn flags_private_and_special_ranges() {
