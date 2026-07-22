@@ -55,8 +55,8 @@ pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZi
 
     let mut img = PngDecoder::with_limits(&mut reader, {
         let mut l = image::Limits::default();
-        l.max_image_width = Some(1024);
-        l.max_image_height = Some(1024);
+        l.max_image_width = Some(2048);
+        l.max_image_height = Some(2048);
         l
     })
     .and_then(DynamicImage::from_decoder)
