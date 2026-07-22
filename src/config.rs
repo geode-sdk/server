@@ -204,7 +204,7 @@ impl AppData {
         &self.http_client
     }
 
-    /// Client that validates passed DNS to not contain illegal ip addresses.
+    /// Client that validates passed host, denies all private resolved IP addresses.
     /// Useful for preventing Server Side Request Forgery.
     ///
     /// Basically, if you have a URL as user input, *always* use this client.
