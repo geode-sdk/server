@@ -2,12 +2,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use reqwest::dns::{Name, Resolve, Resolving};
 
-#[derive(thiserror::Error, Debug)]
-pub enum ValidateDnsError {
-    #[error("couldn't resolve DNS")]
-    CantResolveDns,
-}
-
 #[derive(Clone, Default, Debug)]
 pub struct ValidateDnsResolver;
 
@@ -16,27 +10,22 @@ impl Resolve for ValidateDnsResolver {
         Box::pin(async move {
             tracing::debug!("resolving {}", name.as_str());
 
-            let ips: Vec<SocketAddr> = parse_name_to_ips(&name)
-                .await
-                .inspect_err(|e| tracing::warn!("Failed to resolve DNS: {:?}", e))
-                .unwrap_or_default()
-                .into_iter()
-                .map(|ip| SocketAddr::new(ip, 0))
-                .collect();
-
-            Ok(Box::new(ips.into_iter()) as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            Ok(Box::new(parse_name_to_ips(&name).await.into_iter())
+                as Box<dyn Iterator<Item = SocketAddr> + Send>)
         })
     }
 }
 
-async fn parse_name_to_ips(name: &Name) -> Result<Vec<IpAddr>, ValidateDnsError> {
-    Ok(tokio::net::lookup_host(name.as_str())
-        .await
-        .inspect_err(|e| tracing::warn!("ValidateDnsResolver DNS lookup failed: {:?}", e))
-        .map_err(|_| ValidateDnsError::CantResolveDns)?
-        .map(|s| s.ip())
-        .filter(|&ip| !is_disallowed_ip(ip))
-        .collect())
+async fn parse_name_to_ips(name: &Name) -> Vec<SocketAddr> {
+    let lookup = tokio::net::lookup_host(name.as_str()).await;
+
+    match lookup {
+        Err(e) => {
+            tracing::warn!("Failed to lookup host {}: {:?}", name.as_str(), e);
+            vec![]
+        }
+        Ok(iter) => iter.filter(|addr| !is_disallowed_ip(addr.ip())).collect(),
+    }
 }
 
 /// Most of this function has been stolen from IpAddr::is_global().
