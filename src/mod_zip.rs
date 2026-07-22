@@ -1,7 +1,7 @@
-use std::cell::Cell;
 use std::io::Seek;
 use std::io::{BufReader, Cursor, Read};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::time::Duration;
 
 use actix_web::web::Bytes;
 use image::codecs::png::PngDecoder;
@@ -13,11 +13,13 @@ use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
 
-use crate::pin_dns::PINNED_ADDR;
+use crate::pin_dns::PINNED_ADDRS;
 
 const DOWNLOAD_DENYLIST_DOMAINS: [&str; 1] = ["localhost"];
 const DOWNLOAD_DENYLIST_TLDS: [&str; 4] = [".host", ".lan", ".local", ".internal"];
 const MAX_REDIRECTS: u8 = 10;
+
+const TOTAL_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(thiserror::Error, Debug)]
 pub enum ModZipError {
@@ -65,9 +67,17 @@ pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZi
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let mut img = PngDecoder::new(&mut reader)
-        .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
+    let mut img = PngDecoder::with_limits(
+        &mut reader,
+        {
+            let mut l = image::Limits::default();
+            l.max_image_width = Some(1024);
+            l.max_image_height = Some(1024);
+            l
+        },
+    )
+    .and_then(DynamicImage::from_decoder)
+    .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -118,9 +128,17 @@ pub fn validate_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<(), ModZipErr
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let img = PngDecoder::new(&mut reader)
-        .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
+    let img = PngDecoder::with_limits(
+        &mut reader,
+        {
+            let mut l = image::Limits::default();
+            l.max_image_width = Some(1024);
+            l.max_image_height = Some(1024);
+            l
+        },
+    )
+    .and_then(DynamicImage::from_decoder)
+    .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -181,16 +199,23 @@ async fn download(
         tracing::debug!("starting hop {}", i + 1);
         let addrs = validate_download_url(&current_url)?;
         let port = current_url.port_or_known_default().unwrap_or(443);
-        let addr = std::net::SocketAddr::new(addrs[0], port);
-        tracing::debug!("DNS validated as {addr}");
+        let socket_addrs: Vec<std::net::SocketAddr> = addrs
+            .into_iter()
+            .map(|ip| std::net::SocketAddr::new(ip, port))
+            .collect();
+        tracing::debug!("DNS validated as {:?}", socket_addrs);
 
-        // Pin the validated ip address in our cool custom resolver
-        let response = PINNED_ADDR.scope(Cell::new(Some(addr)), async {
-            http_client.get(url)
-                .send()
-                .await
-                .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))
-        }).await?;
+        // Pin the validated ip addresses in our cool custom resolver.
+        let response = PINNED_ADDRS
+            .scope(socket_addrs, async {
+                http_client
+                    .get(current_url.as_str())
+                    .timeout(TOTAL_DOWNLOAD_TIMEOUT)
+                    .send()
+                    .await
+                    .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))
+            })
+            .await?;
 
         if response.status().is_redirection() {
             let location = response
@@ -221,7 +246,13 @@ async fn download(
         let mut data: Vec<u8> = Vec::with_capacity(content_length as usize);
 
         let mut streamed: u64 = 0;
-        while let Some(chunk) = response.chunk().await? {
+        loop {
+            let chunk = response.chunk().await?;
+
+            let Some(chunk) = chunk else {
+                break;
+            };
+
             streamed += chunk.len() as u64;
 
             if streamed > limit_bytes {
@@ -248,16 +279,23 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_documentation()
+                || v4.is_multicast()
+                || v4.octets()[0] == 0 // 0.0.0.0/8 (routes to localhost on Linux)
                 || is_shared_nat(v4) // 100.64.0.0/10 CGNAT
+                || is_ietf_protocol_assignment(v4) // 192.0.0.0/24
+                || is_reserved(v4) // 240.0.0.0/4
+                || is_benchmarking(v4) // 198.18.0.0/15
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()
-                || v6.is_unspecified()
-                || is_unique_local(v6)      // fc00::/7
-                || is_ipv6_link_local(v6)   // fe80::/10
-                || v6
-                    .to_ipv4_mapped()
-                    .is_some_and(|v4| is_disallowed_ip(IpAddr::V4(v4)))
+            || v6.is_unspecified()
+            || is_unique_local(v6)      // fc00::/7
+            || is_ipv6_link_local(v6)   // fe80::/10
+            || (v6.segments()[0] == 0x2001 && v6.segments()[1] == 0xdb8) // 2001:db8::/32 documentation
+            || v6.is_multicast()
+            || v6
+                .to_ipv4_mapped()
+                .is_some_and(|v4| is_disallowed_ip(IpAddr::V4(v4)))
         }
     }
 }
@@ -266,6 +304,18 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
 fn is_shared_nat(v4: Ipv4Addr) -> bool {
     let o = v4.octets();
     o[0] == 100 && (o[1] & 0b1100_0000) == 0b0100_0000
+}
+
+fn is_ietf_protocol_assignment(v4: Ipv4Addr) -> bool {
+    v4.octets()[0] == 192 && v4.octets()[1] == 0 && v4.octets()[2] == 0
+}
+
+fn is_reserved(v4: Ipv4Addr) -> bool {
+    (v4.octets()[0] & 0xf0) == 240
+}
+
+fn is_benchmarking(v4: Ipv4Addr) -> bool {
+    v4.octets()[0] == 198 && (v4.octets()[1] & 0xfe) == 18
 }
 
 /// Denies ipv6 like `fc00::/7`

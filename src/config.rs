@@ -91,6 +91,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .pool_max_idle_per_host(4)
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
 
     Ok(AppData {
@@ -206,7 +207,7 @@ impl AppData {
     /// Client that allows pinning DNS queries to a certain ip address.
     /// Useful for preventing Server Side Request Forgery.
     ///
-    /// To pin an address, you have to use pin_dns::PINNED_ADDR.
+    /// To pin an address, you have to use pin_dns::PINNED_ADDRS.
     ///
     /// Basically, if you have a URL as user input, *always* use this client.
     ///
