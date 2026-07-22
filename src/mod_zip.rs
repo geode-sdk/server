@@ -1,7 +1,5 @@
 use std::io::Seek;
 use std::io::{BufReader, Cursor, Read};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
-use std::time::Duration;
 
 use actix_web::web::Bytes;
 use image::codecs::png::PngDecoder;
@@ -12,14 +10,6 @@ use url::Url;
 use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
-
-use crate::pin_dns::PINNED_ADDRS;
-
-const DOWNLOAD_DENYLIST_DOMAINS: [&str; 1] = ["localhost"];
-const DOWNLOAD_DENYLIST_TLDS: [&str; 4] = [".host", ".lan", ".local", ".internal"];
-const MAX_REDIRECTS: u8 = 10;
-
-const TOTAL_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(thiserror::Error, Debug)]
 pub enum ModZipError {
@@ -35,10 +25,6 @@ pub enum ModZipError {
     InvalidLogo(String),
     #[error("Download link is invalid")]
     InvalidModFileUrl,
-    #[error("Too many redirects when downloading .geode file")]
-    TooManyRedirects,
-    #[error("Invalid Location header on download URL redirect")]
-    InvalidRedirect,
     #[error(".geode file hash mismatch: {0} doesn't match {1}")]
     ModFileHashMismatch(String, String),
     #[error("Failed to fetch .geode file: {0}")]
@@ -67,15 +53,12 @@ pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZi
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let mut img = PngDecoder::with_limits(
-        &mut reader,
-        {
-            let mut l = image::Limits::default();
-            l.max_image_width = Some(1024);
-            l.max_image_height = Some(1024);
-            l
-        },
-    )
+    let mut img = PngDecoder::with_limits(&mut reader, {
+        let mut l = image::Limits::default();
+        l.max_image_width = Some(1024);
+        l.max_image_height = Some(1024);
+        l
+    })
     .and_then(DynamicImage::from_decoder)
     .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
@@ -128,15 +111,12 @@ pub fn validate_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<(), ModZipErr
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let img = PngDecoder::with_limits(
-        &mut reader,
-        {
-            let mut l = image::Limits::default();
-            l.max_image_width = Some(1024);
-            l.max_image_height = Some(1024);
-            l
-        },
-    )
+    let img = PngDecoder::with_limits(&mut reader, {
+        let mut l = image::Limits::default();
+        l.max_image_width = Some(1024);
+        l.max_image_height = Some(1024);
+        l
+    })
     .and_then(DynamicImage::from_decoder)
     .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
@@ -189,275 +169,51 @@ async fn download(
     url: &str,
     limit_mb: u32,
 ) -> Result<Bytes, ModZipError> {
-    let mut current_url = Url::parse(url).map_err(|_| ModZipError::InvalidModFileUrl)?;
+    let url = Url::parse(url).map_err(|_| ModZipError::InvalidModFileUrl)?;
 
-    tracing::debug!("fetching mod from {current_url}");
+    if !allowed_scheme(&url) {
+        return Err(ModZipError::InvalidModFileUrl);
+    }
+
+    tracing::debug!("fetching mod from {url}");
 
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
 
-    for i in 0..MAX_REDIRECTS {
-        tracing::debug!("starting hop {}", i + 1);
-        let addrs = validate_download_url(&current_url)?;
-        let port = current_url.port_or_known_default().unwrap_or(443);
-        let socket_addrs: Vec<std::net::SocketAddr> = addrs
-            .into_iter()
-            .map(|ip| std::net::SocketAddr::new(ip, port))
-            .collect();
-        tracing::debug!("DNS validated as {:?}", socket_addrs);
+    let mut response = http_client
+        .get(url)
+        .send()
+        .await
+        .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?
+        .error_for_status()
+        .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?;
 
-        // Pin the validated ip addresses in our cool custom resolver.
-        let response = PINNED_ADDRS
-            .scope(socket_addrs, async {
-                http_client
-                    .get(current_url.as_str())
-                    .timeout(TOTAL_DOWNLOAD_TIMEOUT)
-                    .send()
-                    .await
-                    .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))
-            })
-            .await?;
+    // Check Content-Length, but the server can lie about this, so we'll also stream the file
+    // If the header is somehow unavailable, we'll just check the size when streaming
+    let content_length = response.content_length().unwrap_or(0);
 
-        if response.status().is_redirection() {
-            let location = response
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .ok_or(ModZipError::InvalidRedirect)?
-                .to_str()
-                .map_err(|_| ModZipError::InvalidRedirect)?;
-            current_url = current_url
-                .join(location)
-                .map_err(|_| ModZipError::InvalidRedirect)?;
-            continue;
-        }
+    if content_length > limit_bytes {
+        let len_mb = content_length / 1_000_000;
+        return Err(ModZipError::ModFileTooLarge(len_mb, limit_mb.into()));
+    }
 
-        let mut response = response
-            .error_for_status()
-            .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?;
+    let mut data: Vec<u8> = Vec::with_capacity(content_length as usize);
 
-        // Check Content-Length, but the server can lie about this, so we'll also stream the file
-        // If the header is somehow unavailable, we'll just check the size when streaming
-        let content_length = response.content_length().unwrap_or(0);
+    let mut streamed: u64 = 0;
 
-        if content_length > limit_bytes {
-            let len_mb = content_length / 1_000_000;
+    while let Some(chunk) = response.chunk().await? {
+        streamed += chunk.len() as u64;
+
+        if streamed > limit_bytes {
+            let len_mb = streamed / 1_000_000;
             return Err(ModZipError::ModFileTooLarge(len_mb, limit_mb.into()));
         }
 
-        let mut data: Vec<u8> = Vec::with_capacity(content_length as usize);
-
-        let mut streamed: u64 = 0;
-        loop {
-            let chunk = response.chunk().await?;
-
-            let Some(chunk) = chunk else {
-                break;
-            };
-
-            streamed += chunk.len() as u64;
-
-            if streamed > limit_bytes {
-                let len_mb = streamed / 1_000_000;
-                return Err(ModZipError::ModFileTooLarge(len_mb, limit_mb.into()));
-            }
-
-            data.extend_from_slice(&chunk);
-        }
-
-        return Ok(Bytes::from(data));
+        data.extend_from_slice(&chunk);
     }
 
-    Err(ModZipError::TooManyRedirects)
-}
-
-/// Hopefully this gets rid of all nasty ips
-fn is_disallowed_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()   // covers 169.254.169.254 cloud metadata
-                || v4.is_unspecified()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_multicast()
-                || v4.octets()[0] == 0 // 0.0.0.0/8 (routes to localhost on Linux)
-                || is_shared_nat(v4) // 100.64.0.0/10 CGNAT
-                || is_ietf_protocol_assignment(v4) // 192.0.0.0/24
-                || is_reserved(v4) // 240.0.0.0/4
-                || is_benchmarking(v4) // 198.18.0.0/15
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-            || v6.is_unspecified()
-            || is_unique_local(v6)      // fc00::/7
-            || is_ipv6_link_local(v6)   // fe80::/10
-            || (v6.segments()[0] == 0x2001 && v6.segments()[1] == 0xdb8) // 2001:db8::/32 documentation
-            || v6.is_multicast()
-            || v6
-                .to_ipv4_mapped()
-                .is_some_and(|v4| is_disallowed_ip(IpAddr::V4(v4)))
-        }
-    }
-}
-
-/// Denies ipv4 like `100.64.0.0/10`
-fn is_shared_nat(v4: Ipv4Addr) -> bool {
-    let o = v4.octets();
-    o[0] == 100 && (o[1] & 0b1100_0000) == 0b0100_0000
-}
-
-fn is_ietf_protocol_assignment(v4: Ipv4Addr) -> bool {
-    v4.octets()[0] == 192 && v4.octets()[1] == 0 && v4.octets()[2] == 0
-}
-
-fn is_reserved(v4: Ipv4Addr) -> bool {
-    (v4.octets()[0] & 0xf0) == 240
-}
-
-fn is_benchmarking(v4: Ipv4Addr) -> bool {
-    v4.octets()[0] == 198 && (v4.octets()[1] & 0xfe) == 18
-}
-
-/// Denies ipv6 like `fc00::/7`
-fn is_unique_local(v6: Ipv6Addr) -> bool {
-    (v6.segments()[0] & 0xfe00) == 0xfc00
-}
-
-/// Denies ipv6 like `fe80::/10`
-fn is_ipv6_link_local(v6: Ipv6Addr) -> bool {
-    (v6.segments()[0] & 0xffc0) == 0xfe80
+    Ok(Bytes::from(data))
 }
 
 fn allowed_scheme(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https")
-}
-
-fn ends_with_label(host: &str, suffix_with_dot: &str) -> bool {
-    let label = &suffix_with_dot[1..];
-    host == label || host.ends_with(suffix_with_dot)
-}
-
-fn is_denied_host(host: &str) -> bool {
-    DOWNLOAD_DENYLIST_DOMAINS.contains(&host) || DOWNLOAD_DENYLIST_TLDS.iter().any(|&i| ends_with_label(host, i))
-}
-
-fn validate_download_url(url: &Url) -> Result<Vec<IpAddr>, ModZipError> {
-    // First, validate the domain
-    if !allowed_scheme(url) {
-        return Err(ModZipError::InvalidModFileUrl);
-    }
-
-    let domain = url.domain().ok_or(ModZipError::InvalidModFileUrl)?;
-
-    if is_denied_host(domain) {
-        return Err(ModZipError::InvalidModFileUrl);
-    }
-
-    // Now resolve and validate the IP itself to make sure
-    // the DNS isn't pointing to something bad
-    let host = url
-        .host_str()
-        .ok_or(ModZipError::InvalidModFileUrl)
-        .inspect_err(|_| tracing::warn!("host_str() returned None - very weird!"))?;
-    let port = url.port_or_known_default().unwrap_or(443);
-
-    let addrs: Vec<IpAddr> = (host, port)
-        .to_socket_addrs()
-        .map_err(|_| ModZipError::InvalidModFileUrl)?
-        .map(|s| s.ip())
-        .collect();
-
-    if addrs.is_empty() {
-        tracing::warn!("{host}:{port} failed DNS resolution");
-        return Err(ModZipError::InvalidModFileUrl);
-    }
-
-    if let Some(ip) = addrs.iter().find(|&ip| is_disallowed_ip(*ip)) {
-        tracing::warn!("{host}:{port} resolved to disallowed ip {ip}");
-        return Err(ModZipError::InvalidModFileUrl);
-    }
-
-    Ok(addrs)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::IpAddr;
-
-    #[test]
-    fn rejects_non_http_schemes() {
-        assert!(!allowed_scheme(&Url::parse("file:///etc/passwd").unwrap()));
-        assert!(!allowed_scheme(&Url::parse("ftp://example.com/x").unwrap()));
-
-        assert!(allowed_scheme(&Url::parse("https://example.com").unwrap()));
-        assert!(allowed_scheme(&Url::parse("http://example.com").unwrap()));
-    }
-
-    #[test]
-    fn exact_domain_match() {
-        assert!(is_denied_host("localhost"));
-    }
-
-    #[test]
-    fn exact_domain_is_case_sensitive_by_design() {
-        // url::Url normalizes host to lowercase during parsing, so this
-        // function assumes lowercase input. Document that assumption here.
-        assert!(!is_denied_host("LOCALHOST"));
-    }
-
-    #[test]
-    fn tld_exact_match() {
-        // host == the bare suffix itself, no subdomain
-        assert!(is_denied_host("internal"));
-        assert!(is_denied_host("local"));
-    }
-
-    #[test]
-    fn tld_subdomain_match() {
-        assert!(is_denied_host("foo.internal"));
-        assert!(is_denied_host("service.lan"));
-        assert!(is_denied_host("printer.local"));
-        assert!(is_denied_host("db.host"));
-        assert!(is_denied_host("deep.nested.sub.internal"));
-    }
-
-    #[test]
-    fn allows_unrelated_domains() {
-        assert!(!is_denied_host("example.com"));
-        assert!(!is_denied_host("github.com"));
-        assert!(!is_denied_host("sub.example.com"));
-    }
-
-    #[test]
-    fn rejects_ip_literal_hosts() {
-        assert!(validate_download_url(&Url::parse("http://127.0.0.1/x").unwrap()).is_err());
-        assert!(validate_download_url(&Url::parse("http://[::1]/download").unwrap()).is_err());
-    }
-
-    #[test]
-    fn flags_private_and_special_ranges() {
-        let cases: &[(&str, bool)] = &[
-            ("127.0.0.1", true),
-            ("10.0.0.5", true),
-            ("172.16.0.1", true),
-            ("192.168.1.1", true),
-            ("169.254.169.254", true), // cloud metadata
-            ("100.64.0.1", true),      // CGNAT
-            ("8.8.8.8", false),
-            ("1.1.1.1", false),
-        ];
-        for (ip, expected) in cases {
-            let addr: IpAddr = ip.parse().unwrap();
-            assert_eq!(is_disallowed_ip(addr), *expected, "failed for {ip}");
-        }
-    }
-
-    #[test]
-    fn flags_ipv6_special_ranges() {
-        assert!(is_disallowed_ip("::1".parse().unwrap()));
-        assert!(is_disallowed_ip("fc00::1".parse().unwrap()));
-        assert!(is_disallowed_ip("fe80::1".parse().unwrap()));
-        assert!(!is_disallowed_ip("2606:4700:4700::1111".parse().unwrap())); // public
-    }
 }
