@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use reqwest::dns::{Name, Resolve, Resolving};
 
@@ -20,6 +20,7 @@ impl Resolve for ValidateDnsResolver {
             tracing::debug!("resolving {}", name.as_str());
 
             let ips: Vec<SocketAddr> = parse_name_to_ips(&name)
+                .await
                 .inspect_err(|e| tracing::warn!("Failed to resolve DNS: {:?}", e))
                 .unwrap_or_default()
                 .into_iter()
@@ -31,13 +32,14 @@ impl Resolve for ValidateDnsResolver {
     }
 }
 
-fn parse_name_to_ips(name: &Name) -> Result<Vec<IpAddr>, ValidateDnsError> {
+async fn parse_name_to_ips(name: &Name) -> Result<Vec<IpAddr>, ValidateDnsError> {
     if is_denied_host(name.as_str()) {
         return Ok(vec![]);
     }
 
-    let addrs: Vec<IpAddr> = (name.as_str(), 0)
-        .to_socket_addrs()
+    let addrs: Vec<IpAddr> = tokio::net::lookup_host(name.as_str())
+        .await
+        .inspect_err(|e| tracing::warn!("ValidateDnsResolver DNS lookup failed: {:?}", e))
         .map_err(|_| ValidateDnsError::CantResolveDns)?
         .map(|s| s.ip())
         .filter(|&ip| !is_disallowed_ip(ip))
