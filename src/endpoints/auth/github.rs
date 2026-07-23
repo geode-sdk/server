@@ -11,7 +11,7 @@ use crate::database::repository::{
 };
 use crate::endpoints::ApiError;
 use crate::endpoints::auth::TokensResponse;
-use crate::{auth::github, types::api::ApiResponse};
+use crate::types::api::ApiResponse;
 
 #[derive(Deserialize, ToSchema)]
 struct PollParams {
@@ -46,10 +46,7 @@ pub async fn start_github_login(
     info: ConnectionInfo,
 ) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
-    let client = github::GithubClient::new(
-        data.github().client_id().to_string(),
-        data.github().client_secret().to_string(),
-    );
+    let client = data.github_client();
 
     let Some(ip) = info.realip_remote_addr() else {
         return Err(ApiError::InternalError(
@@ -83,12 +80,13 @@ pub async fn start_github_web_login(data: web::Data<AppData>) -> Result<impl Res
     let mut pool = data.db().acquire().await?;
 
     let secret = github_web_logins::create_unique(&mut pool).await?;
+    let client = data.github_client();
 
     Ok(web::Json(ApiResponse {
         error: "".into(),
         payload: format!(
             "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}/login/github/callback&scope=read:user&state={}",
-            data.github().client_id(),
+            client.client_id(),
             data.front_url(),
             secret
         ),
@@ -124,11 +122,7 @@ pub async fn github_web_callback(
 
     github_web_logins::remove(parsed, &mut pool).await?;
 
-    let client = github::GithubClient::new(
-        data.github().client_id().to_string(),
-        data.github().client_secret().to_string(),
-    );
-
+    let client = data.github_client();
     let token = client
         .poll_github(&json.code, false, Some(data.front_url()))
         .await?;
@@ -207,10 +201,7 @@ pub async fn poll_github_login(
 
     let mut tx = pool.begin().await?;
 
-    let client = github::GithubClient::new(
-        data.github().client_id().to_string(),
-        data.github().client_secret().to_string(),
-    );
+    let client = data.github_client();
     github_login_attempts::poll_now(uuid, &mut tx).await?;
     let token = client.poll_github(&attempt.device_code, true, None).await?;
     github_login_attempts::remove(uuid, &mut tx).await?;
@@ -276,15 +267,12 @@ pub async fn github_token_login(
     json: web::Json<TokenLoginParams>,
     data: web::Data<AppData>,
 ) -> Result<impl Responder, ApiError> {
-    let client = github::GithubClient::new(
-        data.github().client_id().to_string(),
-        data.github().client_secret().to_string(),
-    );
+    let client = data.github_client();
 
     let user = match client.get_user(&json.token).await {
         Err(_) => client.get_installation(&json.token).await.map_err(|e| {
-            tracing::error!(error = ?e, "invalid access token");
-            ApiError::BadRequest(format!("Invalid access token: {}", json.token))
+            tracing::error!(error = ?e, token = %json.token, "invalid access token");
+            ApiError::BadRequest("Invalid access token".to_owned())
         })?,
 
         Ok(u) => u,

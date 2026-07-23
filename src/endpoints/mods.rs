@@ -31,6 +31,8 @@ use serde::Serialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
 
+const MAX_UPDATE_BATCH_SIZE: usize = 200;
+
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexSortType {
@@ -364,6 +366,7 @@ pub async fn get_mod_updates(
     let ids = query
         .ids
         .split(';')
+        .take(MAX_UPDATE_BATCH_SIZE)
         .map(String::from)
         .collect::<Vec<String>>();
 

@@ -17,6 +17,7 @@ use crate::webhook::discord::DiscordWebhook;
 use actix_multipart::Multipart;
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use futures::StreamExt;
+use image::{DynamicImage, ImageReader, Limits};
 use serde::Deserialize;
 use sqlx::{Acquire, PgConnection};
 use std::collections::HashMap;
@@ -839,7 +840,7 @@ pub async fn upload_attachments(
             images
                 .into_iter()
                 .map(|raw| {
-                    let img = image::load_from_memory(&raw)
+                    let img = safe_image_decode(&raw)
                         .map_err(|e| ApiError::BadRequest(format!("Invalid image: {e}")))?;
                     let mut webp_bytes: Vec<u8> = Vec::new();
                     img.write_to(
@@ -998,4 +999,15 @@ pub async fn delete_attachment(
     }
 
     Ok(HttpResponse::NoContent())
+}
+
+fn safe_image_decode(raw: &[u8]) -> Result<DynamicImage, image::ImageError> {
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(2048);
+    limits.max_image_height = Some(2048);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+
+    let mut reader = ImageReader::new(std::io::Cursor::new(raw));
+    reader.limits(limits);
+    reader.with_guessed_format()?.decode()
 }

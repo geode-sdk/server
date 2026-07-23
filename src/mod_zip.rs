@@ -48,7 +48,8 @@ pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZi
     }
 
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
-    file.read_to_end(&mut logo)
+    file.take(file.size())
+        .read_to_end(&mut logo)
         .inspect_err(|e| tracing::error!("logo.png read fail: {}", e))?;
 
     let mut reader = BufReader::new(Cursor::new(logo));

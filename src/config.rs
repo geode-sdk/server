@@ -7,6 +7,7 @@ use moka::future::Cache;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
+    auth::github::GithubClient,
     dns::ValidateDnsResolver,
     endpoints::mods::IndexQueryParams,
     s3_worker::S3WorkerTask,
@@ -22,7 +23,7 @@ pub struct AppData {
     db: sqlx::postgres::PgPool,
     app_url: String,
     front_url: String,
-    github: GitHubClientData,
+    github_client: GithubClient,
     webhook_url: String,
     index_admin_webhook_url: String,
     static_storage: PublicDisk,
@@ -39,12 +40,6 @@ pub struct AppData {
     check_dns_http_client: reqwest::Client,
 
     s3_sender: OnceLock<Sender<S3WorkerTask>>,
-}
-
-#[derive(Clone)]
-pub struct GitHubClientData {
-    client_id: String,
-    client_secret: String,
 }
 
 pub async fn build_config() -> anyhow::Result<AppData> {
@@ -94,14 +89,17 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .timeout(Duration::from_secs(30))
         .build()?;
 
+    let http_client = reqwest::Client::builder()
+        .pool_max_idle_per_host(4)
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(30))
+        .build()?;
+
     Ok(AppData {
         db: pool,
         app_url: app_url.clone(),
         front_url,
-        github: GitHubClientData {
-            client_id: github_client,
-            client_secret: github_secret,
-        },
+        github_client: GithubClient::new(github_client, github_secret, http_client.clone()),
         webhook_url,
         index_admin_webhook_url,
         static_storage: PublicDisk::new(
@@ -119,24 +117,10 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         port,
         debug,
         mods_cache,
-        http_client: reqwest::Client::builder()
-            .pool_max_idle_per_host(4)
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(30))
-            .build()?,
+        http_client,
         check_dns_http_client,
         s3_sender: OnceLock::new(),
     })
-}
-
-impl GitHubClientData {
-    pub fn client_id(&self) -> &str {
-        &self.client_id
-    }
-
-    pub fn client_secret(&self) -> &str {
-        &self.client_secret
-    }
 }
 
 impl AppData {
@@ -152,8 +136,8 @@ impl AppData {
         &self.front_url
     }
 
-    pub fn github(&self) -> &GitHubClientData {
-        &self.github
+    pub fn github_client(&self) -> &GithubClient {
+        &self.github_client
     }
 
     pub fn webhook_url(&self) -> &str {
