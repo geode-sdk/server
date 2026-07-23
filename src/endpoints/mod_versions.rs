@@ -123,7 +123,7 @@ pub async fn get_version_index(
         mod_version::IndexQuery {
             mod_id: path.id.clone(),
             page: query.page.unwrap_or(1),
-            per_page: query.per_page.unwrap_or(10),
+            per_page: query.per_page.unwrap_or(10).min(50),
             compare,
             gd: query.gd,
             platforms,

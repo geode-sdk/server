@@ -222,7 +222,6 @@ pub async fn create(
     payload.validate()?;
 
     let dev = auth.developer()?;
-    let mut pool = data.db().acquire().await?;
     let bytes = mod_zip::download_mod(
         data.check_dns_http_client(),
         &payload.download_link,
@@ -232,6 +231,7 @@ pub async fn create(
     let json = ModJson::from_zip(&bytes, &payload.download_link, false)?;
     json.validate()?;
 
+    let mut pool = data.db().acquire().await?;
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
