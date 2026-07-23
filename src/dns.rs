@@ -17,7 +17,7 @@ impl Resolve for ValidateDnsResolver {
 }
 
 async fn parse_name_to_ips(name: &Name) -> Vec<SocketAddr> {
-    let lookup = tokio::net::lookup_host(name.as_str()).await;
+    let lookup = tokio::net::lookup_host(format!("{}:443", name.as_str())).await;
 
     match lookup {
         Err(e) => {
