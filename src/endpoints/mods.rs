@@ -30,6 +30,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
 
 const MAX_UPDATE_BATCH_SIZE: usize = 200;
 
@@ -65,8 +66,9 @@ pub struct IndexQueryParams {
     pub status: Option<ModVersionStatusEnum>,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
+    #[validate(length(max = 1024))]
     download_link: String,
 }
 
@@ -217,6 +219,8 @@ pub async fn create(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    payload.validate()?;
+
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
     let bytes = mod_zip::download_mod(

@@ -4,6 +4,7 @@ use actix_web::{HttpResponse, Responder, dev::ConnectionInfo, get, post, put, we
 use serde::Deserialize;
 use sqlx::{Acquire, types::ipnetwork::IpNetwork};
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
 
 use crate::config::AppData;
 use crate::database::repository::{
@@ -44,8 +45,9 @@ pub struct GetOnePath {
     version: String,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
+    #[validate(length(max = 1024))]
     download_link: String,
 }
 
@@ -310,6 +312,8 @@ pub async fn create_version(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    payload.validate()?;
+
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 

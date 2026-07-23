@@ -271,7 +271,7 @@ pub async fn github_token_login(
 
     let user = match client.get_user(&json.token).await {
         Err(_) => client.get_installation(&json.token).await.map_err(|e| {
-            tracing::error!(error = ?e, token = %json.token, "invalid access token");
+            tracing::error!(error = ?e, "invalid access token");
             ApiError::BadRequest("Invalid access token".to_owned())
         })?,
 
