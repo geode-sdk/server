@@ -18,7 +18,12 @@ use crate::{
     },
     types::{
         api::PaginatedData,
-        models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
+        models::{
+            mod_version::ModVersion,
+            mod_version_status::ModVersionStatusEnum,
+            developer::Developer,
+            mod_status::ModStatusEnum,
+        },
         serde::chrono_dt_secs,
     },
 };
@@ -48,6 +53,8 @@ pub struct Mod {
     #[serde(with = "chrono_dt_secs")]
     pub updated_at: DateTime<Utc>,
     pub links: Option<ModLinks>,
+    pub status: ModStatusEnum,
+    pub status_info: Option<String>,
 }
 
 #[derive(Serialize, Debug, ToSchema)]
@@ -74,6 +81,7 @@ struct ModRecord {
     changelog: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    status: ModStatusEnum,
 }
 
 #[derive(sqlx::FromRow)]
@@ -103,6 +111,8 @@ struct ModRecordGetOne {
     mod_version_created_at: Option<DateTime<Utc>>,
     mod_version_updated_at: Option<DateTime<Utc>>,
     info: Option<String>,
+    mod_status: ModStatusEnum,
+    mod_status_info: Option<String>,
 }
 
 pub struct ModStats {
@@ -238,6 +248,7 @@ impl Mod {
             // joins: only join tables if they are necessary
             builder.push(" INNER JOIN mod_versions mv ON m.id = mv.mod_id ");
             builder.push(" INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id ");
+            builder.push(" INNER JOIN mod_statuses ms ON ms.mod_id = m.id");
 
             if gd.is_some() || platforms.is_some() {
                 builder.push(" INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id ");
@@ -270,6 +281,13 @@ impl Mod {
             }
 
             builder.push(" AND mvs.status = ").push_bind(status);
+            builder.push(" AND ms.status <> 'unlisted'");
+
+            let direct_search = search_str.as_ref().is_some_and(|x| !x.is_empty()) || developer.is_some();
+            if !direct_search {
+                // hide archived mods from direct search
+                builder.push(" AND ms.status <> 'archived'");
+            }
 
             if let Some(rp) = requires_patching {
                 builder.push(" AND mv.requires_patching = ").push_bind(rp);
@@ -348,10 +366,10 @@ impl Mod {
 
         let mut records_builder = sqlx::QueryBuilder::new(
             "SELECT q.id, q.repository, q.about, q.changelog,
-                q.download_count, q.featured, q.created_at, q.updated_at
+                q.download_count, q.featured, q.created_at, q.updated_at, q.status
             FROM (
                 SELECT DISTINCT ON (m.id) m.id, mv.name, m.repository, m.about, m.changelog,
-                    m.download_count, m.featured, m.created_at, m.updated_at ",
+                    m.download_count, m.featured, m.created_at, m.updated_at, ms.status ",
         );
 
         core_query(&mut records_builder);
@@ -434,6 +452,8 @@ impl Mod {
                     about: None,
                     changelog: None,
                     links,
+                    status: x.status,
+                    status_info: None,
                 })
             })
             .collect();
@@ -481,6 +501,8 @@ impl Mod {
                     about: x.about,
                     changelog: x.changelog,
                     links,
+                    status: x.status,
+                    status_info: None,
                 }
             })
             .collect::<Vec<Mod>>();
@@ -591,10 +613,12 @@ impl Mod {
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.managed_download_link,
                 mv.download_count as mod_version_download_count, mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
+                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info,
+                ms.status AS "mod_status: _", ms.info AS mod_status_info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
+            INNER JOIN mod_statuses ms ON ms.mod_id = m.id
             WHERE m.id = $1
             AND ($2 = false OR mvs.status = 'accepted')
             ORDER BY mv.id DESC"#,
@@ -671,6 +695,8 @@ impl Mod {
             about: records[0].about.clone(),
             changelog: records[0].changelog.clone(),
             links,
+            status: records[0].mod_status,
+            status_info: records[0].mod_status_info.clone(),
         };
         Ok(Some(mod_entity))
     }
@@ -802,5 +828,30 @@ impl Mod {
         }
 
         Ok(ret)
+    }
+
+    #[tracing::instrument(skip_all, fields(mod_id = %id, status = ?status))]
+    pub async fn update_mod_status(
+        id: &str,
+        status: ModStatusEnum,
+        info: Option<&str>,
+        locked: bool,
+        updated_by: &Developer,
+        pool: &mut PgConnection,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!("UPDATE mod_statuses
+            SET status = $1,
+            actor_id = $2,
+            info = $3,
+            locked = $4,
+            updated_at = NOW()
+            WHERE mod_id = $5",
+            status as ModStatusEnum, updated_by.id, info, locked, id
+        )
+        .execute(&mut *pool)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))
+        .map_err(|e| e.into())
+        .map(|_| ())
     }
 }

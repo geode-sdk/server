@@ -1,6 +1,9 @@
 use crate::{
     database::DatabaseError,
-    types::{mod_json::ModJson, models::mod_entity::Mod},
+    types::{
+        mod_json::ModJson,
+        models::{mod_entity::Mod, mod_status::ModStatusEnum}
+    },
 };
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -18,6 +21,9 @@ struct ModRecordGetOne {
     changelog: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    status: ModStatusEnum,
+    #[sqlx(default)]
+    status_info: Option<String>,
 }
 
 impl ModRecordGetOne {
@@ -35,6 +41,8 @@ impl ModRecordGetOne {
             about: self.about.clone(),
             changelog: self.changelog.clone(),
             links: None,
+            status: self.status,
+            status_info: self.status_info,
         }
     }
 }
@@ -51,11 +59,13 @@ pub async fn get_one(
     if include_md {
         sqlx::query_as!(
             ModRecordGetOne,
-            "SELECT
+            r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured,
-                m.download_count, m.created_at, m.updated_at
+                m.download_count, m.created_at, m.updated_at,
+                ms.status AS "status: _", ms.info AS status_info
             FROM mods m
-            WHERE id = $1",
+            INNER JOIN mod_statuses ms ON ms.mod_id = m.id
+            WHERE m.id = $1"#,
             id
         )
         .fetch_optional(conn)
@@ -66,11 +76,13 @@ pub async fn get_one(
     } else {
         sqlx::query_as!(
             ModRecordGetOne,
-            "SELECT
+            r#"SELECT
             m.id, m.repository, NULL as about, NULL as changelog, m.featured,
-            m.download_count, m.created_at, m.updated_at
+            m.download_count, m.created_at, m.updated_at,
+            ms.status AS "status: _", NULL AS status_info
         FROM mods m
-        WHERE id = $1",
+        INNER JOIN mod_statuses ms ON ms.mod_id = m.id
+        WHERE m.id = $1"#,
             id
         )
         .fetch_optional(conn)
@@ -84,15 +96,20 @@ pub async fn get_one(
 /// Does NOT check if the target mod exists
 #[tracing::instrument(skip_all, fields(mod_id = %json.id))]
 pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, DatabaseError> {
-    sqlx::query_as!(
-        ModRecordGetOne,
+    sqlx::query!("SET CONSTRAINTS mods_status_id_fkey DEFERRED")
+        .execute(&mut *conn)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    let record = sqlx::query!(
         "INSERT INTO mods (
             id,
             repository,
             changelog,
             about,
-            image
-        ) VALUES ($1, $2, $3, $4, $5)
+            image,
+            status_id
+        ) VALUES ($1, $2, $3, $4, $5, 0)
         RETURNING
             id, repository, about,
             changelog, featured,
@@ -104,11 +121,45 @@ pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, Data
         json.about,
         &vec![]
     )
-    .fetch_one(conn)
+    .fetch_one(&mut *conn)
     .await
-    .inspect_err(|e| tracing::error!("{:?}", e))
-    .map_err(|e| e.into())
-    .map(|x| x.into_mod())
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    let status_id = sqlx::query_scalar!("INSERT INTO mod_statuses (mod_id) VALUES ($1) RETURNING id", &json.id)
+        .fetch_one(&mut *conn)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "UPDATE mods SET status_id = $1 WHERE id = $2",
+        status_id,
+        &json.id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!("SET CONSTRAINTS mods_status_id_fkey IMMEDIATE")
+        .execute(&mut *conn)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(Mod {
+        id: record.id,
+        repository: record.repository,
+        featured: record.featured,
+        download_count: record.download_count.into(),
+        versions: Default::default(),
+        tags: Default::default(),
+        developers: Default::default(),
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        about: record.about.clone(),
+        changelog: record.changelog.clone(),
+        links: None,
+        status: ModStatusEnum::Default,
+        status_info: None,
+    })
 }
 
 #[tracing::instrument(skip_all, fields(mod_id = %id, developer_id = %developer_id))]
@@ -300,4 +351,41 @@ pub async fn touch_created_at(id: &str, conn: &mut PgConnection) -> Result<(), D
     .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     Ok(())
+}
+
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
+pub async fn has_status(
+    id: &str,
+    status: ModStatusEnum,
+    pool: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    sqlx::query_scalar!(r#"SELECT EXISTS(
+            SELECT 1 FROM mods m
+            INNER JOIN mod_statuses ms ON m.id = ms.mod_id
+            WHERE m.id = $1 AND ms.status = $2
+        ) AS "exists!""#,
+        id, status as ModStatusEnum
+    )
+    .fetch_one(&mut *pool)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+#[tracing::instrument(skip_all, fields(mod_id = %id))]
+pub async fn is_status_locked(
+    id: &str,
+    pool: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    sqlx::query_scalar!(r#"SELECT EXISTS(
+            SELECT 1 FROM mods m
+            INNER JOIN mod_statuses ms ON m.id = ms.mod_id
+            WHERE m.id = $1 AND ms.locked = TRUE
+        ) AS "exists!""#,
+        id
+    )
+    .fetch_one(&mut *pool)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
 }

@@ -23,6 +23,7 @@ use crate::types::models::deprecations::Deprecation;
 use crate::types::models::mod_entity::{Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_link::ModLinks;
+use crate::types::models::mod_status::ModStatusEnum;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::webhook::discord::DiscordWebhook;
 use actix_web::{HttpResponse, Responder, get, post, put, web};
@@ -428,7 +429,10 @@ pub async fn get_logo(
 
 #[derive(Deserialize, ToSchema)]
 struct UpdateModPayload {
-    featured: bool,
+    featured: Option<bool>,
+    status: Option<ModStatusEnum>,
+    info: Option<String>,
+    status_locked: Option<bool>
 }
 
 /// Update a mod (admin only)
@@ -443,7 +447,7 @@ struct UpdateModPayload {
     responses(
         (status = 204, description = "Mod updated successfully"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - Admin only"),
+        (status = 403, description = "Forbidden - Fields being updated are admin only"),
         (status = 404, description = "Mod not found")
     ),
     security(
@@ -459,40 +463,66 @@ pub async fn update_mod(
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
-    auth.check_admin()?;
     let mut pool = data.db().acquire().await?;
-    let mut tx = pool.begin().await?;
 
     let id = path.into_inner();
 
+    let mut tx = pool.begin().await?;
     if !mods::exists(&id, &mut tx).await? {
         return Err(ApiError::NotFound("Mod not found".into()));
     }
 
-    let featured = mods::is_featured(&id, &mut tx).await?;
+    if let Some(payload_featured) = payload.featured {
+        auth.check_admin()?;
 
-    Mod::update_mod(&id, payload.featured, &mut tx).await?;
+        let featured = mods::is_featured(&id, &mut tx).await?;
 
-    tx.commit().await?;
+        Mod::update_mod(&id, payload_featured, &mut tx).await?;
 
-    if featured != payload.featured {
-        let item = Mod::get_one(&id, true, &mut pool).await?;
-        if let Some(item) = item
-            && let Some(owner) = developers::get_owner_for_mod(&id, &mut pool).await?
-            && let Some(ver) = item.versions.first()
-        {
-            ModFeaturedEvent {
-                id: item.id,
-                name: ver.name.clone(),
-                owner,
-                admin: dev,
-                base_url: data.app_url().to_string(),
-                featured: payload.featured,
+        if featured != payload_featured {
+            let item = Mod::get_one(&id, true, &mut tx).await?;
+            if let Some(item) = item
+                && let Some(owner) = developers::get_owner_for_mod(&id, &mut tx).await?
+                && let Some(ver) = item.versions.first()
+            {
+                ModFeaturedEvent {
+                    id: item.id,
+                    name: ver.name.clone(),
+                    owner,
+                    admin: dev.clone(),
+                    base_url: data.app_url().to_string(),
+                    featured: payload_featured,
+                }
+                .to_discord_webhook()
+                .send(data.http_client(), data.webhook_url());
             }
-            .to_discord_webhook()
-            .send(data.http_client(), data.webhook_url());
         }
     }
+
+    if let Some(payload_status) = payload.status {
+        let status_locked = mods::is_status_locked(&id, &mut tx).await?;
+        let updating_locked_fields = payload.status_locked.is_some() || payload.info.is_some();
+
+        if !dev.admin && (status_locked || updating_locked_fields) {
+            return Err(ApiError::Authorization);
+        }
+
+        let dev_of_mod = developers::has_access_to_mod(dev.id, &id, &mut tx).await?;
+        if !dev.admin && !dev_of_mod {
+            return Err(ApiError::Authorization);
+        }
+
+        Mod::update_mod_status(
+            &id,
+            payload_status,
+            payload.info.as_deref(),
+            payload.status_locked.unwrap_or(status_locked),
+            &dev,
+            &mut tx,
+        ).await?;
+    }
+
+    tx.commit().await?;
 
     Ok(HttpResponse::NoContent())
 }
