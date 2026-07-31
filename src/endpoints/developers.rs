@@ -507,6 +507,8 @@ struct CreateDeveloperBanPath {
 }
 
 /// Ban a developer from mod submissions (admin only)
+///
+/// If the developer is already banned, this will overwrite that ban.
 #[utoipa::path(
     post,
     path = "/v1/developers/{id}/bans",
@@ -545,9 +547,13 @@ pub async fn ban_developer(
 
     // check ban exists
     if let Some(ban) = developers::check_ban(path.id, &mut tx).await? {
-        let result = developers::update_ban_revoke_time(ban.id, payload.revoked_at, &mut tx)
-            .await?
-            .ok_or(ApiError::InternalError("Ban was deleted between asserting its existence and updating it".into()))?;
+        let result = developers::update_ban(
+            ban.id,
+            payload.revoked_at,
+            payload.reason.as_deref(),
+            dev.id,
+            &mut tx
+        ).await?;
 
         tx.commit().await?;
 

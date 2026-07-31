@@ -1,10 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST LIMIT 1",
+  "query": "UPDATE bans\n            SET revoked_at=$2, reason=$3, admin_id=$4 WHERE id=$1\n        RETURNING\n            id, developer_id, reason, admin_id, created_at, revoked_at",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "bans",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "developer_id",
         "type_info": "Int4",
         "origin": {
@@ -15,7 +26,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "reason",
         "type_info": "Text",
         "origin": {
@@ -26,7 +37,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "admin_id",
         "type_info": "Int4",
         "origin": {
@@ -37,24 +48,13 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
             "table": "bans",
             "name": "created_at"
-          }
-        }
-      },
-      {
-        "ordinal": 4,
-        "name": "id",
-        "type_info": "Int4",
-        "origin": {
-          "Table": {
-            "table": "bans",
-            "name": "id"
           }
         }
       },
@@ -72,17 +72,20 @@
     ],
     "parameters": {
       "Left": [
+        "Int4",
+        "Timestamptz",
+        "Text",
         "Int4"
       ]
     },
     "nullable": [
       false,
-      true,
-      true,
       false,
+      true,
+      true,
       false,
       true
     ]
   },
-  "hash": "4ce6aabb164fd260388ee0d4cab6784c9d2182f66d79f7abbd318a7dc75b9476"
+  "hash": "9c66c5da81ded049266cc05ceaac2cc2a6b6b02ca6e89c171e971b49efed1baf"
 }
