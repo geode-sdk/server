@@ -6,6 +6,6 @@ use utoipa::ToSchema;
 #[sqlx(rename_all = "lowercase", type_name = "mod_status")]
 pub enum ModStatusEnum {
     Default,
-		Archived,
+    Archived,
     Unlisted,
 }
