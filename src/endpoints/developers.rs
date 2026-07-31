@@ -549,6 +549,8 @@ pub async fn ban_developer(
             .await?
             .ok_or(ApiError::InternalError("Ban was deleted between asserting its existence and updating it".into()))?;
 
+        tx.commit().await?;
+
         return Ok(web::Json(ApiResponse {
             error: "".to_string(),
             payload: result,
