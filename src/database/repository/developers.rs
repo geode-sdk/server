@@ -511,7 +511,7 @@ pub async fn create_ban(
     )
     .fetch_one(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to insert create developer ban: {e}"))
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
 }
 
@@ -524,7 +524,20 @@ pub async fn check_ban(
     )
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to get developer ban: {e}"))
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn get_bans(
+    dev_id: i32,
+    conn: &mut PgConnection,
+) -> Result<Vec<DeveloperBan>, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 ORDER BY revoked_at DESC NULLS FIRST, id DESC", dev_id
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
 }
 
@@ -537,7 +550,7 @@ pub async fn update_ban_revoke_time(ban_id: i32, revoked_at: Option<DateTime<Utc
         ban_id, revoked_at)
     .fetch_optional(&mut *conn)
     .await
-    .inspect_err(|e| log::error!("Failed to update developer ban: {e}"))
+    .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
 }
 
@@ -546,7 +559,7 @@ pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), Data
         sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)
             .execute(conn)
             .await
-        .inspect_err(|e| log::error!("Failed to revoke developer ban: {e}"))?;
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
     }
 
     Ok(())

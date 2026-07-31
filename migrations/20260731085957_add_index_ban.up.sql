@@ -7,3 +7,6 @@ CREATE TABLE bans (
 	created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	revoked_at TIMESTAMPTZ
 );
+
+CREATE INDEX bans_revoked_at_idx on bans(revoked_at);
+CREATE INDEX bans_developer_id_idx on bans(developer_id);

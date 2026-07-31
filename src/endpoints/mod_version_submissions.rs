@@ -80,6 +80,10 @@ async fn check_submission_lock(
         return Ok(true);
     }
 
+    if developers::check_ban(dev.id, &mut *conn).await?.is_some() {
+        return Ok(false);
+    }
+
     let access_to_mod = developers::has_access_to_mod(dev.id, mod_id, &mut *conn).await?;
     let active_developer = developers::has_active_mod(dev.id, &mut *conn).await?;
 
