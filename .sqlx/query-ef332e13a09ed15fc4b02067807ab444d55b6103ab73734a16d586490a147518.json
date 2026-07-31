@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image\n        ) VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at,\n                ms.status AS \"status: _\", ms.info AS status_info\n            FROM mods m\n            INNER JOIN mod_statuses ms ON ms.mod_id = m.id\n            WHERE m.id = $1",
   "describe": {
     "columns": [
       {
@@ -90,15 +90,44 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_statuses",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status_info",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_statuses",
+            "name": "info"
+          }
+        }
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Bytea"
+        "Text"
       ]
     },
     "nullable": [
@@ -109,8 +138,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "f98fe5c88a7a234cc0b68fb39c156a741fbad1d2e4682e1e748037bb08962912"
+  "hash": "ef332e13a09ed15fc4b02067807ab444d55b6103ab73734a16d586490a147518"
 }

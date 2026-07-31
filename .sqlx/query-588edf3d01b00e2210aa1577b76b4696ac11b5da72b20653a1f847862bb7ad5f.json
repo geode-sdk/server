@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(\n            SELECT 1 FROM mods m\n            INNER JOIN mod_statuses ms ON m.id = ms.mod_id\n            WHERE m.id = $1 AND ms.status = $2\n        ) AS \"exists!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "588edf3d01b00e2210aa1577b76b4696ac11b5da72b20653a1f847862bb7ad5f"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SET CONSTRAINTS mods_status_id_fkey IMMEDIATE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "e03e835c24369349bbec1639b7f5afd42551899edcef89ab4812339e195b4a6b"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at\n            FROM mods m\n            WHERE id = $1",
+  "query": "SELECT\n            m.id, m.repository, NULL as about, NULL as changelog, m.featured,\n            m.download_count, m.created_at, m.updated_at,\n            ms.status AS \"status: _\", NULL AS status_info\n        FROM mods m\n        INNER JOIN mod_statuses ms ON ms.mod_id = m.id\n        WHERE m.id = $1",
   "describe": {
     "columns": [
       {
@@ -29,23 +29,13 @@
         "ordinal": 2,
         "name": "about",
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "mods",
-            "name": "about"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 3,
         "name": "changelog",
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "mods",
-            "name": "changelog"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 4,
@@ -90,6 +80,34 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_statuses",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status_info",
+        "type_info": "Text",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -100,13 +118,15 @@
     "nullable": [
       false,
       true,
-      true,
-      true,
+      null,
+      null,
       false,
       false,
       false,
-      false
+      false,
+      false,
+      null
     ]
   },
-  "hash": "959d6a60bbb47b24bc86963c0063bdd1268c75d03563eaf78eec41752cc1a491"
+  "hash": "2abe4cd1be35381a41369ced2e76001b2e94a405715248f8a3064f6cb87f901a"
 }
