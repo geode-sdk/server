@@ -49,6 +49,8 @@ pub enum ApiError {
     Reqwest(#[from] reqwest::Error),
     #[error("I/O error: {0}")]
     IO(#[from] std::io::Error),
+    #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
+    Banned(Option<String>),
 }
 
 impl ApiError {
