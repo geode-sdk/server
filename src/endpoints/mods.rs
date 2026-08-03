@@ -10,6 +10,7 @@ use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
+use crate::database::repository::mods::ModLogo;
 use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
 use crate::endpoints::ApiError;
 use crate::events::mod_created::NewUnverifiedModVersionCreated;
@@ -418,10 +419,13 @@ pub async fn get_logo(
 ) -> Result<impl Responder, ApiError> {
     use crate::database::repository::*;
     let mut pool = data.db().acquire().await?;
-    let image: Option<Vec<u8>> = mods::get_logo(&path.into_inner(), &mut pool).await?;
+    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
     Ok(match image {
-        Some(i) => HttpResponse::Ok().content_type("image/png").body(i),
+        Some(ModLogo::Data(i)) => HttpResponse::Ok().content_type("image/png").body(i),
+        Some(ModLogo::Url(url)) => HttpResponse::Found()
+            .append_header(("Location", url))
+            .finish(),
         None => HttpResponse::NotFound().body(""),
     })
 }
