@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT EXISTS(\n            SELECT 1 FROM mods m\n            INNER JOIN mod_statuses ms ON m.id = ms.mod_id\n            WHERE m.id = $1 AND ms.locked = TRUE\n        ) AS \"exists!\"",
+  "query": "SELECT EXISTS(\n            SELECT 1 FROM mods m\n            WHERE m.id = $1 AND m.status_locked = TRUE\n        ) AS \"exists!\"",
   "describe": {
     "columns": [
       {
@@ -19,5 +19,5 @@
       null
     ]
   },
-  "hash": "3f065288e13b327a83b3b6abeaa3733dc7c826dea02aeb06fd202c093d9902e0"
+  "hash": "f879070b03c4617a9058d3396ee0f1f2576fc308d39b95bb12c9fd276d63d4e6"
 }

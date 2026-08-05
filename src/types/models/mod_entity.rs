@@ -248,7 +248,6 @@ impl Mod {
             // joins: only join tables if they are necessary
             builder.push(" INNER JOIN mod_versions mv ON m.id = mv.mod_id ");
             builder.push(" INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id ");
-            builder.push(" INNER JOIN mod_statuses ms ON ms.mod_id = m.id");
 
             if gd.is_some() || platforms.is_some() {
                 builder.push(" INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id ");
@@ -281,12 +280,12 @@ impl Mod {
             }
 
             builder.push(" AND mvs.status = ").push_bind(status);
-            builder.push(" AND ms.status <> 'unlisted'");
+            builder.push(" AND m.status <> 'unlisted'");
 
             let direct_search = search_str.as_ref().is_some_and(|x| !x.is_empty()) || developer.is_some();
             if !direct_search {
                 // hide archived mods from direct search
-                builder.push(" AND ms.status <> 'archived'");
+                builder.push(" AND m.status <> 'archived'");
             }
 
             if let Some(rp) = requires_patching {
@@ -369,7 +368,7 @@ impl Mod {
                 q.download_count, q.featured, q.created_at, q.updated_at, q.status
             FROM (
                 SELECT DISTINCT ON (m.id) m.id, mv.name, m.repository, m.about, m.changelog,
-                    m.download_count, m.featured, m.created_at, m.updated_at, ms.status ",
+                    m.download_count, m.featured, m.created_at, m.updated_at, m.status ",
         );
 
         core_query(&mut records_builder);
@@ -614,11 +613,10 @@ impl Mod {
                 mv.download_count as mod_version_download_count, mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info,
-                ms.status AS "mod_status: _", ms.info AS mod_status_info
+                m.status AS "mod_status: _", m.status_info AS mod_status_info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
-            INNER JOIN mod_statuses ms ON ms.mod_id = m.id
             WHERE m.id = $1
             AND ($2 = false OR mvs.status = 'accepted')
             ORDER BY mv.id DESC"#,
@@ -836,17 +834,36 @@ impl Mod {
         status: ModStatusEnum,
         info: Option<&str>,
         locked: bool,
+        pool: &mut PgConnection,
+    ) -> Result<(), DatabaseError> {
+        sqlx::query!("UPDATE mods
+            SET status = $1,
+            status_info = $2,
+            status_locked = $3
+            WHERE id = $4",
+            status as ModStatusEnum, info, locked, id
+        )
+        .execute(&mut *pool)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))
+        .map_err(|e| e.into())
+        .map(|_| ())
+    }
+
+    #[tracing::instrument(skip_all, fields(mod_id = %id, status = ?status))]
+    pub async fn create_mod_status_log(
+        id: &str,
+        status: ModStatusEnum,
+        info: Option<&str>,
+        locked: Option<bool>,
         updated_by: &Developer,
         pool: &mut PgConnection,
     ) -> Result<(), DatabaseError> {
-        sqlx::query!("UPDATE mod_statuses
-            SET status = $1,
-            actor_id = $2,
-            info = $3,
-            locked = $4,
-            updated_at = NOW()
-            WHERE mod_id = $5",
-            status as ModStatusEnum, updated_by.id, info, locked, id
+        sqlx::query!("INSERT INTO mod_status_logs
+                (status, info, locked, actor_id, mod_id)
+            VALUES
+                ($1, $2, $3, $4, $5)",
+            status as ModStatusEnum, info, locked, updated_by.id, id
         )
         .execute(&mut *pool)
         .await

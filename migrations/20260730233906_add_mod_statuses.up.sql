@@ -2,14 +2,14 @@
 
 create type mod_status as enum('default', 'archived', 'unlisted');
 
-create table mod_statuses(
+create table mod_status_logs(
     id serial primary key,
+    mod_id TEXT not null,
+    performed_at timestamptz not null default now(),
+    actor_id integer,
     status mod_status not null default 'default',
     info text,
-    updated_at timestamptz not null default now(),
-    mod_id TEXT not null,
-    actor_id integer,
-    locked BOOLEAN not null DEFAULT FALSE,
+    locked BOOLEAN,
     foreign key (mod_id)
         references mods(id)
         on delete cascade,
@@ -18,21 +18,12 @@ create table mod_statuses(
         on delete set null
 );
 
-create index mod_statuses_actor_id_idx on mod_statuses(actor_id);
-create unique index mod_statuses_mod_id_idx on mod_statuses(mod_id);
+create index mod_statuses_actor_id_idx on mod_status_logs(actor_id);
+create index mod_statuses_mod_id_idx on mod_status_logs(mod_id);
 
-alter table mods add column status_id integer;
-
-insert into mod_statuses (mod_id) SELECT id as mod_id from mods;
-
-update mods set status_id = ms.id
-    from mod_statuses ms
-    where mods.id = ms.mod_id;
-
-alter table mods alter column status_id set not null;
 alter table mods
-    add foreign key (status_id)
-    references mod_statuses(id)
-    deferrable;
+    add column status mod_status not null default 'default',
+    add column status_info text,
+    add column status_locked boolean not null default false;
 
-create index mods_status_id_idx on mods(status_id);
+create index mods_status_idx on mods(status);

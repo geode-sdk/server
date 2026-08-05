@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            m.id, m.repository, NULL as about, NULL as changelog, m.featured,\n            m.download_count, m.created_at, m.updated_at,\n            ms.status AS \"status: _\", NULL AS status_info\n        FROM mods m\n        INNER JOIN mod_statuses ms ON ms.mod_id = m.id\n        WHERE m.id = $1",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at,\n                m.status AS \"status: _\", m.status_info\n            FROM mods m\n            WHERE m.id = $1",
   "describe": {
     "columns": [
       {
@@ -29,13 +29,23 @@
         "ordinal": 2,
         "name": "about",
         "type_info": "Text",
-        "origin": "Expression"
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "about"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "changelog",
         "type_info": "Text",
-        "origin": "Expression"
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "changelog"
+          }
+        }
       },
       {
         "ordinal": 4,
@@ -98,7 +108,7 @@
         },
         "origin": {
           "Table": {
-            "table": "mod_statuses",
+            "table": "mods",
             "name": "status"
           }
         }
@@ -107,7 +117,12 @@
         "ordinal": 9,
         "name": "status_info",
         "type_info": "Text",
-        "origin": "Expression"
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status_info"
+          }
+        }
       }
     ],
     "parameters": {
@@ -118,15 +133,15 @@
     "nullable": [
       false,
       true,
-      null,
-      null,
+      true,
+      true,
       false,
       false,
       false,
       false,
       false,
-      null
+      true
     ]
   },
-  "hash": "2abe4cd1be35381a41369ced2e76001b2e94a405715248f8a3064f6cb87f901a"
+  "hash": "6b3265a168fb436018db26f164d24dc2fe6bb074a2766cbac68b07f2592f93d9"
 }

@@ -62,9 +62,8 @@ pub async fn get_one(
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured,
                 m.download_count, m.created_at, m.updated_at,
-                ms.status AS "status: _", ms.info AS status_info
+                m.status AS "status: _", m.status_info
             FROM mods m
-            INNER JOIN mod_statuses ms ON ms.mod_id = m.id
             WHERE m.id = $1"#,
             id
         )
@@ -79,9 +78,8 @@ pub async fn get_one(
             r#"SELECT
             m.id, m.repository, NULL as about, NULL as changelog, m.featured,
             m.download_count, m.created_at, m.updated_at,
-            ms.status AS "status: _", NULL AS status_info
+            m.status AS "status: _", NULL AS status_info
         FROM mods m
-        INNER JOIN mod_statuses ms ON ms.mod_id = m.id
         WHERE m.id = $1"#,
             id
         )
@@ -96,70 +94,32 @@ pub async fn get_one(
 /// Does NOT check if the target mod exists
 #[tracing::instrument(skip_all, fields(mod_id = %json.id))]
 pub async fn create(json: &ModJson, conn: &mut PgConnection) -> Result<Mod, DatabaseError> {
-    sqlx::query!("SET CONSTRAINTS mods_status_id_fkey DEFERRED")
-        .execute(&mut *conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))?;
-
-    let record = sqlx::query!(
-        "INSERT INTO mods (
+    sqlx::query_as!(
+        ModRecordGetOne,
+        r#"INSERT INTO mods (
             id,
             repository,
             changelog,
             about,
-            image,
-            status_id
-        ) VALUES ($1, $2, $3, $4, $5, 0)
+            image
+        ) VALUES ($1, $2, $3, $4, $5)
         RETURNING
             id, repository, about,
             changelog, featured,
             download_count, created_at,
-            updated_at",
+            updated_at, status as "status: _",
+            status_info"#,
         &json.id,
         json.repository,
         json.changelog,
         json.about,
         &vec![]
     )
-    .fetch_one(&mut *conn)
+    .fetch_one(conn)
     .await
-    .inspect_err(|e| tracing::error!("{:?}", e))?;
-
-    let status_id = sqlx::query_scalar!("INSERT INTO mod_statuses (mod_id) VALUES ($1) RETURNING id", &json.id)
-        .fetch_one(&mut *conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))?;
-
-    sqlx::query!(
-        "UPDATE mods SET status_id = $1 WHERE id = $2",
-        status_id,
-        &json.id
-    )
-    .execute(&mut *conn)
-    .await
-    .inspect_err(|e| tracing::error!("{:?}", e))?;
-
-    sqlx::query!("SET CONSTRAINTS mods_status_id_fkey IMMEDIATE")
-        .execute(&mut *conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))?;
-
-    Ok(Mod {
-        id: record.id,
-        repository: record.repository,
-        featured: record.featured,
-        download_count: record.download_count.into(),
-        versions: Default::default(),
-        tags: Default::default(),
-        developers: Default::default(),
-        created_at: record.created_at,
-        updated_at: record.updated_at,
-        about: record.about.clone(),
-        changelog: record.changelog.clone(),
-        links: None,
-        status: ModStatusEnum::Default,
-        status_info: None,
-    })
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+    .map(|x| x.into_mod())
 }
 
 #[tracing::instrument(skip_all, fields(mod_id = %id, developer_id = %developer_id))]
@@ -361,8 +321,7 @@ pub async fn has_status(
 ) -> Result<bool, DatabaseError> {
     sqlx::query_scalar!(r#"SELECT EXISTS(
             SELECT 1 FROM mods m
-            INNER JOIN mod_statuses ms ON m.id = ms.mod_id
-            WHERE m.id = $1 AND ms.status = $2
+            WHERE m.id = $1 AND m.status = $2
         ) AS "exists!""#,
         id, status as ModStatusEnum
     )
@@ -379,8 +338,7 @@ pub async fn is_status_locked(
 ) -> Result<bool, DatabaseError> {
     sqlx::query_scalar!(r#"SELECT EXISTS(
             SELECT 1 FROM mods m
-            INNER JOIN mod_statuses ms ON m.id = ms.mod_id
-            WHERE m.id = $1 AND ms.locked = TRUE
+            WHERE m.id = $1 AND m.status_locked = TRUE
         ) AS "exists!""#,
         id
     )

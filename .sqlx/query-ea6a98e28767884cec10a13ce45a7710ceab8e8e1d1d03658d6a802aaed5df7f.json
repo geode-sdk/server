@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image,\n            status_id\n        ) VALUES ($1, $2, $3, $4, $5, 0)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at",
+  "query": "SELECT\n            m.id, m.repository, NULL as about, NULL as changelog, m.featured,\n            m.download_count, m.created_at, m.updated_at,\n            m.status AS \"status: _\", NULL AS status_info\n        FROM mods m\n        WHERE m.id = $1",
   "describe": {
     "columns": [
       {
@@ -29,23 +29,13 @@
         "ordinal": 2,
         "name": "about",
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "mods",
-            "name": "about"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 3,
         "name": "changelog",
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "mods",
-            "name": "changelog"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "ordinal": 4,
@@ -90,27 +80,53 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status_info",
+        "type_info": "Text",
+        "origin": "Expression"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Bytea"
+        "Text"
       ]
     },
     "nullable": [
       false,
       true,
-      true,
-      true,
+      null,
+      null,
       false,
       false,
       false,
-      false
+      false,
+      false,
+      null
     ]
   },
-  "hash": "66186328d37a03e0bc17364fa2be10f02b814dc887b71a0c995eafd0dd8b1426"
+  "hash": "ea6a98e28767884cec10a13ce45a7710ceab8e8e1d1d03658d6a802aaed5df7f"
 }

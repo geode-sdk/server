@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at,\n                ms.status AS \"status: _\", ms.info AS status_info\n            FROM mods m\n            INNER JOIN mod_statuses ms ON ms.mod_id = m.id\n            WHERE m.id = $1",
+  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image\n        ) VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at, status as \"status: _\",\n            status_info",
   "describe": {
     "columns": [
       {
@@ -108,7 +108,7 @@
         },
         "origin": {
           "Table": {
-            "table": "mod_statuses",
+            "table": "mods",
             "name": "status"
           }
         }
@@ -119,15 +119,19 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "mod_statuses",
-            "name": "info"
+            "table": "mods",
+            "name": "status_info"
           }
         }
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bytea"
       ]
     },
     "nullable": [
@@ -143,5 +147,5 @@
       true
     ]
   },
-  "hash": "ef332e13a09ed15fc4b02067807ab444d55b6103ab73734a16d586490a147518"
+  "hash": "ad037bc14883dee2aac7c31346fa6d78c9604eac5c8a95378edcc6ef43410b16"
 }

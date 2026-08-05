@@ -517,6 +517,14 @@ pub async fn update_mod(
             payload_status,
             payload.info.as_deref(),
             payload.status_locked.unwrap_or(status_locked),
+            &mut tx,
+        ).await?;
+
+        Mod::create_mod_status_log(
+            &id,
+            payload_status,
+            payload.info.as_deref(),
+            payload.status_locked,
             &dev,
             &mut tx,
         ).await?;

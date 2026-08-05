@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE mod_statuses\n            SET status = $1,\n            actor_id = $2,\n            info = $3,\n            locked = $4,\n            updated_at = NOW()\n            WHERE mod_id = $5",
+  "query": "UPDATE mods\n            SET status = $1,\n            status_info = $2,\n            status_locked = $3\n            WHERE id = $4",
   "describe": {
     "columns": [],
     "parameters": {
@@ -17,7 +17,6 @@
             }
           }
         },
-        "Int4",
         "Text",
         "Bool",
         "Text"
@@ -25,5 +24,5 @@
     },
     "nullable": []
   },
-  "hash": "06a4ce8197437b76cc6686c4cfd12ede5cd9545c0874278148ab9e268b20b969"
+  "hash": "d4441790dde78a00677bee572620183594185e5a763e3946f45fd512f9c86270"
 }
