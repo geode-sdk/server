@@ -28,23 +28,29 @@ fn path_for_mod_logo(mod_id: &str) -> String {
     format!("mods/{mod_id}/logo.png")
 }
 
-async fn upload_mod_logo(data: &AppData, mod_id: &str) -> anyhow::Result<()> {
+async fn upload_mod_logo(
+    data: &AppData,
+    mod_id: &str,
+    current_logo: Option<Vec<u8>>,
+) -> anyhow::Result<()> {
     let storage = data.mod_storage().expect("mod storage must be set by now");
     let mut db = data.db().acquire().await?;
 
     let logo_path = path_for_mod_logo(mod_id);
     let logo_public_url = storage.asset_url(&logo_path);
 
-    let current_logo = sqlx::query!("SELECT image FROM mods WHERE id = $1", mod_id)
-        .fetch_optional(&mut *db)
-        .await?;
+    let current_logo = match current_logo {
+        Some(logo) => Some(logo),
+        _ => sqlx::query!("SELECT image FROM mods WHERE id = $1", mod_id)
+            .fetch_optional(&mut *db)
+            .await?
+            .and_then(|r| r.image),
+    };
 
-    if let Some(logo_bytes) = current_logo.and_then(|r| r.image) {
+    if let Some(logo_bytes) = current_logo {
         storage.store(&logo_path, &logo_bytes).await?;
 
-        let mut tx = db.begin().await?;
-        update_mod_logo_url(mod_id, &logo_public_url, &mut tx).await?;
-        tx.commit().await?;
+        update_mod_logo_url(mod_id, &logo_public_url, &mut db).await?;
 
         tracing::info!("Uploaded logo for {} to S3 at {}", mod_id, logo_public_url);
     }
@@ -72,13 +78,11 @@ async fn process_task(
 
             storage.store(&path, &bytes).await?;
 
-            let mut tx = db.begin().await?;
-            update_managed_download_link(version_id, Some(&public_url), &mut tx).await?;
-            tx.commit().await?;
+            update_managed_download_link(version_id, Some(&public_url), &mut db).await?;
 
             // upload logo if not migrating mods
             if !is_migration {
-                upload_mod_logo(data, &mod_id).await?;
+                upload_mod_logo(data, &mod_id, None).await?;
             }
 
             tracing::info!(
@@ -218,7 +222,7 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
 
     // independently migrate mod logos
     let mods = sqlx::query!(
-        "SELECT id FROM mods WHERE image IS NOT NULL AND length(image) > 0 AND image_url IS NULL"
+        "SELECT id, image FROM mods WHERE image IS NOT NULL AND length(image) > 0 AND image_url IS NULL"
     )
     .fetch_all(&mut *db)
     .await?;
@@ -226,7 +230,7 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     tracing::info!("Migrating {} existing mod logos to S3", mods.len());
 
     for record in mods {
-        if let Err(e) = upload_mod_logo(data, &record.id).await {
+        if let Err(e) = upload_mod_logo(data, &record.id, record.image).await {
             tracing::error!("error migrating mod logo for {} to S3: {e:?}", record.id);
         }
     }
