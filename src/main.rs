@@ -1,5 +1,5 @@
-use crate::openapi::ApiDoc;
 use crate::types::api;
+use crate::{middleware::signed::SignedUrl, openapi::ApiDoc};
 use actix_cors::Cors;
 use actix_web::{
     App, HttpServer,
@@ -19,12 +19,13 @@ mod events;
 mod extractors;
 mod jobs;
 mod logging;
+mod middleware;
 mod mod_zip;
 mod openapi;
 mod s3_worker;
 mod storage;
 mod types;
-mod urlsign;
+mod urisign;
 mod webhook;
 
 // Avoid musl's default allocator due to lackluster performance
