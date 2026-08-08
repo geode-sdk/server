@@ -6,37 +6,79 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "featured",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "featured"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "mod_download_count",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "download_count"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "version",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "mod_version_download_count",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_count"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "info",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "info"
+          }
+        }
       },
       {
         "ordinal": 7,
@@ -53,12 +95,19 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "status"
+          }
         }
       },
       {
         "ordinal": 8,
         "name": "validated!: _",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": "Expression"
       }
     ],
     "parameters": {

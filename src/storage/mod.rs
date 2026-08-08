@@ -1,13 +1,23 @@
-use std::{path::PathBuf, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
+
+pub use local::LocalBackend;
+pub use s3::*;
+
+mod local;
+mod s3;
 
 #[derive(thiserror::Error, Debug)]
 pub enum StorageError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("S3 error: {0}")]
+    S3(#[from] ::s3::error::S3Error),
+    #[error("{0}")]
+    Other(String),
 }
 
 pub type StorageResult<T> = Result<T, StorageError>;
-type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait StorageBackend: Send + Sync {
     fn init(&self) -> BoxFuture<'_, StorageResult<()>> {
@@ -15,68 +25,9 @@ pub trait StorageBackend: Send + Sync {
     }
     fn store<'a>(&'a self, path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>>;
     fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>>;
+    #[allow(dead_code)]
     fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>>;
     fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>>;
-}
-
-pub struct LocalBackend {
-    base_path: PathBuf,
-}
-
-impl LocalBackend {
-    pub fn new(base_path: impl Into<PathBuf>) -> LocalBackend {
-        LocalBackend {
-            base_path: base_path.into(),
-        }
-    }
-}
-
-impl StorageBackend for LocalBackend {
-    fn store<'a>(
-        &'a self,
-        relative_path: &'a str,
-        data: &'a [u8],
-    ) -> BoxFuture<'a, StorageResult<()>> {
-        Box::pin(async move {
-            let path = self.base_path.join(relative_path);
-            if let Some(parent) = path.parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-
-            tokio::fs::write(path, data).await.map_err(|e| e.into())
-        })
-    }
-
-    fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>> {
-        Box::pin(async move {
-            let path = self.base_path.join(path);
-            match tokio::fs::read(path).await {
-                Ok(data) => Ok(data),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-                Err(e) => Err(e),
-            }
-            .map_err(|e| e.into())
-        })
-    }
-
-    fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>> {
-        Box::pin(async move {
-            let path = self.base_path.join(path);
-            Ok(tokio::fs::metadata(path).await.is_ok())
-        })
-    }
-
-    fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>> {
-        Box::pin(async move {
-            let path = self.base_path.join(path);
-            match tokio::fs::remove_file(path).await {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(e),
-            }
-            .map_err(|e| e.into())
-        })
-    }
 }
 
 #[derive(Clone)]
@@ -156,6 +107,7 @@ impl PublicDisk {
     pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
         self.core.read(path).await
     }
+    #[allow(dead_code)]
     pub async fn exists(&self, path: &str) -> StorageResult<bool> {
         self.core.exists(path).await
     }
@@ -178,6 +130,7 @@ impl PrivateDisk {
     pub async fn init(&self) -> StorageResult<()> {
         self.core.init().await
     }
+    #[allow(dead_code)]
     pub async fn store_hashed(
         &self,
         relative_path: &str,
@@ -186,15 +139,19 @@ impl PrivateDisk {
     ) -> StorageResult<String> {
         self.core.store_hashed(relative_path, data, extension).await
     }
+    #[allow(dead_code)]
     pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
         self.core.store(path, data).await
     }
+    #[allow(dead_code)]
     pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
         self.core.read(path).await
     }
+    #[allow(dead_code)]
     pub async fn exists(&self, path: &str) -> StorageResult<bool> {
         self.core.exists(path).await
     }
+    #[allow(dead_code)]
     pub async fn delete(&self, path: &str) -> StorageResult<()> {
         self.core.delete(path).await
     }

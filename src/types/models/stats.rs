@@ -55,10 +55,9 @@ impl Stats {
         .await
         .inspect_err(|e| tracing::error!("{:?}", e))
         .map(|d| (d.checked_at, d.total_download_count))
+            && Utc::now().signed_duration_since(cache_time).num_days() < 1
         {
-            if Utc::now().signed_duration_since(cache_time).num_days() < 1 {
-                return Ok(total_download_count);
-            }
+            return Ok(total_download_count);
         }
 
         // Fetch latest stats

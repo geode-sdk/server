@@ -1,10 +1,10 @@
 use crate::auth::AuthenticationError;
 use crate::database::repository::github_login_attempts;
 use crate::types::models::github_login_attempt::StoredLoginAttempt;
-use reqwest::{header::HeaderValue, Client};
+use reqwest::{Client, header::HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{types::ipnetwork::IpNetwork, PgConnection};
+use sqlx::{PgConnection, types::ipnetwork::IpNetwork};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -17,6 +17,7 @@ pub struct GithubStartAuth {
 }
 
 #[derive(Deserialize, Default)]
+#[allow(dead_code)]
 pub enum GithubDeviceFlowErrorString {
     #[serde(rename(deserialize = "authorization_pending"))]
     AuthorizationPending,
@@ -39,6 +40,7 @@ pub enum GithubDeviceFlowErrorString {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct GithubErrorResponse {
     error: GithubDeviceFlowErrorString,
     error_description: String,
@@ -51,6 +53,7 @@ pub struct GithubClient {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct GitHubDevicePollPayload {
     client_id: String,
     device_code: String,
@@ -58,6 +61,7 @@ pub struct GitHubDevicePollPayload {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct GitHubWebPollPayload {
     client_id: String,
     client_secret: String,
@@ -103,7 +107,9 @@ impl GithubClient {
             }))
             .send()
             .await
-            .inspect_err(|e| tracing::error!("Failed to start OAuth device flow with GitHub: {e}"))?;
+            .inspect_err(|e| {
+                tracing::error!("Failed to start OAuth device flow with GitHub: {e}")
+            })?;
 
         if !res.status().is_success() {
             tracing::error!(
@@ -254,7 +260,9 @@ impl GithubClient {
         let body = resp
             .json::<serde_json::Value>()
             .await
-            .inspect_err(|e| tracing::error!("github::get_installation: failed to parse response: {e}"))
+            .inspect_err(|e| {
+                tracing::error!("github::get_installation: failed to parse response: {e}")
+            })
             .or(Err(AuthenticationError::InternalError(
                 "Failed to parse response from GitHub".into(),
             )))?;

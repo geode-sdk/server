@@ -55,6 +55,7 @@ pub struct ModUpdate {
     pub id: String,
     pub version: String,
     #[serde(skip_serializing)]
+    #[allow(dead_code)]
     pub mod_version_id: i32,
     pub download_link: String,
     pub replacement: Option<Replacement>,
@@ -86,6 +87,7 @@ struct ModRecordGetOne {
     description: Option<String>,
     version: String,
     download_link: String,
+    managed_download_link: Option<String>,
     mod_version_download_count: i32,
     hash: String,
     geode: String,
@@ -187,7 +189,7 @@ impl Mod {
         };
 
         let order = match query.sort {
-            IndexSortType::Downloads => "q.download_acount DESC",
+            IndexSortType::Downloads => "q.download_count DESC",
             IndexSortType::RecentlyUpdated => "q.updated_at DESC",
             IndexSortType::RecentlyPublished => "q.created_at DESC",
             IndexSortType::Oldest => "q.created_at ASC",
@@ -222,7 +224,7 @@ impl Mod {
 
         let gd = query.gd.map(|x| vec![x, GDVersionEnum::All]);
 
-        let core_query = |builder: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>| {
+        let core_query = |builder: &mut sqlx::QueryBuilder<sqlx::Postgres>| {
             // clone these due to silly lifetime rules, the closure lives till the
             // end of the function and the only other solution is ugly scopes
             let gd = gd.clone();
@@ -359,7 +361,7 @@ impl Mod {
         records_builder.push(" LIMIT ").push_bind(limit);
         records_builder.push(" OFFSET ").push_bind(offset);
 
-        // tracing::debug!("sql: {}", records_builder.sql());
+        // tracing::info!("sql: {:?}", records_builder.sql());
 
         let records: Vec<ModRecord> = records_builder
             .build_query_as()
@@ -448,7 +450,7 @@ impl Mod {
         let developers = developers::get_all_for_mods(&ids, pool).await?;
         let links = ModLinks::fetch_for_mods(&ids, pool).await?;
         let mut mod_version_ids: Vec<i32> = vec![];
-        for (_, mod_version) in versions.iter() {
+        for mod_version in versions.values() {
             mod_version_ids.append(&mut mod_version.iter().map(|x| x.id).collect());
         }
 
@@ -586,9 +588,8 @@ impl Mod {
             ModRecordGetOne,
             r#"SELECT
                 m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,
-                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.download_count as mod_version_download_count,
-                mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at,
-                mv.hash,
+                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.managed_download_link,
+                mv.download_count as mod_version_download_count, mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
@@ -616,6 +617,7 @@ impl Mod {
                 description: x.description.clone(),
                 version: x.version.clone(),
                 download_link: x.download_link.clone(),
+                managed_download_link: x.managed_download_link.clone(),
                 download_count: x.mod_version_download_count.into(),
                 hash: x.hash.clone(),
                 geode: x.geode.clone(),

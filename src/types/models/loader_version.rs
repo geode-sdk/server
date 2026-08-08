@@ -141,22 +141,22 @@ impl LoaderVersion {
 
         query_builder.push(" ORDER BY ");
 
-        if gd.is_none() {
-            if let Some(p) = platform {
-                // if there's a platform but no gd, order by the latest gd for that platform
-                match p {
-                    VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => {
-                        query_builder.push(" android")
-                    }
-                    VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => {
-                        query_builder.push(" mac")
-                    }
-                    VerPlatform::Win => query_builder.push(" win"),
-                    VerPlatform::Ios => query_builder.push(" ios"),
-                    // _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
-                };
-                query_builder.push(" DESC, ");
-            }
+        if gd.is_none()
+            && let Some(p) = platform
+        {
+            // if there's a platform but no gd, order by the latest gd for that platform
+            match p {
+                VerPlatform::Android | VerPlatform::Android32 | VerPlatform::Android64 => {
+                    query_builder.push(" android")
+                }
+                VerPlatform::Mac | VerPlatform::MacIntel | VerPlatform::MacArm => {
+                    query_builder.push(" mac")
+                }
+                VerPlatform::Win => query_builder.push(" win"),
+                VerPlatform::Ios => query_builder.push(" ios"),
+                // _ => return Err(ApiError::BadRequest("Invalid platform".to_string())),
+            };
+            query_builder.push(" DESC, ");
         }
 
         query_builder.push(" created_at DESC LIMIT 1;");
@@ -228,7 +228,7 @@ impl LoaderVersion {
 
         let mut query_builder = QueryBuilder::new(
             r#"
-            SELECT 
+            SELECT
                 mac, win, android, ios, tag, created_at, commit_hash, prerelease
             FROM geode_versions
             "#,

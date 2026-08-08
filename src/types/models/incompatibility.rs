@@ -34,6 +34,7 @@ pub struct Replacement {
     pub id: String,
     pub version: String,
     #[serde(skip_serializing)]
+    #[allow(dead_code)]
     pub replacement_id: i32,
     pub download_link: String,
     pub dependencies: Vec<ResponseDependency>,

@@ -41,7 +41,7 @@ pub enum IndexSortType {
     Oldest,
     Name,
     NameReverse,
-    Random
+    Random,
 }
 
 #[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
@@ -110,7 +110,12 @@ pub async fn index(
         payload: result.clone(),
     };
 
-    data.mods_cache().insert(query.0, resp.clone()).await;
+    if query
+        .status
+        .is_none_or(|status| status == ModVersionStatusEnum::Accepted)
+    {
+        data.mods_cache().insert(query.0, resp.clone()).await;
+    }
 
     Ok(web::Json(resp))
 }
@@ -212,8 +217,13 @@ pub async fn create(
 ) -> Result<impl Responder, ApiError> {
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
-    let bytes = mod_zip::download_mod(&payload.download_link, data.max_download_mb()).await?;
-    let json = ModJson::from_zip(bytes, &payload.download_link, false)?;
+    let bytes = mod_zip::download_mod(
+        data.check_dns_http_client(),
+        &payload.download_link,
+        data.max_download_mb(),
+    )
+    .await?;
+    let json = ModJson::from_zip(&bytes, &payload.download_link, false)?;
     json.validate()?;
 
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
@@ -297,7 +307,7 @@ pub async fn create(
         owner: dev.clone(),
     }
     .to_discord_webhook()
-    .send(data.index_admin_webhook_url());
+    .send(data.http_client(), data.index_admin_webhook_url());
 
     for i in &mut the_mod.versions {
         i.modify_metadata(data.app_url(), false);
@@ -346,7 +356,9 @@ pub async fn get_mod_updates(
     let mut pool = data.db().acquire().await?;
 
     if query.platform == VerPlatform::Android || query.platform == VerPlatform::Mac {
-        return Err(ApiError::BadRequest("Invalid platform. Use android32 / android64 for android and mac-intel / mac-arm for mac".to_string()));
+        return Err(ApiError::BadRequest(
+            "Invalid platform. Use android32 / android64 for android and mac-intel / mac-arm for mac".to_string(),
+        ));
     }
 
     let ids = query
@@ -478,7 +490,7 @@ pub async fn update_mod(
                 featured: payload.featured,
             }
             .to_discord_webhook()
-            .send(data.webhook_url());
+            .send(data.http_client(), data.webhook_url());
         }
     }
 

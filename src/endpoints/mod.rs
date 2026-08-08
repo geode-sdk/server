@@ -35,6 +35,7 @@ pub enum ApiError {
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
+    #[allow(dead_code)]
     TooManyRequests(String),
     #[error("Internal error: {0}")]
     InternalError(String),

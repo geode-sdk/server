@@ -1,0 +1,217 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT\n                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link, mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at, mv.updated_at,\n                'pending'::mod_version_status as \"status!: _\", NULL as info\n            FROM mod_versions mv\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE mvs.status = 'pending'\n            AND mv.mod_id = ANY($1)\n            ORDER BY mv.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "managed_download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "managed_download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "geode!: _",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "download_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_count"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "early_load",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "early_load"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "requires_patching",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "requires_patching"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "api",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "api"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "mod_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "mod_id"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "status!: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 16,
+        "name": "info",
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      null,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "87c39e971df622c0ae622e37563aab11bb4b6634b7e6d9420097ec25faea4d8c"
+}

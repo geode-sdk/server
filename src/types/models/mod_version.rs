@@ -30,6 +30,8 @@ pub struct ModVersion {
     pub description: Option<String>,
     pub version: String,
     pub download_link: String,
+    #[serde(skip_serializing)]
+    pub managed_download_link: Option<String>,
     pub hash: String,
     pub geode: String,
     #[schema(value_type = i32)]
@@ -67,6 +69,7 @@ struct ModVersionGetOne {
     description: Option<String>,
     version: String,
     download_link: String,
+    managed_download_link: Option<String>,
     download_count: i32,
     hash: String,
     geode: String,
@@ -99,6 +102,7 @@ impl ModVersionGetOne {
             description: self.description.clone(),
             version: self.version.clone(),
             download_link: self.download_link.clone(),
+            managed_download_link: self.managed_download_link.clone(),
             hash: self.hash.clone(),
             geode: self.geode.clone(),
             early_load: self.early_load,
@@ -160,7 +164,7 @@ impl ModVersion {
         let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"
             SELECT mv.id, mv.name, mv.description, mv.version,
-            mv.download_link, mv.download_count, mv.hash,
+            mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
             mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status, mv.created_at, mv.updated_at
             FROM mod_versions mv
@@ -318,13 +322,13 @@ impl ModVersion {
         sqlx::query_as(
             "SELECT
                 q.name, q.id, q.description, q.version,
-                q.download_link, q.hash, q.geode,
+                q.download_link, q.managed_download_link, q.hash, q.geode,
                 q.download_count, q.early_load, q.requires_patching, q.api, q.mod_id,
                 'accepted'::mod_version_status as status,
                 q.created_at, q.updated_at
             FROM (
                 SELECT
-                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                    mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link, mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
                     mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at,
                     mv.updated_at,
@@ -356,8 +360,9 @@ impl ModVersion {
                     )
                 )
             ) q
-            WHERE q.rn = 1"
-        ).bind(gd_vec.as_ref())
+            WHERE q.rn = 1",
+        )
+        .bind(gd_vec.as_ref())
         .bind(platforms)
         .bind(ids)
         .bind(geode.map(|x| i32::try_from(x.major).unwrap_or_default()))
@@ -376,7 +381,8 @@ impl ModVersion {
         .inspect_err(|e| tracing::error!("{:?}", e))
         .map_err(|e| e.into())
         .map(|result: Vec<ModVersionGetOne>| {
-            result.into_iter()
+            result
+                .into_iter()
                 .map(|i| (i.mod_id.clone(), i.into_mod_version()))
                 .collect::<HashMap<_, _>>()
         })
@@ -394,7 +400,7 @@ impl ModVersion {
         let records = sqlx::query_as!(
             ModVersionGetOne,
             r#"SELECT DISTINCT
-                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.hash,
+                mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.download_count, mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mv.created_at, mv.updated_at,
                 'pending'::mod_version_status as "status!: _", NULL as info
@@ -404,7 +410,8 @@ impl ModVersion {
             AND mv.mod_id = ANY($1)
             ORDER BY mv.id DESC"#,
             ids
-        ).fetch_all(&mut *pool)
+        )
+        .fetch_all(&mut *pool)
         .await
         .inspect_err(|e| tracing::error!("{:?}", e))?;
 
@@ -428,12 +435,12 @@ impl ModVersion {
         pool: &mut PgConnection,
     ) -> Result<Option<ModVersion>, DatabaseError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT q.name, q.id, q.description, q.version, q.download_link,
+            r#"SELECT q.name, q.id, q.description, q.version, q.download_link, q.managed_download_link,
                 q.hash, q.geode, q.download_count,
                 q.early_load, q.requires_patching, q.api, q.mod_id, q.status,
                 q.created_at, q.updated_at
             FROM (
-                SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link,
+                SELECT mv.name, mv.id, mv.description, mv.version, mv.download_link, mv.managed_download_link,
                     mv.hash,
                     format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as geode,
                     mv.download_count, mvs.status,
@@ -520,7 +527,7 @@ impl ModVersion {
         let result = sqlx::query_as!(
             ModVersionGetOne,
             r#"SELECT mv.id, mv.name, mv.description, mv.version,
-                mv.download_link, mv.download_count,
+                mv.download_link, mv.managed_download_link, mv.download_count,
                 mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
                 mv.early_load, mv.requires_patching, mv.api,

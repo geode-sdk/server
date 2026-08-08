@@ -18,6 +18,7 @@ struct ModVersionRow {
     description: Option<String>,
     version: String,
     download_link: String,
+    managed_download_link: Option<String>,
     download_count: i32,
     hash: String,
     geode: String,
@@ -40,6 +41,7 @@ impl ModVersionRow {
             description: self.description,
             version: self.version,
             download_link: self.download_link,
+            managed_download_link: self.managed_download_link,
             hash: self.hash,
             geode: self.geode,
             early_load: self.early_load,
@@ -71,7 +73,7 @@ pub async fn get_by_version_str(
         ModVersionRow,
         r#"SELECT
             mv.id, mv.name, mv.description, mv.version,
-            mv.download_link, mv.download_count, mv.hash,
+            mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
             mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
@@ -83,11 +85,11 @@ pub async fn get_by_version_str(
         mod_id,
         version
     )
-        .fetch_optional(conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))
-        .map_err(|e| e.into())
-        .map(|opt| opt.map(|x| x.into_mod_version()))
+    .fetch_optional(conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+    .map(|opt| opt.map(|x| x.into_mod_version()))
 }
 
 #[tracing::instrument(skip_all, fields(mod_id = %mod_id, statuses = ?statuses))]
@@ -100,7 +102,7 @@ pub async fn get_for_mod(
         ModVersionRow,
         r#"SELECT
             mv.id, mv.name, mv.description, mv.version,
-            mv.download_link, mv.download_count, mv.hash,
+            mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
             mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
@@ -113,9 +115,9 @@ pub async fn get_for_mod(
         mod_id,
         statuses as Option<&[ModVersionStatusEnum]>
     )
-        .fetch_all(&mut *conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))?;
+    .fetch_all(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
 
     let version_ids: Vec<i32> = records.iter().map(|x| x.id).collect();
     let mut gd_versions = ModGDVersion::get_for_mod_versions(&version_ids, conn).await?;
@@ -227,6 +229,7 @@ pub async fn create_from_json(
         description: row.description,
         version: row.version,
         download_link: row.download_link,
+        managed_download_link: None,
         hash: row.hash,
         geode: geode.to_string(),
         download_count: 0.into(),
@@ -331,6 +334,7 @@ pub async fn update_pending_version(
         description: row.description,
         version: row.version,
         download_link: row.download_link,
+        managed_download_link: None,
         hash: row.hash,
         geode: geode.to_string(),
         download_count: row.download_count.into(),
@@ -385,4 +389,22 @@ pub async fn update_version_status(
     version.status = status;
 
     Ok(version)
+}
+
+#[tracing::instrument(skip_all, fields(id = %id, link = ?link))]
+pub async fn update_managed_download_link(
+    id: i32,
+    link: Option<&str>,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    sqlx::query!(
+        "UPDATE mod_versions SET managed_download_link = $1 WHERE id = $2",
+        link,
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
 }

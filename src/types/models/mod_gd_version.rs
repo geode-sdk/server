@@ -53,6 +53,29 @@ pub enum GDVersionEnum {
     GD22082,
 }
 
+impl GDVersionEnum {
+    /// GD versions that are currently actively supported
+    #[allow(unused)]
+    pub fn latest_supported() -> &'static [GDVersionEnum] {
+        &[
+            GDVersionEnum::All,
+            GDVersionEnum::GD22081,
+            GDVersionEnum::GD22082,
+        ]
+    }
+
+    /// GD versions for which we apply auto-migration to S3 storage
+    /// Generally should include versions that some users might still be using
+    pub fn supported_for_storage() -> &'static [GDVersionEnum] {
+        &[
+            GDVersionEnum::All,
+            GDVersionEnum::GD2206,
+            GDVersionEnum::GD22074,
+            GDVersionEnum::GD22081,
+        ]
+    }
+}
+
 impl FromStr for GDVersionEnum {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, ()> {
@@ -127,7 +150,7 @@ impl VerPlatform {
 
         for x in s.split(',') {
             let x = x.trim();
-            if x.len() == 0 {
+            if x.is_empty() {
                 continue;
             }
             let v = VerPlatform::from_str(x)
@@ -184,43 +207,43 @@ pub struct DetailedGDVersion {
 impl DetailedGDVersion {
     pub fn to_create_payload(&self, json: &ModJson) -> Vec<ModGDVersionCreate> {
         let mut ret: Vec<_> = vec![];
-        if self.android.is_some() {
+        if let Some(android) = self.android {
             if json.android32 {
                 ret.push(ModGDVersionCreate {
-                    gd: self.android.unwrap(),
+                    gd: android,
                     platform: VerPlatform::Android32,
                 });
             }
             if json.android64 {
                 ret.push(ModGDVersionCreate {
-                    gd: self.android.unwrap(),
+                    gd: android,
                     platform: VerPlatform::Android64,
                 })
             }
         }
-        if self.win.is_some() && json.windows {
+        if let Some(win) = self.win && json.windows {
             ret.push(ModGDVersionCreate {
-                gd: self.win.unwrap(),
+                gd: win,
                 platform: VerPlatform::Win,
             });
         }
-        if self.mac.is_some() {
+        if let Some(mac) = self.mac {
             if json.mac_arm {
                 ret.push(ModGDVersionCreate {
-                    gd: self.mac.unwrap(),
+                    gd: mac,
                     platform: VerPlatform::MacArm,
                 })
             }
             if json.mac_intel {
                 ret.push(ModGDVersionCreate {
-                    gd: self.mac.unwrap(),
+                    gd: mac,
                     platform: VerPlatform::MacIntel,
                 })
             }
         }
-        if self.ios.is_some() && json.ios {
+        if let Some(ios) = self.ios && json.ios {
             ret.push(ModGDVersionCreate {
-                gd: self.ios.unwrap(),
+                gd: ios,
                 platform: VerPlatform::Ios,
             });
         }

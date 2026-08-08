@@ -6,72 +6,156 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "version",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "download_link",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_link"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "download_count",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_count"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "hash"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "early_load",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "early_load"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "requires_patching",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "requires_patching"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "api",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "api"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "status_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "status_id"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "description",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "description"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "mod_id",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "mod_id"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "updated_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

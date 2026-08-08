@@ -1,0 +1,324 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured, m.download_count as mod_download_count, m.created_at, m.updated_at,\n                mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.managed_download_link,\n                mv.download_count as mod_version_download_count, mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at, mv.hash,\n                format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as \"geode!: _\",\n                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as \"status: _\", mvs.info\n            FROM mods m\n            INNER JOIN mod_versions mv ON m.id = mv.mod_id\n            INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n            WHERE m.id = $1\n            AND ($2 = false OR mvs.status = 'accepted')\n            ORDER BY mv.id DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "repository",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "repository"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "about",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "about"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "changelog",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "changelog"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "featured",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "featured"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "mod_download_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "download_count"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "version_id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "managed_download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "managed_download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "mod_version_download_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "download_count"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "mod_version_created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "mod_version_updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "geode!: _",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 19,
+        "name": "early_load",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "early_load"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "requires_patching",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "requires_patching"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "api",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "api"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "mod_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "mod_id"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_version_status",
+            "kind": {
+              "Enum": [
+                "pending",
+                "rejected",
+                "accepted",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "info",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_version_statuses",
+            "name": "info"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      null,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "2894a3bf8b4f43496a3a1532ba1e630726cf78d354b586094b1ee8c16a6fe9ee"
+}

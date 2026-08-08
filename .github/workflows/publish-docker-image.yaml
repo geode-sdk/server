@@ -104,8 +104,12 @@ jobs:
           # Push to a digest-only ref (no tag) so the merge job can assemble
           # the final multi-arch manifest cleanly
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.suffix }}-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}-${{ matrix.arch }}
+          cache-from: |
+            type=gha,scope=toolchain
+            type=gha,scope=${{ matrix.suffix }}-${{ matrix.arch }}
+          cache-to: |
+            type=gha,mode=max,scope=toolchain
+            type=gha,mode=max,scope=${{ matrix.suffix }}-${{ matrix.arch }}
 
       - name: Export digest
         run: |

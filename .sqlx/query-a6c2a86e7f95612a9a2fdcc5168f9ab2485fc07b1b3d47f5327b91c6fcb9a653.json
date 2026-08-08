@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_gd_versions",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "mod_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_gd_versions",
+            "name": "mod_id"
+          }
+        }
       },
       {
         "ordinal": 2,
@@ -38,6 +50,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_gd_versions",
+            "name": "gd"
+          }
         }
       },
       {
@@ -56,6 +74,12 @@
                 "win"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_gd_versions",
+            "name": "platform"
           }
         }
       }

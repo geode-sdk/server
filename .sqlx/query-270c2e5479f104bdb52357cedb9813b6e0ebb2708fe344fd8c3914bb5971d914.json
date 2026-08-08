@@ -1,0 +1,93 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT mv.id, mv.version, mv.managed_download_link, mv.mod_id FROM mod_versions mv\n        WHERE managed_download_link IS NOT NULL\n            AND mv.id NOT IN (\n                SELECT DISTINCT ON (q.mv_id) q.mv_id FROM (\n                    SELECT DISTINCT ON (m.id, mgv.gd, mv.geode_major) m.id, mv.name, mv.version, mv.download_link, mv.managed_download_link, mv.id as mv_id, mgv.gd\n                    FROM MODS m\n                    INNER JOIN mod_versions mv ON m.id = mv.mod_id\n                    INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id\n                    INNER JOIN mod_gd_versions mgv ON mgv.mod_id = mv.id\n                    WHERE mvs.status = 'accepted' AND mgv.gd = ANY($1::gd_version[])\n                    ORDER BY m.id, mgv.gd DESC, mv.geode_major DESC, mv.id DESC\n                ) q\n                ORDER BY q.mv_id\n            )\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "managed_download_link",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "managed_download_link"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "mod_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mod_versions",
+            "name": "mod_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "gd_version[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "gd_version",
+                  "kind": {
+                    "Enum": [
+                      "*",
+                      "2.113",
+                      "2.200",
+                      "2.204",
+                      "2.205",
+                      "2.206",
+                      "2.207",
+                      "2.2071",
+                      "2.2072",
+                      "2.2073",
+                      "2.2074",
+                      "2.208",
+                      "2.2081",
+                      "2.2082"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "270c2e5479f104bdb52357cedb9813b6e0ebb2708fe344fd8c3914bb5971d914"
+}

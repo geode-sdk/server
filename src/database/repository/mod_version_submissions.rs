@@ -441,9 +441,9 @@ pub async fn insert_comment_audit(
         details,
         performed_by
     )
-        .execute(conn)
-        .await
-        .inspect_err(|e| tracing::error!("{:?}", e))
-        .map(|_| ())
-        .map_err(|e| e.into())
+    .execute(conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map(|_| ())
+    .map_err(|e| e.into())
 }

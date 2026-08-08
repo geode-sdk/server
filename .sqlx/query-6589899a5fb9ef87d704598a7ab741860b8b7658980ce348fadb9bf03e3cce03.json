@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "mod_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "incompatibilities",
+            "name": "mod_id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "incompatibility_id",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "incompatibilities",
+            "name": "incompatibility_id"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "version",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "incompatibilities",
+            "name": "version"
+          }
+        }
       },
       {
         "ordinal": 3,
@@ -34,6 +52,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "incompatibilities",
+            "name": "compare"
+          }
         }
       },
       {
@@ -50,6 +74,12 @@
                 "superseded"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "incompatibilities",
+            "name": "importance"
           }
         }
       }

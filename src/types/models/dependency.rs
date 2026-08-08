@@ -27,6 +27,7 @@ pub struct ResponseDependency {
 
 #[derive(sqlx::FromRow, Clone, Debug)]
 pub struct FetchedDependency {
+    #[allow(dead_code)]
     pub mod_version_id: i32,
     pub version: String,
     pub dependency_id: String,
@@ -183,7 +184,8 @@ impl Dependency {
             ) as q
             WHERE q.rn = 1
             "#,
-        ).bind(ids)
+        )
+        .bind(ids)
         .bind(gd)
         .bind(platform)
         .bind(geode.map(|x| i32::try_from(x.major).unwrap_or_default()))

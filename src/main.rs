@@ -13,6 +13,7 @@ mod auth;
 mod cli;
 mod config;
 mod database;
+mod dns;
 mod endpoints;
 mod events;
 mod extractors;
@@ -20,6 +21,7 @@ mod jobs;
 mod logging;
 mod mod_zip;
 mod openapi;
+mod s3_worker;
 mod storage;
 mod types;
 mod urlsign;
@@ -38,6 +40,9 @@ async fn main() -> anyhow::Result<()> {
     let app_data = config::build_config().await?;
     app_data.static_storage().init().await?;
     app_data.private_storage().init().await?;
+    if let Some(mod_storage) = app_data.mod_storage() {
+        mod_storage.init().await?;
+    }
 
     if cli::maybe_cli(&app_data).await? {
         return Ok(());
@@ -53,12 +58,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Running in debug mode, skipping migrations");
     }
 
+    let data = web::Data::new(app_data.clone());
+    tokio::spawn(s3_worker::run_s3_worker(data.clone()));
+
     tracing::info!("Starting server on 0.0.0.0:{}", port);
     let server = HttpServer::new(move || {
         let openapi = ApiDoc::openapi();
 
         let app = App::new()
-            .app_data(web::Data::new(app_data.clone()))
+            .app_data(data.clone())
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .service(
                 SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()),
@@ -73,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .wrap(tracing_actix_web::TracingLogger::default());
 
-        #[cfg(feature = "dev-tools")]
+        #[cfg(feature = "serve-static")]
         let app = app
             .service(actix_files::Files::new("/static", "static"))
             .service(actix_files::Files::new("/storage", "storage/public"));

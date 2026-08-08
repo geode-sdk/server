@@ -5,6 +5,7 @@ pub fn serialize<S: Serializer>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Er
     s.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
+#[allow(dead_code)]
 pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<DateTime<Utc>, D::Error> {
     let s = String::deserialize(d)?;
     s.parse::<DateTime<Utc>>().map_err(serde::de::Error::custom)
@@ -21,6 +22,7 @@ pub mod option {
         }
     }
 
+    #[allow(dead_code)]
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DateTime<Utc>>, D::Error> {
         let s: Option<String> = Option::deserialize(d)?;
         s.map(|s| s.parse::<DateTime<Utc>>().map_err(serde::de::Error::custom))

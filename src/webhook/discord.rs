@@ -20,6 +20,7 @@ impl DiscordMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn content(self, content: &str) -> Self {
         DiscordMessage {
             embeds: self.embeds,
@@ -65,7 +66,7 @@ impl DiscordMessage {
         }
     }
 
-    pub fn send(&self, url: &str) {
+    pub fn send(&self, http_client: &reqwest::Client, url: &str) {
         if url.is_empty() {
             tracing::error!("Not sending webhook since URL is empty");
             return;
@@ -75,8 +76,9 @@ impl DiscordMessage {
         let url = String::from(url);
         let copy = self.clone();
 
+        let client = http_client.clone();
         tokio::spawn(async move {
-            if let Err(e) = reqwest::Client::new().post(&url).json(&copy).send().await {
+            if let Err(e) = client.post(&url).json(&copy).send().await {
                 tracing::error!("Failed to broadcast Discord webhook {}: {}", url, e);
             }
         });

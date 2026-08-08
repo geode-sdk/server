@@ -6,6 +6,7 @@ use image::codecs::png::PngDecoder;
 use image::codecs::png::PngEncoder;
 use image::{DynamicImage, GenericImageView};
 use image::{ImageEncoder, ImageError};
+use url::Url;
 use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
@@ -22,6 +23,8 @@ pub enum ModZipError {
     SerdeJsonError(#[from] serde_json::Error),
     #[error("Invalid mod logo: {0}")]
     InvalidLogo(String),
+    #[error("Download link is invalid")]
+    InvalidModFileUrl,
     #[error(".geode file hash mismatch: {0} doesn't match {1}")]
     ModFileHashMismatch(String, String),
     #[error("Failed to fetch .geode file: {0}")]
@@ -36,7 +39,7 @@ pub enum ModZipError {
     InvalidBinaries(String),
 }
 
-pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, ModZipError> {
+pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZipError> {
     const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
     if file.size() > FIVE_MEGABYTES {
         return Err(ModZipError::InvalidLogo(
@@ -50,9 +53,14 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let mut img = PngDecoder::new(&mut reader)
-        .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
+    let mut img = PngDecoder::with_limits(&mut reader, {
+        let mut l = image::Limits::default();
+        l.max_image_width = Some(2048);
+        l.max_image_height = Some(2048);
+        l
+    })
+    .and_then(DynamicImage::from_decoder)
+    .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -89,7 +97,7 @@ pub fn extract_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<Vec<u8>, Mo
     Ok(bytes)
 }
 
-pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZipError> {
+pub fn validate_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<(), ModZipError> {
     const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
     if file.size() > FIVE_MEGABYTES {
         return Err(ModZipError::InvalidLogo(
@@ -103,9 +111,14 @@ pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZip
 
     let mut reader = BufReader::new(Cursor::new(logo));
 
-    let img = PngDecoder::new(&mut reader)
-        .and_then(DynamicImage::from_decoder)
-        .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
+    let img = PngDecoder::with_limits(&mut reader, {
+        let mut l = image::Limits::default();
+        l.max_image_width = Some(1024);
+        l.max_image_height = Some(1024);
+        l
+    })
+    .and_then(DynamicImage::from_decoder)
+    .inspect_err(|e| tracing::error!("Failed to create PngDecoder: {}", e))?;
 
     let dimensions = img.dimensions();
 
@@ -119,16 +132,21 @@ pub fn validate_mod_logo(file: &mut ZipFile<Cursor<Bytes>>) -> Result<(), ModZip
     }
 }
 
-pub async fn download_mod(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
-    download(url, limit_mb).await
+pub async fn download_mod(
+    http_client: &reqwest::Client,
+    url: &str,
+    limit_mb: u32,
+) -> Result<Bytes, ModZipError> {
+    download(http_client, url, limit_mb).await
 }
 
 pub async fn download_mod_hash_comp(
+    http_client: &reqwest::Client,
     url: &str,
     hash: &str,
     limit_mb: u32,
 ) -> Result<Bytes, ModZipError> {
-    let bytes = download(url, limit_mb).await?;
+    let bytes = download(http_client, url, limit_mb).await?;
 
     let slice: &[u8] = &bytes;
 
@@ -140,15 +158,30 @@ pub async fn download_mod_hash_comp(
     Ok(bytes)
 }
 
-pub fn bytes_to_ziparchive(bytes: Bytes) -> Result<ZipArchive<Cursor<Bytes>>, ModZipError> {
+pub fn bytes_to_ziparchive(bytes: &[u8]) -> Result<ZipArchive<Cursor<&[u8]>>, ModZipError> {
     ZipArchive::new(Cursor::new(bytes))
         .inspect_err(|e| tracing::error!("Failed to create ZipArchive: {}", e))
         .map_err(|e| e.into())
 }
 
-async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
+async fn download(
+    http_client: &reqwest::Client,
+    url: &str,
+    limit_mb: u32,
+) -> Result<Bytes, ModZipError> {
+    let url = Url::parse(url).map_err(|_| ModZipError::InvalidModFileUrl)?;
+
+    if !allowed_scheme(&url) {
+        return Err(ModZipError::InvalidModFileUrl);
+    }
+
+    tracing::debug!("fetching mod from {url}");
+
     let limit_bytes: u64 = limit_mb as u64 * 1_000_000;
-    let mut response = reqwest::get(url)
+
+    let mut response = http_client
+        .get(url)
+        .send()
         .await
         .inspect_err(|e| tracing::error!("Failed to fetch .geode file: {e}"))?
         .error_for_status()
@@ -166,6 +199,7 @@ async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
     let mut data: Vec<u8> = Vec::with_capacity(content_length as usize);
 
     let mut streamed: u64 = 0;
+
     while let Some(chunk) = response.chunk().await? {
         streamed += chunk.len() as u64;
 
@@ -178,4 +212,8 @@ async fn download(url: &str, limit_mb: u32) -> Result<Bytes, ModZipError> {
     }
 
     Ok(Bytes::from(data))
+}
+
+fn allowed_scheme(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
 }

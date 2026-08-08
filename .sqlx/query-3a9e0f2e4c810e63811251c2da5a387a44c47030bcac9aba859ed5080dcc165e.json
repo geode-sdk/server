@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "mod_version_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_version_submissions",
+            "name": "mod_version_id"
+          }
+        }
       },
       {
         "ordinal": 1,
@@ -22,22 +28,46 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "mod_version_submissions",
+            "name": "lock"
+          }
         }
       },
       {
         "ordinal": 2,
         "name": "locked_by",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mod_version_submissions",
+            "name": "locked_by"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_version_submissions",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "updated_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mod_version_submissions",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

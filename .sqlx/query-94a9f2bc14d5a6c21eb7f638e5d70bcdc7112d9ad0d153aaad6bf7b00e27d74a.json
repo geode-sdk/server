@@ -28,6 +28,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "mac"
+          }
         }
       },
       {
@@ -54,6 +60,12 @@
                 "2.2082"
               ]
             }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "win"
           }
         }
       },
@@ -82,6 +94,12 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "android"
+          }
         }
       },
       {
@@ -109,27 +127,57 @@
               ]
             }
           }
+        },
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "ios"
+          }
         }
       },
       {
         "ordinal": 4,
         "name": "tag",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "tag"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "commit_hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "commit_hash"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "prerelease",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "geode_versions",
+            "name": "prerelease"
+          }
+        }
       }
     ],
     "parameters": {

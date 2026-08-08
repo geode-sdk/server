@@ -49,9 +49,11 @@ You can stop and start your container using `docker stop geode-db`, and `docker 
 ## 2. Environment file
 
 Once you have your database setup, we can start configuring the **environment file** of the index. Open a terminal inside your index directory, and run
+
 ```bash
 cp .env.example .env
 ```
+
 to create your env file from the given template. Then open the env file with your editor of choice.
 
 The first thing that is recommended is setting `APP_DEBUG` to `1` if you are running the index for development. At the moment, all this does is run the index on one thread only, for easier step debugging.
@@ -70,6 +72,7 @@ Third, we need to setup a local GitHub OAuth app. Since the index doesn't store 
 ## 4. Logging
 
 Logging is configured via environment variables. See the `.env.example` file for the available options:
+
 - `RUST_LOG`: Controls log verbosity (e.g., "info", "debug", "info,sqlx=warn", "geode_index=debug"). Defaults to "info,sqlx=warn,tracing_actix_web::middleware=error" when unset.
 - `LOG_FORMAT`: Output format - "text" (default, human-readable) or "json" (structured, for log aggregation).
 
@@ -82,3 +85,13 @@ At the moment, there is no easy way to make yourself an admin, other than editin
 ```sql
 UPDATE developers SET admin = true WHERE username = 'YOUR_USERNAME';
 ```
+
+## 6. Serving static files locally (optional)
+
+In an actual deployment, files under `/static` and `/storage/public` are expected to be served by a reverse proxy (see the [README](../README.md) for details), not by the index itself. For local development, you can instead have the index serve them directly by enabling the `serve-static` Cargo feature:
+
+```bash
+cargo run --features serve-static
+```
+
+This mounts `/static` and `/storage` so you don't need to set up a separate static file server while developing.
