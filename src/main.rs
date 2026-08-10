@@ -1,5 +1,5 @@
+use crate::openapi::ApiDoc;
 use crate::types::api;
-use crate::{middleware::signed::SignedUrl, openapi::ApiDoc};
 use actix_cors::Cors;
 use actix_web::{
     App, HttpServer,
@@ -14,6 +14,7 @@ mod cli;
 mod config;
 mod database;
 mod dns;
+mod email;
 mod endpoints;
 mod events;
 mod extractors;

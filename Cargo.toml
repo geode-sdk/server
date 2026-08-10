@@ -13,15 +13,24 @@ actix-multipart = "0.8"
 actix-web = "4.10"
 ammonia = "4"
 anyhow = "1.0"
+argon2 = "0.5.3"
 bytes = "1.11"
 chrono = { version = "0.4", features = ["default", "serde"] }
 clap = { version = "4.5", features = ["derive"] }
 constant_time_eq = "0.5.0"
 dotenvy = "0.15"
 futures = "0.3"
-image = { version = "0.25", features = ["png", "jpeg", "webp"] }
 hex = "0.4.3"
 http = "0.2" # 0.2 is required for actix-web compat in middleware
+image = { version = "0.25", features = ["png", "jpeg", "webp"] }
+lettre = { version = "0.11.23", default-features = false, features = [
+    "builder",
+    "hostname",
+    "smtp-transport",
+    "pool",
+    "tokio1-rustls",
+    "ring",
+] }
 moka = { version = "0.12.13", features = ["future"] }
 regex = "1.10"
 reqwest = { version = "0.13", default-features = false, features = [

@@ -1,4 +1,6 @@
 use std::{
+    path::PathBuf,
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -8,6 +10,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     dns::ValidateDnsResolver,
+    email::{SmtpConfig, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer},
     endpoints::mods::IndexQueryParams,
     s3_worker::S3WorkerTask,
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
@@ -37,6 +40,8 @@ pub struct AppData {
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
     check_dns_http_client: reqwest::Client,
+    mailer: Option<Mailer>,
+    email_blocklist: Option<Blocklist>,
 
     s3_sender: OnceLock<Sender<S3WorkerTask>>,
 }
@@ -94,6 +99,17 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .timeout(Duration::from_secs(30))
         .build()?;
 
+    let smtp_config = SmtpConfig::from_env()?;
+
+    let blocklist = if smtp_config.is_some() {
+        let env_var = dotenvy::var("EMAIL_BLOCKLIST_PATH").unwrap_or("./blocklist.conf".into());
+        let path = PathBuf::from_str(&env_var).ok();
+
+        path.map(|path| Blocklist::load(path))
+    } else {
+        None
+    };
+
     Ok(AppData {
         db: pool,
         app_url: app_url.clone(),
@@ -125,6 +141,8 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             .read_timeout(Duration::from_secs(30))
             .build()?,
         check_dns_http_client,
+        mailer: smtp_config.map(|config| Mailer::new(Arc::new(LettreBackend::new(&config)?))),
+        email_blocklist: blocklist,
         s3_sender: OnceLock::new(),
     })
 }
@@ -202,6 +220,10 @@ impl AppData {
 
     pub fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub fn mailer(&self) -> Option<&Mailer> {
+        self.mailer.as_ref()
     }
 
     /// Client that validates passed host, denies all private resolved IP addresses.
