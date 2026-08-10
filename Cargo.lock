@@ -1616,6 +1616,7 @@ dependencies = [
  "lettre",
  "mimalloc",
  "moka",
+ "parking_lot",
  "regex",
  "reqwest 0.13.4",
  "rust-s3",

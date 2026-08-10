@@ -2,8 +2,10 @@ use std::{
     collections::HashSet,
     fs::File,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
+
+use parking_lot::RwLock;
 
 use crate::email::EmailAddress;
 
@@ -62,10 +64,7 @@ impl Blocklist {
     }
 
     pub fn is_blocked(&self, domain: &str) -> bool {
-        self.entries
-            .read()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .contains(domain)
+        self.entries.read().contains(domain)
     }
 
     pub fn refresh(&self) {
@@ -74,11 +73,7 @@ impl Blocklist {
         });
 
         if let Ok(entries) = entries {
-            let mut guard = self
-                .entries
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-
+            let mut guard = self.entries.write();
             *guard = entries;
         }
     }
