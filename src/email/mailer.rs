@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use crate::email::blocklist::CheckedRecipient;
+use crate::email::blocklist::ApprovedEmailAddress;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -20,7 +20,7 @@ pub enum EmailBody {
 }
 
 pub struct OutgoingEmail {
-    pub to: CheckedRecipient,
+    pub to: ApprovedEmailAddress,
     pub subject: String,
     pub body: EmailBody,
 }

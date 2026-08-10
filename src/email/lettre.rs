@@ -1,11 +1,12 @@
 use lettre::{
-    AsyncSmtpTransport, Message, Tokio1Executor,
+    Address, AsyncSmtpTransport, Message, Tokio1Executor,
+    address::AddressError,
     message::{Mailbox, MultiPart, SinglePart, header::ContentType},
     transport::smtp::authentication::Credentials,
 };
 
 use crate::email::{
-    SmtpConfig,
+    EmailAddress, SmtpConfig,
     mailer::{BoxFuture, EmailBody, MailerBackend, MailerError, OutgoingEmail},
 };
 
@@ -34,12 +35,12 @@ impl LettreBackend {
 impl MailerBackend for LettreBackend {
     fn send<'a>(&'a self, email: &'a OutgoingEmail) -> BoxFuture<'a, ()> {
         Box::pin(async move {
+            let address = Address::try_from(email.to.email().clone())
+                .map_err(|e| MailerError::InvalidMessage(e.to_string()))?;
+
             let builder = Message::builder()
                 .from(self.from.clone())
-                .to(email
-                    .to
-                    .parse()
-                    .map_err(|_| MailerError::InvalidMessage("invalid recipient address".into()))?)
+                .to(Mailbox::new(None, address))
                 .subject(&email.subject);
 
             let message = match &email.body {
@@ -63,5 +64,13 @@ impl MailerBackend for LettreBackend {
 
             Ok(())
         })
+    }
+}
+
+impl TryFrom<EmailAddress> for Address {
+    type Error = AddressError;
+
+    fn try_from(value: EmailAddress) -> Result<Self, Self::Error> {
+        Address::new(value.local_part(), value.domain())
     }
 }

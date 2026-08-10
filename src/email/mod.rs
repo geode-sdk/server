@@ -13,6 +13,7 @@ pub enum EmailAddressParseError {
     InvalidEmail,
 }
 
+#[derive(Clone, Debug)]
 pub struct EmailAddress {
     local_part: String,
     domain: String,
@@ -66,6 +67,15 @@ impl FromStr for EmailAddress {
             local_part: local_part.into(),
             domain: domain.into(),
         })
+    }
+}
+
+impl EmailAddress {
+    pub fn local_part(&self) -> &str {
+        &self.local_part
+    }
+    pub fn domain(&self) -> &str {
+        &self.domain
     }
 }
 

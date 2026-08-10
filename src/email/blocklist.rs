@@ -15,21 +15,30 @@ pub enum BlocklistError {
     BlockedDomain,
 }
 
-pub struct CheckedRecipient(EmailAddress);
+/// This struct just holds an address that has been checked
+/// with the blocklist.
+#[derive(Clone, Debug)]
+pub struct ApprovedEmailAddress(EmailAddress);
 
-pub fn validate_against_blocklist(
-    email: EmailAddress,
-    blocklist: Option<Blocklist>,
-) -> Result<CheckedRecipient, BlocklistError> {
-    match blocklist {
-        Some(blocklist) => {
-            if blocklist.is_blocked(&email.domain) {
-                Err(BlocklistError::BlockedDomain)
-            } else {
-                Ok(CheckedRecipient(email))
+impl ApprovedEmailAddress {
+    pub fn parse(
+        email: EmailAddress,
+        blocklist: Option<Blocklist>,
+    ) -> Result<Self, BlocklistError> {
+        match blocklist {
+            Some(blocklist) => {
+                if blocklist.is_blocked(&email.domain) {
+                    Err(BlocklistError::BlockedDomain)
+                } else {
+                    Ok(Self(email))
+                }
             }
+            None => Ok(Self(email)),
         }
-        None => Ok(CheckedRecipient(email)),
+    }
+
+    pub fn email(&self) -> &EmailAddress {
+        &self.0
     }
 }
 
