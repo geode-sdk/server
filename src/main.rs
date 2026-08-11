@@ -38,8 +38,8 @@ async fn main() -> anyhow::Result<()> {
     let app_data = config::build_config().await?;
     app_data.static_storage().init().await?;
     app_data.private_storage().init().await?;
-    if let Some(mod_storage) = app_data.mod_storage() {
-        mod_storage.init().await?;
+    if let Some(cdn_storage) = app_data.cdn_storage() {
+        cdn_storage.init().await?;
     }
 
     if cli::maybe_cli(&app_data).await? {

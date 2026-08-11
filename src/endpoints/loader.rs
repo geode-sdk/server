@@ -6,6 +6,7 @@ use utoipa::{IntoParams, ToSchema};
 use sqlx::Acquire;
 
 use crate::endpoints::ApiError;
+use crate::s3_worker::S3WorkerTask;
 use crate::{
     config::AppData,
     extractors::auth::Auth,
@@ -122,10 +123,12 @@ pub async fn create_version(
         return Err(ApiError::Authorization);
     }
 
+    let tag = payload.tag.trim_start_matches('v').to_string();
+
     let mut tx = pool.begin().await?;
     LoaderVersion::create_version(
         LoaderVersionCreate {
-            tag: payload.tag.trim_start_matches('v').to_string(),
+            tag: tag.clone(),
             prerelease: payload.prerelease,
             commit_hash: payload.commit_hash.clone(),
             win: payload.gd.win,
@@ -138,6 +141,8 @@ pub async fn create_version(
     .await?;
 
     tx.commit().await?;
+
+    data.send_s3_task(S3WorkerTask::UploadLoader { tag });
 
     Ok(HttpResponse::NoContent())
 }
