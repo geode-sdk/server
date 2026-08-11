@@ -63,6 +63,7 @@ impl Tag {
     pub async fn parse_tags(tags: &str, pool: &mut PgConnection) -> Result<Vec<i32>, ApiError> {
         let tags = tags
             .split(',')
+            .take(50)
             .map(|t| t.trim().to_lowercase())
             .collect::<Vec<String>>();
 

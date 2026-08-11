@@ -175,7 +175,7 @@ pub async fn get_many(
             platform: query.platform,
             prerelease: query.prerelease.unwrap_or_default(),
         },
-        query.per_page.unwrap_or(10),
+        query.per_page.unwrap_or(10).min(50),
         query.page.unwrap_or(1),
         &mut pool,
     )

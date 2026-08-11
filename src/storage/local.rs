@@ -11,6 +11,17 @@ impl LocalBackend {
             base_path: base_path.into(),
         }
     }
+
+    fn safe_join(&self, suffix: &str) -> Result<PathBuf, StorageError> {
+        let path = self.base_path.join(suffix);
+        if path.starts_with(&self.base_path) {
+            Ok(path)
+        } else {
+            Err(StorageError::Other(
+                "Attempted accessing a path outside storage directory".to_owned(),
+            ))
+        }
+    }
 }
 
 impl StorageBackend for LocalBackend {
@@ -20,7 +31,7 @@ impl StorageBackend for LocalBackend {
         data: &'a [u8],
     ) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
-            let path = self.base_path.join(relative_path);
+            let path = self.safe_join(relative_path)?;
             if let Some(parent) = path.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
@@ -31,7 +42,7 @@ impl StorageBackend for LocalBackend {
 
     fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>> {
         Box::pin(async move {
-            let path = self.base_path.join(path);
+            let path = self.safe_join(path)?;
             match tokio::fs::read(path).await {
                 Ok(data) => Ok(data),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
@@ -43,14 +54,14 @@ impl StorageBackend for LocalBackend {
 
     fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>> {
         Box::pin(async move {
-            let path = self.base_path.join(path);
+            let path = self.safe_join(path)?;
             Ok(tokio::fs::metadata(path).await.is_ok())
         })
     }
 
     fn delete<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
-            let path = self.base_path.join(path);
+            let path = self.safe_join(path)?;
             match tokio::fs::remove_file(path).await {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),

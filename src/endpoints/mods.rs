@@ -30,6 +30,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
+
+const MAX_UPDATE_BATCH_SIZE: usize = 200;
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -63,8 +66,9 @@ pub struct IndexQueryParams {
     pub status: Option<ModVersionStatusEnum>,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
+    #[validate(length(max = 1024))]
     download_link: String,
 }
 
@@ -215,8 +219,9 @@ pub async fn create(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    payload.validate()?;
+
     let dev = auth.developer()?;
-    let mut pool = data.db().acquire().await?;
     let bytes = mod_zip::download_mod(
         data.check_dns_http_client(),
         &payload.download_link,
@@ -226,6 +231,7 @@ pub async fn create(
     let json = ModJson::from_zip(&bytes, &payload.download_link, false)?;
     json.validate()?;
 
+    let mut pool = data.db().acquire().await?;
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
@@ -364,6 +370,7 @@ pub async fn get_mod_updates(
     let ids = query
         .ids
         .split(';')
+        .take(MAX_UPDATE_BATCH_SIZE)
         .map(String::from)
         .collect::<Vec<String>>();
 
