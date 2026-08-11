@@ -3,6 +3,7 @@ use std::time::Duration;
 use actix_web::web;
 use bytes::Bytes;
 use reqwest::StatusCode;
+use sqlx::PgConnection;
 
 use crate::{
     config::AppData,
@@ -115,9 +116,9 @@ async fn upload_mod_logo(
     data: &AppData,
     mod_id: &str,
     current_logo: Option<Vec<u8>>,
+    db: &mut PgConnection,
 ) -> anyhow::Result<()> {
     let storage = data.cdn_storage().expect("mod storage must be set by now");
-    let mut db = data.db().acquire().await?;
 
     let logo_path = path_for_mod_logo(mod_id);
     let logo_public_url = storage.asset_url(&logo_path);
@@ -133,7 +134,7 @@ async fn upload_mod_logo(
     if let Some(logo_bytes) = current_logo {
         storage.store(&logo_path, &logo_bytes).await?;
 
-        update_mod_logo_url(mod_id, &logo_public_url, &mut db).await?;
+        update_mod_logo_url(mod_id, &logo_public_url, db).await?;
 
         tracing::info!("Uploaded logo for {} to S3 at {}", mod_id, logo_public_url);
     }
@@ -165,7 +166,7 @@ async fn process_task(
 
             // upload logo if not migrating mods
             if !is_migration {
-                upload_mod_logo(data, &mod_id, None).await?;
+                upload_mod_logo(data, &mod_id, None, &mut db).await?;
             }
 
             tracing::info!(
@@ -214,8 +215,6 @@ async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     let supported_gd = GDVersionEnum::supported_for_storage();
     let storage = data.cdn_storage().expect("mod storage must be set by now");
 
-    let mut db = data.db().acquire().await?;
-
     let versions = sqlx::query!(
         "SELECT mv.id, mv.version, mv.managed_download_link, mv.mod_id FROM mod_versions mv
         WHERE managed_download_link IS NOT NULL
@@ -234,7 +233,7 @@ async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
         ",
         supported_gd as &[GDVersionEnum]
     )
-    .fetch_all(&mut *db)
+    .fetch_all(&mut *data.db().acquire().await?)
     .await?;
 
     tracing::info!("Cleaning up {} old S3 files", versions.len());
@@ -291,8 +290,6 @@ async fn migrate_one(
 async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     let supported_gd = GDVersionEnum::supported_for_storage();
 
-    let mut db = data.db().acquire().await?;
-
     // gets the latest approved version of each mod for each supported GD version
     let versions = sqlx::query!(
         "SELECT final_q.id, final_q.version, final_q.download_link, final_q.mv_id FROM (
@@ -310,7 +307,7 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
         ) final_q",
         supported_gd as &[GDVersionEnum]
     )
-    .fetch_all(&mut *db)
+    .fetch_all(&mut *data.db().acquire().await?)
     .await?;
 
     tracing::info!("Migrating {} existing mods to S3", versions.len());
@@ -334,6 +331,7 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     }
 
     // independently migrate mod logos
+    let mut db = data.db().acquire().await?;
     let mods = sqlx::query!(
         "SELECT id, image FROM mods WHERE image IS NOT NULL AND length(image) > 0 AND image_url IS NULL"
     )
@@ -343,7 +341,7 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     tracing::info!("Migrating {} existing mod logos to S3", mods.len());
 
     for record in mods {
-        if let Err(e) = upload_mod_logo(data, &record.id, record.image).await {
+        if let Err(e) = upload_mod_logo(data, &record.id, record.image, &mut db).await {
             tracing::error!("error migrating mod logo for {} to S3: {e:?}", record.id);
         }
     }
@@ -352,14 +350,12 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
 }
 
 async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
-    let mut db = data.db().acquire().await?;
-
     let versions: Vec<String> = sqlx::query_scalar(
         "SELECT gv.tag FROM geode_versions gv WHERE NOT EXISTS (
             SELECT 1 FROM geode_version_download gvd WHERE gvd.tag = gv.tag
         )",
     )
-    .fetch_all(&mut *db)
+    .fetch_all(&mut *data.db().acquire().await?)
     .await
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
