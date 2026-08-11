@@ -2,9 +2,12 @@ use std::time::Duration;
 
 use actix_web::web;
 use bytes::Bytes;
+use sqlx::Connection;
 
 use crate::{
-    config::AppData, database::repository::mod_versions::update_managed_download_link, mod_zip,
+    config::AppData,
+    database::repository::{mod_versions::update_managed_download_link, mods::update_mod_logo_url},
+    mod_zip,
     types::models::mod_gd_version::GDVersionEnum,
 };
 
@@ -21,8 +24,47 @@ fn path_for_mod(mod_id: &str, version: &str) -> String {
     format!("mods/{mod_id}/{version}/{mod_id}.geode")
 }
 
-async fn process_task(data: &AppData, task: S3WorkerTask) -> anyhow::Result<()> {
+fn path_for_mod_logo(mod_id: &str) -> String {
+    format!("mods/{mod_id}/logo.png")
+}
+
+async fn upload_mod_logo(
+    data: &AppData,
+    mod_id: &str,
+    current_logo: Option<Vec<u8>>,
+) -> anyhow::Result<()> {
     let storage = data.mod_storage().expect("mod storage must be set by now");
+    let mut db = data.db().acquire().await?;
+
+    let logo_path = path_for_mod_logo(mod_id);
+    let logo_public_url = storage.asset_url(&logo_path);
+
+    let current_logo = match current_logo {
+        Some(logo) => Some(logo),
+        _ => sqlx::query!("SELECT image FROM mods WHERE id = $1", mod_id)
+            .fetch_optional(&mut *db)
+            .await?
+            .and_then(|r| r.image),
+    };
+
+    if let Some(logo_bytes) = current_logo {
+        storage.store(&logo_path, &logo_bytes).await?;
+
+        update_mod_logo_url(mod_id, &logo_public_url, &mut db).await?;
+
+        tracing::info!("Uploaded logo for {} to S3 at {}", mod_id, logo_public_url);
+    }
+
+    Ok(())
+}
+
+async fn process_task(
+    data: &AppData,
+    task: S3WorkerTask,
+    is_migration: bool,
+) -> anyhow::Result<()> {
+    let storage = data.mod_storage().expect("mod storage must be set by now");
+    let mut db = data.db().acquire().await?;
 
     match task {
         S3WorkerTask::UploadMod {
@@ -36,9 +78,12 @@ async fn process_task(data: &AppData, task: S3WorkerTask) -> anyhow::Result<()> 
 
             storage.store(&path, &bytes).await?;
 
-            let mut tx = data.db().begin().await?;
-            update_managed_download_link(version_id, Some(&public_url), &mut tx).await?;
-            tx.commit().await?;
+            update_managed_download_link(version_id, Some(&public_url), &mut db).await?;
+
+            // upload logo if not migrating mods
+            if !is_migration {
+                upload_mod_logo(data, &mod_id, None).await?;
+            }
 
             tracing::info!(
                 "Uploaded mod {} {} to S3 at {}",
@@ -125,6 +170,7 @@ async fn migrate_one(
             version: version.to_owned(),
             version_id,
         },
+        true,
     )
     .await
 }
@@ -174,6 +220,21 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
         }
     }
 
+    // independently migrate mod logos
+    let mods = sqlx::query!(
+        "SELECT id, image FROM mods WHERE image IS NOT NULL AND length(image) > 0 AND image_url IS NULL"
+    )
+    .fetch_all(&mut *db)
+    .await?;
+
+    tracing::info!("Migrating {} existing mod logos to S3", mods.len());
+
+    for record in mods {
+        if let Err(e) = upload_mod_logo(data, &record.id, record.image).await {
+            tracing::error!("error migrating mod logo for {} to S3: {e:?}", record.id);
+        }
+    }
+
     Ok(())
 }
 
@@ -197,7 +258,7 @@ pub async fn run_s3_worker(data: web::Data<AppData>) {
     loop {
         let result = tokio::select! {
             task = rx.recv() => match task {
-                Some(task) => process_task(&data, task).await,
+                Some(task) => process_task(&data, task, false).await,
                 None => break,
             },
 

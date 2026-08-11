@@ -6,6 +6,12 @@ use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use std::collections::HashSet;
 
+#[derive(Debug, Clone)]
+pub enum ModLogo {
+    Data(Vec<u8>),
+    Url(String),
+}
+
 #[derive(sqlx::FromRow)]
 struct ModRecordGetOne {
     id: String,
@@ -211,15 +217,17 @@ pub async fn exists_multiple(
 }
 
 #[tracing::instrument(skip_all, fields(mod_id = %id))]
-pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8>>, DatabaseError> {
+pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<ModLogo>, DatabaseError> {
     struct QueryResult {
         image: Option<Vec<u8>>,
+        image_url: Option<String>,
     }
 
-    let vec = sqlx::query_as!(
+    let logo = sqlx::query_as!(
         QueryResult,
         "SELECT
-            m.image
+            m.image,
+            m.image_url
         FROM mods m
         INNER JOIN mod_versions mv ON mv.mod_id = m.id
         INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -229,14 +237,19 @@ pub async fn get_logo(id: &str, conn: &mut PgConnection) -> Result<Option<Vec<u8
     .fetch_optional(&mut *conn)
     .await
     .inspect_err(|e| tracing::error!("{:?}", e))?
-    .and_then(|optional| optional.image);
+    .and_then(|r| {
+        if let Some(url) = r.image_url {
+            Some(ModLogo::Url(url))
+        } else if let Some(data) = r.image
+            && !data.is_empty()
+        {
+            Some(ModLogo::Data(data))
+        } else {
+            None
+        }
+    });
 
-    // Empty vec means no image
-    if vec.as_ref().is_some_and(|v| v.is_empty()) {
-        Ok(None)
-    } else {
-        Ok(vec)
-    }
+    Ok(logo)
 }
 
 #[tracing::instrument(skip_all, fields(mod_id = %id))]
@@ -266,6 +279,7 @@ pub async fn update_with_json_moved(
         about = $2,
         changelog = $3,
         image = $4,
+        image_url = NULL,
         updated_at = NOW()
         WHERE id = $5",
         json.repository,
@@ -283,6 +297,25 @@ pub async fn update_with_json_moved(
     the_mod.changelog = json.changelog;
 
     Ok(the_mod)
+}
+
+/// Updates the logo URL in the database and sets the logo data to null.
+#[tracing::instrument(skip_all, fields(id = %id, url = %url))]
+pub async fn update_mod_logo_url(
+    id: &str,
+    url: &str,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    sqlx::query!(
+        "UPDATE mods SET image = NULL, image_url = $1 WHERE id = $2",
+        url,
+        id
+    )
+    .execute(conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
 }
 
 /// Used when first version goes from pending to accepted.
