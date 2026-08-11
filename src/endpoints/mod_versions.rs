@@ -243,7 +243,7 @@ pub async fn download_version(
     let url = mod_version
         .managed_download_link
         .as_deref()
-        .take_if(|_| data.mod_storage().is_some())
+        .take_if(|_| data.cdn_storage().is_some())
         .unwrap_or(&mod_version.download_link);
 
     if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {

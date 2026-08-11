@@ -2,13 +2,20 @@ use std::time::Duration;
 
 use actix_web::web;
 use bytes::Bytes;
-use sqlx::Connection;
+use reqwest::StatusCode;
 
 use crate::{
     config::AppData,
-    database::repository::{mod_versions::update_managed_download_link, mods::update_mod_logo_url},
+    database::repository::{
+        geode_versions::{update_resources_download, upsert_download},
+        mod_versions::update_managed_download_link,
+        mods::update_mod_logo_url,
+    },
     mod_zip,
-    types::models::mod_gd_version::GDVersionEnum,
+    types::models::{
+        loader_version::{LoaderDownload, LoaderDownloads},
+        mod_gd_version::GDVersionEnum,
+    },
 };
 
 pub enum S3WorkerTask {
@@ -18,10 +25,86 @@ pub enum S3WorkerTask {
         version: String,
         version_id: i32,
     },
+
+    UploadLoader {
+        tag: String,
+    },
 }
 
 fn path_for_mod(mod_id: &str, version: &str) -> String {
     format!("mods/{mod_id}/{version}/{mod_id}.geode")
+}
+
+fn path_for_loader(tag: &str, platform: &str) -> String {
+    format!("geode/{tag}/geode-v{tag}-{platform}.zip")
+}
+
+fn path_for_resources(tag: &str) -> String {
+    format!("geode/{tag}/resources.zip")
+}
+
+fn github_url_for_loader(tag: &str, platform: &str) -> String {
+    format!(
+        "https://github.com/geode-sdk/geode/releases/download/v{tag}/geode-v{tag}-{platform}.zip"
+    )
+}
+
+fn github_url_for_resources(tag: &str) -> String {
+    format!("https://github.com/geode-sdk/geode/releases/download/v{tag}/resources.zip")
+}
+
+async fn migrate_geode_version_opt(
+    data: &AppData,
+    db: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tag: &str,
+    platform: &str,
+) -> anyhow::Result<Option<LoaderDownload>> {
+    let storage = data.cdn_storage().expect("mod storage must be set by now");
+    let (github_url, new_path) = match platform {
+        "resources" => (github_url_for_resources(tag), path_for_resources(tag)),
+        _ => (
+            github_url_for_loader(tag, platform),
+            path_for_loader(tag, platform),
+        ),
+    };
+
+    let resp = data.http_client().get(&github_url).send().await?;
+
+    if resp.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    let bytes = resp.error_for_status()?.bytes().await?;
+    let public_url = storage.asset_url(&new_path);
+    let hash = sha256::digest(&bytes[..]);
+    storage.store(&new_path, &bytes).await?;
+
+    if platform == "resources" {
+        update_resources_download(tag, &public_url, &hash, db).await?;
+    } else {
+        upsert_download(tag, platform, &public_url, &hash, db).await?;
+    }
+
+    Ok(Some(LoaderDownload {
+        url: public_url,
+        hash,
+    }))
+}
+
+async fn migrate_geode_version(
+    data: &AppData,
+    db: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tag: &str,
+    platform: &str,
+) -> anyhow::Result<LoaderDownload> {
+    match migrate_geode_version_opt(data, db, tag, platform).await? {
+        Some(download) => Ok(download),
+        None => Err(anyhow::anyhow!(
+            "Geode version {} for platform '{}' not found on GitHub",
+            tag,
+            platform
+        )),
+    }
 }
 
 fn path_for_mod_logo(mod_id: &str) -> String {
@@ -33,7 +116,7 @@ async fn upload_mod_logo(
     mod_id: &str,
     current_logo: Option<Vec<u8>>,
 ) -> anyhow::Result<()> {
-    let storage = data.mod_storage().expect("mod storage must be set by now");
+    let storage = data.cdn_storage().expect("mod storage must be set by now");
     let mut db = data.db().acquire().await?;
 
     let logo_path = path_for_mod_logo(mod_id);
@@ -63,7 +146,7 @@ async fn process_task(
     task: S3WorkerTask,
     is_migration: bool,
 ) -> anyhow::Result<()> {
-    let storage = data.mod_storage().expect("mod storage must be set by now");
+    let storage = data.cdn_storage().expect("mod storage must be set by now");
     let mut db = data.db().acquire().await?;
 
     match task {
@@ -92,6 +175,36 @@ async fn process_task(
                 public_url
             );
         }
+
+        S3WorkerTask::UploadLoader { tag } => {
+            tracing::info!("Preparing to upload Geode v{tag} to S3");
+
+            let mut tx = data.db().begin().await?;
+
+            let ios = match migrate_geode_version_opt(data, &mut tx, &tag, "ios").await? {
+                Some(download) => download,
+                None => {
+                    tracing::warn!(
+                        "Geode version {} for iOS not found on GitHub, skipping iOS",
+                        tag
+                    );
+                    LoaderDownload::default()
+                }
+            };
+
+            let downloads = LoaderDownloads {
+                win: migrate_geode_version(data, &mut tx, &tag, "win").await?,
+                mac: migrate_geode_version(data, &mut tx, &tag, "mac").await?,
+                android32: migrate_geode_version(data, &mut tx, &tag, "android32").await?,
+                android64: migrate_geode_version(data, &mut tx, &tag, "android64").await?,
+                ios,
+                resources: migrate_geode_version(data, &mut tx, &tag, "resources").await?,
+            };
+
+            tx.commit().await?;
+
+            tracing::info!("Uploaded new loader release to S3: {downloads:?}");
+        }
     }
 
     Ok(())
@@ -99,7 +212,7 @@ async fn process_task(
 
 async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     let supported_gd = GDVersionEnum::supported_for_storage();
-    let storage = data.mod_storage().expect("mod storage must be set by now");
+    let storage = data.cdn_storage().expect("mod storage must be set by now");
 
     let mut db = data.db().acquire().await?;
 
@@ -238,8 +351,33 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
+    let mut db = data.db().acquire().await?;
+
+    let versions: Vec<String> = sqlx::query_scalar(
+        "SELECT gv.tag FROM geode_versions gv WHERE NOT EXISTS (
+            SELECT 1 FROM geode_version_download gvd WHERE gvd.tag = gv.tag
+        )",
+    )
+    .fetch_all(&mut *db)
+    .await
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    tracing::info!("Migrating {} Geode releases to S3", versions.len());
+
+    for tag in versions {
+        if let Err(e) =
+            process_task(data, S3WorkerTask::UploadLoader { tag: tag.clone() }, true).await
+        {
+            tracing::error!("error migrating Geode release {} to S3: {e:?}", tag);
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn run_s3_worker(data: web::Data<AppData>) {
-    if data.mod_storage().is_none() {
+    if data.cdn_storage().is_none() {
         return;
     }
 
@@ -250,6 +388,13 @@ pub async fn run_s3_worker(data: web::Data<AppData>) {
     tokio::spawn(async move {
         if let Err(e) = migrate_existing_mods_to_s3(&s_data).await {
             tracing::error!("Error migrating existing mods to S3: {:?}", e);
+        }
+    });
+
+    let s_data2 = data.clone();
+    tokio::spawn(async move {
+        if let Err(e) = migrate_loader_versions_to_s3(&s_data2).await {
+            tracing::error!("Error migrating loader versions to S3: {:?}", e);
         }
     });
 

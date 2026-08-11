@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     database::DatabaseError,
     types::{
@@ -6,7 +8,7 @@ use crate::{
     },
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use sqlx::{
@@ -25,6 +27,22 @@ pub struct LoaderVersionCreate {
     pub ios: Option<GDVersionEnum>,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug, ToSchema)]
+pub struct LoaderDownload {
+    pub url: String,
+    pub hash: String,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, ToSchema)]
+pub struct LoaderDownloads {
+    pub win: LoaderDownload,
+    pub mac: LoaderDownload,
+    pub android32: LoaderDownload,
+    pub android64: LoaderDownload,
+    pub ios: LoaderDownload,
+    pub resources: LoaderDownload,
+}
+
 #[derive(Serialize, Debug, ToSchema)]
 pub struct LoaderVersion {
     pub version: String,
@@ -34,6 +52,7 @@ pub struct LoaderVersion {
     pub commit_hash: String,
     #[serde(with = "chrono_dt_secs")]
     pub created_at: DateTime<Utc>,
+    pub downloads: LoaderDownloads,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -46,6 +65,17 @@ pub struct LoaderVersionGetOne {
     pub win: Option<GDVersionEnum>,
     pub android: Option<GDVersionEnum>,
     pub ios: Option<GDVersionEnum>,
+
+    pub resources_url: Option<String>,
+    pub resources_hash: Option<String>,
+}
+
+#[derive(sqlx::FromRow, Debug)]
+pub struct GeodeVersionDownload {
+    pub tag: String,
+    pub platform: String,
+    pub url: String,
+    pub hash: String,
 }
 
 pub struct GetVersionsQuery {
@@ -54,14 +84,86 @@ pub struct GetVersionsQuery {
     pub prerelease: bool,
 }
 
+fn github_url(tag: &str, platform: &str) -> String {
+    format!(
+        "https://github.com/geode-sdk/geode/releases/download/v{tag}/geode-v{tag}-{platform}.zip"
+    )
+}
+
+fn github_resources_url(tag: &str) -> String {
+    format!("https://github.com/geode-sdk/geode/releases/download/v{tag}/resources.zip")
+}
+
+impl LoaderDownload {
+    pub fn new_github(tag: &str, platform: &str) -> Self {
+        // this should only be called for versions that weren't migrated to S3 yet,
+        // temporarily serve the GitHub URLs and tell the client to not verify hashes
+        LoaderDownload {
+            url: github_url(tag, platform),
+            hash: String::new(),
+        }
+    }
+
+    pub fn new_github_resources(tag: &str) -> Self {
+        LoaderDownload {
+            url: github_resources_url(tag),
+            hash: String::new(),
+        }
+    }
+}
+
+fn build_downloads(
+    version: &LoaderVersionGetOne,
+    managed: Vec<GeodeVersionDownload>,
+) -> LoaderDownloads {
+    let mut out = LoaderDownloads {
+        win: LoaderDownload::new_github(&version.tag, "windows"),
+        mac: LoaderDownload::new_github(&version.tag, "macos"),
+        android32: LoaderDownload::new_github(&version.tag, "android32"),
+        android64: LoaderDownload::new_github(&version.tag, "android64"),
+        ios: LoaderDownload::new_github(&version.tag, "ios"),
+        resources: LoaderDownload::new_github_resources(&version.tag),
+    };
+
+    for d in managed {
+        let download = LoaderDownload {
+            url: d.url,
+            hash: d.hash,
+        };
+
+        match d.platform.as_str() {
+            "win" => out.win = download,
+            "mac" => out.mac = download,
+            "android32" => out.android32 = download,
+            "android64" => out.android64 = download,
+            "ios" => out.ios = download,
+            _ => {}
+        }
+    }
+
+    if let Some(url) = version.resources_url.clone()
+        && let Some(hash) = version.resources_hash.clone()
+    {
+        out.resources = LoaderDownload { url, hash };
+    }
+
+    out
+}
+
 impl LoaderVersionGetOne {
-    pub fn into_loader_version(self) -> LoaderVersion {
+    pub fn into_loader_version(
+        self,
+        managed_downloads: Vec<GeodeVersionDownload>,
+    ) -> LoaderVersion {
+        let downloads = build_downloads(&self, managed_downloads);
+
         LoaderVersion {
             tag: format!("v{}", self.tag),
             version: self.tag,
             prerelease: self.prerelease,
             created_at: self.created_at,
             commit_hash: self.commit_hash,
+            downloads,
             gd: DetailedGDVersion {
                 win: self.win,
                 mac: self.mac,
@@ -77,6 +179,40 @@ impl LoaderVersionGetOne {
 }
 
 impl LoaderVersion {
+    pub async fn get_downloads_for_tag(
+        tag: &str,
+        pool: &mut PgConnection,
+    ) -> Result<Vec<GeodeVersionDownload>, DatabaseError> {
+        Ok(sqlx::query_as::<_, GeodeVersionDownload>(
+            "SELECT tag, platform, url, hash FROM geode_version_download WHERE tag = $1",
+        )
+        .bind(tag)
+        .fetch_all(&mut *pool)
+        .await?)
+    }
+
+    pub async fn get_downloads_for_tags(
+        tags: &[String],
+        pool: &mut PgConnection,
+    ) -> Result<HashMap<String, Vec<GeodeVersionDownload>>, DatabaseError> {
+        if tags.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = sqlx::query_as::<_, GeodeVersionDownload>(
+            "SELECT tag, platform, url, hash FROM geode_version_download WHERE tag = ANY($1)",
+        )
+        .bind(tags)
+        .fetch_all(&mut *pool)
+        .await?;
+
+        let mut map = HashMap::<_, Vec<_>>::with_capacity(rows.len());
+        for row in rows {
+            map.entry(row.tag.clone()).or_default().push(row);
+        }
+        Ok(map)
+    }
+
     #[tracing::instrument(skip_all, fields(gd = ?gd, platform = ?platform, accept_prereleases = %accept_prereleases))]
     pub async fn get_latest(
         gd: Option<GDVersionEnum>,
@@ -86,7 +222,7 @@ impl LoaderVersion {
     ) -> Result<Option<LoaderVersion>, DatabaseError> {
         let mut query_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT
-                mac, win, android, ios, tag, commit_hash, created_at, prerelease
+                mac, win, android, ios, tag, commit_hash, created_at, prerelease, resources_url, resources_hash
                 FROM geode_versions
             "#,
         );
@@ -161,13 +297,17 @@ impl LoaderVersion {
 
         query_builder.push(" created_at DESC LIMIT 1;");
 
-        query_builder
+        let Some(row) = query_builder
             .build_query_as::<LoaderVersionGetOne>()
             .fetch_optional(&mut *pool)
             .await
-            .inspect_err(|e| tracing::error!("{:?}", e))
-            .map_err(|e| e.into())
-            .map(|x| x.map(|y| y.into_loader_version()))
+            .inspect_err(|e| tracing::error!("{:?}", e))?
+        else {
+            return Ok(None);
+        };
+
+        let downloads = LoaderVersion::get_downloads_for_tag(&row.tag, &mut *pool).await?;
+        Ok(Some(row.into_loader_version(downloads)))
     }
 
     #[tracing::instrument(skip_all, fields(tag = %tag))]
@@ -175,20 +315,24 @@ impl LoaderVersion {
         tag: &str,
         pool: &mut PgConnection,
     ) -> Result<Option<LoaderVersion>, DatabaseError> {
-        sqlx::query_as!(
+        let Some(row) = sqlx::query_as!(
             LoaderVersionGetOne,
             r#"SELECT
 				        mac as "mac: _", win as "win: _", android as "android: _", ios as "ios: _",
-				        tag, created_at, commit_hash, prerelease
+				        tag, created_at, commit_hash, prerelease, resources_url, resources_hash
 			      FROM geode_versions
 				    WHERE tag = $1"#,
             tag
         )
         .fetch_optional(&mut *pool)
         .await
-        .inspect_err(|e| tracing::error!("{:?}", e))
-        .map_err(|e| e.into())
-        .map(|x| x.map(|y| y.into_loader_version()))
+        .inspect_err(|e| tracing::error!("{:?}", e))?
+        else {
+            return Ok(None);
+        };
+
+        let downloads = LoaderVersion::get_downloads_for_tag(&row.tag, &mut *pool).await?;
+        Ok(Some(row.into_loader_version(downloads)))
     }
 
     #[tracing::instrument(skip_all, fields(tag = %version.tag))]
@@ -229,7 +373,7 @@ impl LoaderVersion {
         let mut query_builder = QueryBuilder::new(
             r#"
             SELECT
-                mac, win, android, ios, tag, created_at, commit_hash, prerelease
+                mac, win, android, ios, tag, created_at, commit_hash, prerelease, resources_url, resources_hash
             FROM geode_versions
             "#,
         );
@@ -290,12 +434,22 @@ impl LoaderVersion {
         query_builder.push(" OFFSET ");
         query_builder.push_bind(offset);
 
-        query_builder
+        let rows = query_builder
             .build_query_as::<LoaderVersionGetOne>()
             .fetch_all(&mut *pool)
             .await
             .inspect_err(|e| tracing::error!("{:?}", e))
-            .map(|x| x.into_iter().map(|y| y.into_loader_version()).collect())
-            .map_err(|e| e.into())
+            .map_err(DatabaseError::from)?;
+
+        let tags: Vec<String> = rows.iter().map(|r| r.tag.clone()).collect();
+        let mut downloads_map = LoaderVersion::get_downloads_for_tags(&tags, &mut *pool).await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let downloads = downloads_map.remove(&row.tag).unwrap_or_default();
+                row.into_loader_version(downloads)
+            })
+            .collect())
     }
 }

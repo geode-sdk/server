@@ -29,7 +29,7 @@ pub struct AppData {
     static_storage: PublicDisk,
     public_storage: PublicDisk,
     private_storage: PrivateDisk,
-    mod_storage: Option<PublicDisk>,
+    cdn_storage: Option<PublicDisk>,
     disable_downloads: bool,
     max_download_mb: u32,
     port: u16,
@@ -74,7 +74,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .time_to_live(Duration::from_mins(10))
         .build();
 
-    let mod_storage = if let Some(s3_config) = S3Configuration::from_env()? {
+    let cdn_storage = if let Some(s3_config) = S3Configuration::from_env()? {
         let backend = Arc::new(S3Backend::new(&s3_config)?);
         Some(PublicDisk::new(backend, s3_config.public_url))
     } else {
@@ -111,7 +111,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             format!("{app_url}/storage"),
         ),
         private_storage: PrivateDisk::new(Arc::new(LocalBackend::new("storage/private"))),
-        mod_storage,
+        cdn_storage,
         disable_downloads,
         max_download_mb,
         port,
@@ -176,8 +176,8 @@ impl AppData {
         &self.private_storage
     }
 
-    pub fn mod_storage(&self) -> Option<&PublicDisk> {
-        self.mod_storage.as_ref()
+    pub fn cdn_storage(&self) -> Option<&PublicDisk> {
+        self.cdn_storage.as_ref()
     }
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {
