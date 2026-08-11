@@ -1,5 +1,6 @@
 use crate::openapi::ApiDoc;
 use crate::types::api;
+use actix_cors::Cors;
 use actix_web::{
     App, HttpServer,
     web::{self, QueryConfig},
@@ -64,6 +65,13 @@ async fn main() -> anyhow::Result<()> {
             .app_data(QueryConfig::default().error_handler(api::query_error_handler))
             .service(
                 SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()),
+            )
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allowed_methods(vec!["GET", "HEAD"])
+                    .allowed_headers(vec![actix_web::http::header::ACCEPT])
+                    .max_age(3600),
             )
             .wrap(tracing_actix_web::TracingLogger::default());
 
