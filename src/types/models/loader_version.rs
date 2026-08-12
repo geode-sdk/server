@@ -275,7 +275,8 @@ impl LoaderVersion {
             query_builder.push(" AND prerelease=FALSE ");
         }
 
-        query_builder.push(" ORDER BY ");
+        // prioritize releases that can be downloaded from a CDN
+        query_builder.push(" ORDER BY resources_url IS NOT NULL DESC, ");
 
         if gd.is_none()
             && let Some(p) = platform
