@@ -30,6 +30,7 @@ pub struct LoaderVersionCreate {
 #[derive(Serialize, Deserialize, Default, Debug, ToSchema)]
 pub struct LoaderDownload {
     pub url: String,
+    #[serde(serialize_with = "serialize_nonempty_str")]
     pub hash: String,
 }
 
@@ -452,5 +453,16 @@ impl LoaderVersion {
                 row.into_loader_version(downloads)
             })
             .collect())
+    }
+}
+
+fn serialize_nonempty_str<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if s.is_empty() {
+        serializer.serialize_none()
+    } else {
+        serializer.serialize_str(s)
     }
 }
