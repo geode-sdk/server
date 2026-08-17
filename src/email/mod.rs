@@ -1,13 +1,24 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use anyhow::anyhow;
 use validator::ValidateEmail;
+
+use crate::email::blocklist::BlocklistError;
 
 pub mod blocklist;
 pub mod lettre;
 pub mod mailer;
 
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
+pub enum EmailError {
+    #[error("email address parse error: {0}")]
+    ParseError(#[from] EmailAddressParseError),
+    #[error("email is not allowed: {0}")]
+    BlocklistError(#[from] BlocklistError),
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum EmailAddressParseError {
     #[error("invalid email address")]
     InvalidEmail,
@@ -19,11 +30,33 @@ pub struct EmailAddress {
     domain: String,
 }
 
+pub enum SmtpSecurity {
+    None,
+    StartTls,
+    Wrapper,
+}
+
+impl std::str::FromStr for SmtpSecurity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lowercase = s.to_lowercase();
+
+        match lowercase.as_str() {
+            "none" => Ok(SmtpSecurity::None),
+            "starttls" => Ok(SmtpSecurity::StartTls),
+            "wrapper" => Ok(SmtpSecurity::Wrapper),
+            other => Err(format!("invalid SMTP_TLS value: {other}")),
+        }
+    }
+}
+
 pub struct SmtpConfig {
     pub host: String,
     pub port: u16,
-    pub username: String,
-    pub password: String,
+    pub security: SmtpSecurity,
+    pub username: Option<String>,
+    pub password: Option<String>,
     pub from_address: String,
     pub from_name: Option<String>,
 }
@@ -38,13 +71,17 @@ impl SmtpConfig {
         }
 
         Ok(Some(SmtpConfig {
-            host: dotenvy::var("SMTP_HOST").ok()?,
+            host: dotenvy::var("SMTP_HOST")?,
             port: dotenvy::var("SMTP_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(DEFAULT_SMTP_PORT),
-            username: dotenvy::var("SMTP_USERNAME")?,
-            password: dotenvy::var("SMTP_PASSWORD")?,
+            security: dotenvy::var("SMTP_SECURITY")
+                .unwrap_or_else(|_| "starttls".into())
+                .parse()
+                .map_err(|e| anyhow!("{}", e))?,
+            username: dotenvy::var("SMTP_USERNAME").ok(),
+            password: dotenvy::var("SMTP_PASSWORD").ok(),
             from_address: dotenvy::var("SMTP_FROM_ADDRESS")?,
             from_name: dotenvy::var("SMTP_FROM_NAME").ok(),
         }))

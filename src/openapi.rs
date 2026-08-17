@@ -40,6 +40,7 @@ use crate::{endpoints, types};
         endpoints::developers::get_own_mods,
         endpoints::developers::get_me,
         endpoints::developers::update_developer,
+        endpoints::developers::setup_email,
         endpoints::tags::index,
         endpoints::tags::detailed_index,
         endpoints::stats::get_stats,

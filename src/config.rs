@@ -105,7 +105,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         let env_var = dotenvy::var("EMAIL_BLOCKLIST_PATH").unwrap_or("./blocklist.conf".into());
         let path = PathBuf::from_str(&env_var).ok();
 
-        path.map(|path| Blocklist::load(path))
+        path.map(Blocklist::load)
     } else {
         None
     };
@@ -141,7 +141,15 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             .read_timeout(Duration::from_secs(30))
             .build()?,
         check_dns_http_client,
-        mailer: smtp_config.map(|config| Mailer::new(Arc::new(LettreBackend::new(&config)?))),
+        mailer: smtp_config
+            .and_then(|config| match LettreBackend::new(&config) {
+                Ok(backend) => Some(Arc::new(backend)),
+                Err(e) => {
+                    tracing::warn!("failed to create SMTP backend: {e}");
+                    None
+                }
+            })
+            .map(|backend| Mailer::new(backend)),
         email_blocklist: blocklist,
         s3_sender: OnceLock::new(),
     })
@@ -224,6 +232,10 @@ impl AppData {
 
     pub fn mailer(&self) -> Option<&Mailer> {
         self.mailer.as_ref()
+    }
+
+    pub fn email_blocklist(&self) -> Option<&Blocklist> {
+        self.email_blocklist.as_ref()
     }
 
     /// Client that validates passed host, denies all private resolved IP addresses.

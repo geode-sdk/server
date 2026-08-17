@@ -1,13 +1,12 @@
 use std::{
     collections::HashSet,
-    fs::File,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use parking_lot::RwLock;
 
-use crate::email::EmailAddress;
+use crate::email::{EmailAddress, EmailError};
 
 const MAX_BLOCKLIST_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -23,14 +22,11 @@ pub enum BlocklistError {
 pub struct ApprovedEmailAddress(EmailAddress);
 
 impl ApprovedEmailAddress {
-    pub fn parse(
-        email: EmailAddress,
-        blocklist: Option<Blocklist>,
-    ) -> Result<Self, BlocklistError> {
+    pub fn parse(email: EmailAddress, blocklist: Option<&Blocklist>) -> Result<Self, EmailError> {
         match blocklist {
             Some(blocklist) => {
                 if blocklist.is_blocked(&email.domain) {
-                    Err(BlocklistError::BlockedDomain)
+                    Err(EmailError::BlocklistError(BlocklistError::BlockedDomain))
                 } else {
                     Ok(Self(email))
                 }
@@ -44,6 +40,7 @@ impl ApprovedEmailAddress {
     }
 }
 
+#[derive(Clone)]
 pub struct Blocklist {
     entries: Arc<RwLock<HashSet<String>>>,
     path: Arc<PathBuf>,
@@ -53,7 +50,10 @@ impl Blocklist {
     pub fn load(path: PathBuf) -> Self {
         let entries = Self::read_file(&path)
             .inspect_err(|e| {
-                tracing::error!("failed to parse blocklist {path}, using empty blocklist: {e}")
+                tracing::error!(
+                    "failed to parse blocklist {}, using empty blocklist: {e}",
+                    path.display()
+                )
             })
             .unwrap_or_default();
 
@@ -68,8 +68,11 @@ impl Blocklist {
     }
 
     pub fn refresh(&self) {
-        let entries = Self::read_file(&path).inspect_err(|e| {
-            tracing::warn!("failed to parse blocklist {path}, skipping blocklist refresh: {e}")
+        let entries = Self::read_file(&self.path).inspect_err(|e| {
+            tracing::warn!(
+                "failed to parse blocklist {}, skipping blocklist refresh: {e}",
+                &self.path.display()
+            )
         });
 
         if let Ok(entries) = entries {

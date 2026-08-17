@@ -2,6 +2,7 @@ pub mod auth_tokens;
 pub mod dependencies;
 pub mod deprecations;
 pub mod developers;
+pub mod email_setup_requests;
 pub mod github_login_attempts;
 pub mod github_web_logins;
 pub mod incompatibilities;

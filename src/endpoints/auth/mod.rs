@@ -9,6 +9,7 @@ use sqlx::Acquire;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+pub mod database;
 pub mod github;
 
 #[derive(Serialize, ToSchema)]

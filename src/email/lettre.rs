@@ -1,13 +1,13 @@
 use lettre::{
-    Address, AsyncSmtpTransport, Message, Tokio1Executor,
+    Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
     address::AddressError,
     message::{Mailbox, MultiPart, SinglePart, header::ContentType},
     transport::smtp::authentication::Credentials,
 };
 
 use crate::email::{
-    EmailAddress, SmtpConfig,
-    mailer::{BoxFuture, EmailBody, MailerBackend, MailerError, OutgoingEmail},
+    EmailAddress, SmtpConfig, SmtpSecurity,
+    mailer::{BoxFuture, EmailBody, MailerBackend, MailerError, MailerResult, OutgoingEmail},
 };
 
 pub struct LettreBackend {
@@ -17,23 +17,30 @@ pub struct LettreBackend {
 
 impl LettreBackend {
     pub fn new(config: &SmtpConfig) -> anyhow::Result<Self> {
-        let transport = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)?
-            .port(config.port)
-            .credentials(Credentials::new(
-                config.username.clone(),
-                config.password.clone(),
-            ))
-            .build();
+        let mut builder = match config.security {
+            SmtpSecurity::None => {
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
+            }
+            SmtpSecurity::StartTls => {
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host)?
+            }
+            SmtpSecurity::Wrapper => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)?,
+        }
+        .port(config.port);
+
+        if let (Some(user), Some(pass)) = (&config.username, &config.password) {
+            builder = builder.credentials(Credentials::new(user.clone(), pass.clone()));
+        }
 
         Ok(Self {
-            transport,
+            transport: builder.build(),
             from: Mailbox::new(config.from_name.clone(), config.from_address.parse()?),
         })
     }
 }
 
 impl MailerBackend for LettreBackend {
-    fn send<'a>(&'a self, email: &'a OutgoingEmail) -> BoxFuture<'a, ()> {
+    fn send<'a>(&'a self, email: &'a OutgoingEmail) -> BoxFuture<'a, MailerResult<()>> {
         Box::pin(async move {
             let address = Address::try_from(email.to.email().clone())
                 .map_err(|e| MailerError::InvalidMessage(e.to_string()))?;
@@ -60,7 +67,7 @@ impl MailerBackend for LettreBackend {
                 .send(message)
                 .await
                 .inspect_err(|e| tracing::error!("{:?}", e))
-                .map_err(|e| MailerError::Send(e.to_string()))?;
+                .map_err(|e| MailerError::SendError(e.to_string()))?;
 
             Ok(())
         })
