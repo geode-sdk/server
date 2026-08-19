@@ -29,6 +29,7 @@ impl StorageBackend for LocalBackend {
         &'a self,
         relative_path: &'a str,
         data: &'a [u8],
+        _mime_type: &'a str,
     ) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
             let path = self.safe_join(relative_path)?;

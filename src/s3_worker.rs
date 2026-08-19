@@ -78,7 +78,7 @@ async fn migrate_geode_version_opt(
     let bytes = resp.error_for_status()?.bytes().await?;
     let public_url = storage.asset_url(&new_path);
     let hash = sha256::digest(&bytes[..]);
-    storage.store(&new_path, &bytes).await?;
+    storage.store(&new_path, &bytes, "application/zip").await?;
 
     if platform == "resources" {
         update_resources_download(tag, &public_url, &hash, db).await?;
@@ -132,7 +132,7 @@ async fn upload_mod_logo(
     };
 
     if let Some(logo_bytes) = current_logo {
-        storage.store(&logo_path, &logo_bytes).await?;
+        storage.store(&logo_path, &logo_bytes, "image/png").await?;
 
         update_mod_logo_url(mod_id, &logo_public_url, db).await?;
 
@@ -160,7 +160,9 @@ async fn process_task(
             let path = path_for_mod(&mod_id, &version);
             let public_url = storage.asset_url(&path);
 
-            storage.store(&path, &bytes).await?;
+            storage
+                .store(&path, &bytes, "application/octet-stream")
+                .await?;
 
             update_managed_download_link(version_id, Some(&public_url), &mut db).await?;
 

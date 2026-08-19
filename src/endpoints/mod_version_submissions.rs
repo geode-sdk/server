@@ -863,7 +863,12 @@ pub async fn upload_attachments(
         for webp_bytes in &processed {
             let filename = data
                 .public_storage()
-                .store_hashed("submission-attachments", webp_bytes, Some("webp"))
+                .store_hashed(
+                    "submission-attachments",
+                    webp_bytes,
+                    Some("webp"),
+                    "image/webp",
+                )
                 .await?;
             stored_filenames.push(filename.clone());
             let row =

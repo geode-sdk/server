@@ -23,7 +23,12 @@ pub trait StorageBackend: Send + Sync {
     fn init(&self) -> BoxFuture<'_, StorageResult<()>> {
         Box::pin(async { Ok(()) })
     }
-    fn store<'a>(&'a self, path: &'a str, data: &'a [u8]) -> BoxFuture<'a, StorageResult<()>>;
+    fn store<'a>(
+        &'a self,
+        path: &'a str,
+        data: &'a [u8],
+        mime_type: &'a str,
+    ) -> BoxFuture<'a, StorageResult<()>>;
     fn read<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<Vec<u8>>>;
     #[allow(dead_code)]
     fn exists<'a>(&'a self, path: &'a str) -> BoxFuture<'a, StorageResult<bool>>;
@@ -44,6 +49,7 @@ impl DiskCore {
         relative_path: &str,
         data: &[u8],
         extension: Option<&str>,
+        mime_type: &str,
     ) -> StorageResult<String> {
         let hash = sha256::digest(data);
 
@@ -57,11 +63,11 @@ impl DiskCore {
                 ext.trim_start_matches('.')
             ))
         );
-        self.store(&hashed_path, data).await?;
+        self.store(&hashed_path, data, mime_type).await?;
         Ok(hashed_path)
     }
-    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
-        self.backend.store(path, data).await
+    pub async fn store(&self, path: &str, data: &[u8], mime_type: &str) -> StorageResult<()> {
+        self.backend.store(path, data, mime_type).await
     }
     pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
         self.backend.read(path).await
@@ -98,11 +104,14 @@ impl PublicDisk {
         relative_path: &str,
         data: &[u8],
         extension: Option<&str>,
+        mime_type: &str,
     ) -> StorageResult<String> {
-        self.core.store_hashed(relative_path, data, extension).await
+        self.core
+            .store_hashed(relative_path, data, extension, mime_type)
+            .await
     }
-    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
-        self.core.store(path, data).await
+    pub async fn store(&self, path: &str, data: &[u8], mime_type: &str) -> StorageResult<()> {
+        self.core.store(path, data, mime_type).await
     }
     pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
         self.core.read(path).await
@@ -136,12 +145,15 @@ impl PrivateDisk {
         relative_path: &str,
         data: &[u8],
         extension: Option<&str>,
+        mime_type: &str,
     ) -> StorageResult<String> {
-        self.core.store_hashed(relative_path, data, extension).await
+        self.core
+            .store_hashed(relative_path, data, extension, mime_type)
+            .await
     }
     #[allow(dead_code)]
-    pub async fn store(&self, path: &str, data: &[u8]) -> StorageResult<()> {
-        self.core.store(path, data).await
+    pub async fn store(&self, path: &str, data: &[u8], mime_type: &str) -> StorageResult<()> {
+        self.core.store(path, data, mime_type).await
     }
     #[allow(dead_code)]
     pub async fn read(&self, path: &str) -> StorageResult<Vec<u8>> {
