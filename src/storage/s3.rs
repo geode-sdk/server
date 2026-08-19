@@ -107,9 +107,13 @@ impl StorageBackend for S3Backend {
         &'a self,
         relative_path: &'a str,
         data: &'a [u8],
+        mime_type: &'a str,
     ) -> BoxFuture<'a, StorageResult<()>> {
         Box::pin(async move {
-            let _ = self.bucket.put_object(relative_path, data).await?;
+            let _ = self
+                .bucket
+                .put_object_with_content_type(relative_path, data, mime_type)
+                .await?;
             Ok(())
         })
     }
