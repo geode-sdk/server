@@ -19,6 +19,7 @@ use crate::events::mod_created::{
 use crate::mod_zip::{self, download_mod};
 use crate::s3_worker::S3WorkerTask;
 use crate::types::models;
+use crate::types::models::mod_status::ModStatusEnum;
 use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
@@ -327,6 +328,10 @@ pub async fn create_version(
         return Err(ApiError::Authorization);
     }
 
+    if the_mod.status == ModStatusEnum::Archived {
+        return Err(ApiError::BadRequest("Mod is archived".to_string()));
+    }
+
     let versions = mod_versions::get_for_mod(
         &the_mod.id,
         Some(&[
@@ -466,20 +471,22 @@ pub async fn create_version(
     tx.commit().await?;
 
     if make_accepted {
-        let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)
-            .await?
-            .ok_or(ApiError::BadRequest("Mod doesn't have an owner".into()))?;
+        if the_mod.status != ModStatusEnum::Unlisted {
+            let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)
+                .await?
+                .ok_or(ApiError::BadRequest("Mod doesn't have an owner".into()))?;
 
-        NewModVersionAcceptedEvent {
-            id: version.mod_id.clone(),
-            name: version.name.clone(),
-            version: version.version.clone(),
-            owner,
-            verified: NewModVersionVerification::VerifiedDev,
-            base_url: data.app_url().to_string(),
+            NewModVersionAcceptedEvent {
+                id: version.mod_id.clone(),
+                name: version.name.clone(),
+                version: version.version.clone(),
+                owner,
+                verified: NewModVersionVerification::VerifiedDev,
+                base_url: data.app_url().to_string(),
+            }
+            .to_discord_webhook()
+            .send(data.http_client(), data.webhook_url());
         }
-        .to_discord_webhook()
-        .send(data.http_client(), data.webhook_url());
 
         data.send_s3_task(S3WorkerTask::UploadMod {
             data: bytes,
@@ -575,6 +582,8 @@ pub async fn update_version(
     )
     .await?;
 
+    let mod_status = the_mod.status;
+
     if old_status == ModVersionStatusEnum::Pending
         && version.status == ModVersionStatusEnum::Accepted
     {
@@ -642,7 +651,7 @@ pub async fn update_version(
 
     tx.commit().await?;
 
-    if payload.status == ModVersionStatusEnum::Accepted {
+    if payload.status == ModVersionStatusEnum::Accepted && mod_status != ModStatusEnum::Unlisted {
         let is_update = approved_count > 0;
 
         let owner = developers::get_owner_for_mod(&version.mod_id, &mut pool)

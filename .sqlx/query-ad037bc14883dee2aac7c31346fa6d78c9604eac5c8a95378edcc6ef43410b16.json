@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image\n        ) VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at",
+  "query": "INSERT INTO mods (\n            id,\n            repository,\n            changelog,\n            about,\n            image\n        ) VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            id, repository, about,\n            changelog, featured,\n            download_count, created_at,\n            updated_at, status as \"status: _\",\n            status_info",
   "describe": {
     "columns": [
       {
@@ -90,6 +90,39 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status_info",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status_info"
+          }
+        }
       }
     ],
     "parameters": {
@@ -109,8 +142,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "f98fe5c88a7a234cc0b68fb39c156a741fbad1d2e4682e1e748037bb08962912"
+  "hash": "ad037bc14883dee2aac7c31346fa6d78c9604eac5c8a95378edcc6ef43410b16"
 }
