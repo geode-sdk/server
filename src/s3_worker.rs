@@ -32,12 +32,26 @@ pub enum S3WorkerTask {
     },
 }
 
+fn installer_ext_for_platform(platform: &str) -> &'static str {
+    match platform {
+        "win" => "exe",
+        "mac" => "pkg",
+        "linux" => "sh",
+        _ => panic!("Unsupported platform for installer: {}", platform),
+    }
+}
+
 fn path_for_mod(mod_id: &str, version: &str) -> String {
     format!("mods/{mod_id}/{version}/{mod_id}.geode")
 }
 
 fn path_for_loader(tag: &str, platform: &str) -> String {
     format!("geode/{tag}/geode-v{tag}-{platform}.zip")
+}
+
+fn path_for_installer(tag: &str, platform: &str) -> String {
+    let ext = installer_ext_for_platform(platform);
+    format!("geode/{tag}/geode-installer-v{tag}-{platform}.{ext}")
 }
 
 fn path_for_resources(tag: &str) -> String {
@@ -50,40 +64,82 @@ fn github_url_for_loader(tag: &str, platform: &str) -> String {
     )
 }
 
+fn github_url_for_installer(tag: &str, platform: &str) -> String {
+    let ext = installer_ext_for_platform(platform);
+    format!(
+        "https://github.com/geode-sdk/geode/releases/download/v{tag}/geode-installer-v{tag}-{platform}.{ext}"
+    )
+}
+
 fn github_url_for_resources(tag: &str) -> String {
     format!("https://github.com/geode-sdk/geode/releases/download/v{tag}/resources.zip")
 }
 
-async fn migrate_geode_version_opt(
+struct LoaderMigration {
+    github_url: String,
+    path: String,
+    download_name: String,
+    tag: String,
+    resources: bool,
+    mime_type: String,
+}
+
+impl LoaderMigration {
+    fn new(tag: &str, platform: &str) -> Self {
+        LoaderMigration {
+            github_url: github_url_for_loader(tag, platform),
+            path: path_for_loader(tag, platform),
+            tag: tag.to_owned(),
+            download_name: platform.to_owned(),
+            resources: false,
+            mime_type: "application/zip".to_owned(),
+        }
+    }
+
+    fn new_installer(tag: &str, platform: &str) -> Self {
+        LoaderMigration {
+            github_url: github_url_for_installer(tag, platform),
+            path: path_for_installer(tag, platform),
+            tag: tag.to_owned(),
+            resources: false,
+            download_name: format!("{platform}-installer"),
+            mime_type: "application/octet-stream".to_owned(),
+        }
+    }
+
+    fn new_resources(tag: &str) -> Self {
+        LoaderMigration {
+            github_url: github_url_for_resources(tag),
+            path: path_for_resources(tag),
+            tag: tag.to_owned(),
+            resources: true,
+            download_name: "resources".to_owned(),
+            mime_type: "application/zip".to_owned(),
+        }
+    }
+}
+
+async fn migrate_artifact(
     data: &AppData,
     db: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    tag: &str,
-    platform: &str,
+    mig: &LoaderMigration,
 ) -> anyhow::Result<Option<LoaderDownload>> {
     let storage = data.cdn_storage().expect("mod storage must be set by now");
-    let (github_url, new_path) = match platform {
-        "resources" => (github_url_for_resources(tag), path_for_resources(tag)),
-        _ => (
-            github_url_for_loader(tag, platform),
-            path_for_loader(tag, platform),
-        ),
-    };
 
-    let resp = data.http_client().get(&github_url).send().await?;
-
+    let resp = data.http_client().get(&mig.github_url).send().await?;
     if resp.status() == StatusCode::NOT_FOUND {
         return Ok(None);
     }
 
     let bytes = resp.error_for_status()?.bytes().await?;
-    let public_url = storage.asset_url(&new_path);
+    let public_url = storage.asset_url(&mig.path);
     let hash = sha256::digest(&bytes[..]);
-    storage.store(&new_path, &bytes, "application/zip").await?;
+    storage.store(&mig.path, &bytes, &mig.mime_type).await?;
 
-    if platform == "resources" {
-        update_resources_download(tag, &public_url, &hash, db).await?;
+    if mig.resources {
+        update_resources_download(&mig.tag, &public_url, &hash, db).await?;
     } else {
-        upsert_download(tag, platform, &public_url, &hash, db).await?;
+        upsert_download(&mig.tag, &mig.download_name, &public_url, &hash, db).await?;
     }
 
     Ok(Some(LoaderDownload {
@@ -98,13 +154,40 @@ async fn migrate_geode_version(
     tag: &str,
     platform: &str,
 ) -> anyhow::Result<LoaderDownload> {
-    match migrate_geode_version_opt(data, db, tag, platform).await? {
+    match migrate_artifact(data, db, &LoaderMigration::new(tag, platform)).await? {
         Some(download) => Ok(download),
         None => Err(anyhow::anyhow!(
             "Geode version {} for platform '{}' not found on GitHub",
             tag,
             platform
         )),
+    }
+}
+
+async fn migrate_geode_installer(
+    data: &AppData,
+    db: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tag: &str,
+    platform: &str,
+) -> anyhow::Result<LoaderDownload> {
+    match migrate_artifact(data, db, &LoaderMigration::new_installer(tag, platform)).await? {
+        Some(download) => Ok(download),
+        None => Err(anyhow::anyhow!(
+            "Geode {} installer for platform '{}' not found on GitHub",
+            tag,
+            platform
+        )),
+    }
+}
+
+async fn migrate_resources(
+    data: &AppData,
+    db: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tag: &str,
+) -> anyhow::Result<LoaderDownload> {
+    match migrate_artifact(data, db, &LoaderMigration::new_resources(tag)).await? {
+        Some(download) => Ok(download),
+        None => Err(anyhow::anyhow!("Resources for {} not found on GitHub", tag,)),
     }
 }
 
@@ -184,24 +267,19 @@ async fn process_task(
 
             let mut tx = data.db().begin().await?;
 
-            let ios = match migrate_geode_version_opt(data, &mut tx, &tag, "ios").await? {
-                Some(download) => download,
-                None => {
-                    tracing::warn!(
-                        "Geode version {} for iOS not found on GitHub, skipping iOS",
-                        tag
-                    );
-                    LoaderDownload::default()
-                }
-            };
-
             let downloads = LoaderDownloads {
                 win: migrate_geode_version(data, &mut tx, &tag, "win").await?,
                 mac: migrate_geode_version(data, &mut tx, &tag, "mac").await?,
                 android32: migrate_geode_version(data, &mut tx, &tag, "android32").await?,
                 android64: migrate_geode_version(data, &mut tx, &tag, "android64").await?,
-                ios,
-                resources: migrate_geode_version(data, &mut tx, &tag, "resources").await?,
+                ios: migrate_artifact(data, &mut tx, &LoaderMigration::new(&tag, "ios"))
+                    .await?
+                    .unwrap_or_default(),
+                resources: migrate_resources(data, &mut tx, &tag).await?,
+
+                win_installer: migrate_geode_installer(data, &mut tx, &tag, "win").await?,
+                mac_installer: migrate_geode_installer(data, &mut tx, &tag, "mac").await?,
+                linux_installer: migrate_geode_installer(data, &mut tx, &tag, "linux").await?,
             };
 
             tx.commit().await?;

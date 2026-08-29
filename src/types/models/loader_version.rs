@@ -35,6 +35,7 @@ pub struct LoaderDownload {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, ToSchema)]
+#[serde(rename_all = "kebab-case")]
 pub struct LoaderDownloads {
     pub win: LoaderDownload,
     pub mac: LoaderDownload,
@@ -42,6 +43,9 @@ pub struct LoaderDownloads {
     pub android64: LoaderDownload,
     pub ios: LoaderDownload,
     pub resources: LoaderDownload,
+    pub win_installer: LoaderDownload,
+    pub mac_installer: LoaderDownload,
+    pub linux_installer: LoaderDownload,
 }
 
 #[derive(Serialize, Debug, ToSchema)]
@@ -91,6 +95,12 @@ fn github_url(tag: &str, platform: &str) -> String {
     )
 }
 
+fn github_installer_url(tag: &str, platform_ext: &str) -> String {
+    format!(
+        "https://github.com/geode-sdk/geode/releases/download/v{tag}/geode-installer-v{tag}-{platform_ext}"
+    )
+}
+
 fn github_resources_url(tag: &str) -> String {
     format!("https://github.com/geode-sdk/geode/releases/download/v{tag}/resources.zip")
 }
@@ -101,6 +111,13 @@ impl LoaderDownload {
         // temporarily serve the GitHub URLs and tell the client to not verify hashes
         LoaderDownload {
             url: github_url(tag, platform),
+            hash: String::new(),
+        }
+    }
+
+    pub fn new_github_installer(tag: &str, platform_ext: &str) -> Self {
+        LoaderDownload {
+            url: github_installer_url(tag, platform_ext),
             hash: String::new(),
         }
     }
@@ -123,6 +140,9 @@ fn build_downloads(
         android32: LoaderDownload::new_github(&version.tag, "android32"),
         android64: LoaderDownload::new_github(&version.tag, "android64"),
         ios: LoaderDownload::new_github(&version.tag, "ios"),
+        win_installer: LoaderDownload::new_github_installer(&version.tag, "win.exe"),
+        mac_installer: LoaderDownload::new_github_installer(&version.tag, "mac.pkg"),
+        linux_installer: LoaderDownload::new_github_installer(&version.tag, "linux.sh"),
         resources: LoaderDownload::new_github_resources(&version.tag),
     };
 
@@ -138,6 +158,9 @@ fn build_downloads(
             "android32" => out.android32 = download,
             "android64" => out.android64 = download,
             "ios" => out.ios = download,
+            "win-installer" => out.win_installer = download,
+            "mac-installer" => out.mac_installer = download,
+            "linux-installer" => out.linux_installer = download,
             _ => {}
         }
     }
@@ -410,7 +433,7 @@ impl LoaderVersion {
                 };
             }
             (None, Some(g)) => {
-                query_builder.push(" WHERE (((((((((android=");
+                query_builder.push(" WHERE (android=");
                 query_builder.push_bind(g);
                 query_builder.push(" or mac=");
                 query_builder.push_bind(g);
