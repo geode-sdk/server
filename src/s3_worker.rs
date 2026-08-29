@@ -81,6 +81,7 @@ struct LoaderMigration {
     download_name: String,
     tag: String,
     resources: bool,
+    mime_type: String,
 }
 
 impl LoaderMigration {
@@ -91,6 +92,7 @@ impl LoaderMigration {
             tag: tag.to_owned(),
             download_name: platform.to_owned(),
             resources: false,
+            mime_type: "application/zip".to_owned(),
         }
     }
 
@@ -101,6 +103,7 @@ impl LoaderMigration {
             tag: tag.to_owned(),
             resources: false,
             download_name: format!("{platform}-installer"),
+            mime_type: "application/octet-stream".to_owned(),
         }
     }
 
@@ -111,6 +114,7 @@ impl LoaderMigration {
             tag: tag.to_owned(),
             resources: true,
             download_name: "resources".to_owned(),
+            mime_type: "application/zip".to_owned(),
         }
     }
 }
@@ -130,7 +134,7 @@ async fn migrate_artifact(
     let bytes = resp.error_for_status()?.bytes().await?;
     let public_url = storage.asset_url(&mig.path);
     let hash = sha256::digest(&bytes[..]);
-    storage.store(&mig.path, &bytes, "application/zip").await?;
+    storage.store(&mig.path, &bytes, &mig.mime_type).await?;
 
     if mig.resources {
         update_resources_download(&mig.tag, &public_url, &hash, db).await?;
