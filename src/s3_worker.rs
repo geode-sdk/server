@@ -122,8 +122,6 @@ async fn migrate_artifact(
 ) -> anyhow::Result<Option<LoaderDownload>> {
     let storage = data.cdn_storage().expect("mod storage must be set by now");
 
-    // skip if this specific version already exists
-
     let resp = data.http_client().get(&mig.github_url).send().await?;
     if resp.status() == StatusCode::NOT_FOUND {
         return Ok(None);
