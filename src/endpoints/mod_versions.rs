@@ -460,7 +460,9 @@ pub async fn create_version(
     }
 
     if !make_accepted {
-        mod_version_submissions::create(version.id, &mut tx).await?;
+        if let None = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await? {
+            mod_version_submissions::create(version.id, &mut tx).await?;
+        }
     }
 
     tx.commit().await?;
