@@ -2,6 +2,7 @@ use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher};
 use maud::html;
+use password_hash::PasswordHashString;
 use serde::{Deserialize, Serialize};
 use sqlx::Connection;
 use utoipa::{IntoParams, ToSchema};
@@ -406,6 +407,7 @@ struct StartEmailConfigurationPayload {
         contains(pattern = "[0-9]", message = "password must contain at least 1 digit")
     )]
     password: String,
+    /// Force remove the existing request if not expired
     force: Option<bool>,
 }
 
@@ -447,6 +449,16 @@ pub async fn setup_email(
     // then get another connection to finish the insert
     {
         let mut conn = data.db().acquire().await?;
+
+        // Prevent someone stealing an address
+        let existing = developers::find_by_email(&json.email, &mut conn).await?;
+
+        if existing.is_some_and(|e| e.id != developer.id) {
+            return Err(ApiError::Conflict(
+                "Developer already exists with this email address".into(),
+            ));
+        }
+
         let force = json.force.unwrap_or(false);
         let existing = email_setup_requests::find_for_developer(developer.id, &mut conn).await?;
 
@@ -519,6 +531,94 @@ pub async fn setup_email(
     tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
+        payload: "".to_string(),
+        error: "".into(),
+    }))
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+struct VerifyEmailConfigurationPayload {
+    request_id: String,
+}
+
+/// Finalize email configuration
+#[utoipa::path(
+    post,
+    path = "/v1/me/email/setup/verify",
+    request_body = VerifyEmailConfigurationPayload,
+    tag = "developers",
+    responses(
+        (status = 200, description = "Email settings applied", body = inline(ApiResponse<String>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Setup request not found"),
+        (status = 409, description = "E-mail already configured")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[post("v1/me/email/setup/verify")]
+#[tracing::instrument(skip_all)]
+pub async fn verify_email_setup(
+    data: web::Data<AppData>,
+    json: web::Json<VerifyEmailConfigurationPayload>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let developer = auth.developer()?;
+
+    let request_id = Uuid::try_parse(&json.request_id).map_err(|_| {
+        ApiError::NotFound(
+            "The request associated with this ID either does not exist or has expired".into(),
+        )
+    })?;
+
+    let mut conn = data.db().acquire().await?;
+
+    let mut tx = conn.begin().await?;
+
+    let request = email_setup_requests::find_for_token(request_id, &mut tx)
+        .await?
+        .ok_or(ApiError::NotFound(
+            "The request associated with this ID either does not exist or has expired".into(),
+        ))?;
+
+    if request.developer_id != developer.id {
+        // Let's be a little sneaky here... >:)
+        return Err(ApiError::NotFound(
+            "The request associated with this ID either does not exist or has expired".into(),
+        ));
+    }
+
+    let existing = developers::find_by_email(&request.email, &mut tx).await?;
+
+    if existing.is_some_and(|e| e.id != developer.id) {
+        return Err(ApiError::Conflict(
+            "Developer already exists with this email address".into(),
+        ));
+    }
+
+    // Who knows, maybe the blocklist gets updated while the request is running
+    let email = ApprovedEmailAddress::parse(
+        EmailAddress::from_str(&request.email)
+            .inspect_err(|e| tracing::error!("failed to parse email from EmailSetupRequest: {e}"))
+            .map_err(|e| {
+                ApiError::InternalError(format!(
+                    "Failed to read email from email setup request: {e}"
+                ))
+            })?,
+        data.email_blocklist(),
+    )?;
+
+    // This should basically never fail
+    let password = request.password()
+        .inspect_err(|e| tracing::error!("Invalid hashed password in EmailSetupRequest: {e}"))
+        .map_err(|_| ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again".into()))?;
+
+    developers::finalize_email_setup(developer.id, &email, &password, &mut tx).await?;
+
+    tx.commit().await?;
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
         payload: "".to_string(),
         error: "".into(),
     }))

@@ -133,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::get_me)
             .service(endpoints::developers::update_developer)
             .service(endpoints::developers::setup_email)
+            .service(endpoints::developers::verify_email_setup)
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)

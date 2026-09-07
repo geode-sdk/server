@@ -1,6 +1,9 @@
 use crate::database::DatabaseError;
+use crate::email::blocklist::ApprovedEmailAddress;
 use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, ModDeveloper};
+use chrono::Utc;
+use password_hash::PasswordHashString;
 use sqlx::PgConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -491,5 +494,63 @@ pub async fn has_accepted_mod(id: i32, conn: &mut PgConnection) -> Result<bool, 
     .await
     .inspect_err(|e| tracing::error!("{:?}", e))
     .map(|x| x.is_some())
+    .map_err(|e| e.into())
+}
+
+#[tracing::instrument(skip_all, fields(email = %email))]
+pub async fn find_by_email(
+    email: &str,
+    conn: &mut PgConnection,
+) -> Result<Option<Developer>, DatabaseError> {
+    sqlx::query_as!(
+        Developer,
+        "SELECT
+            d.id,
+            d.username,
+            d.display_name,
+            d.verified,
+            d.admin,
+            d.github_user_id as github_id
+        FROM developers d
+        INNER JOIN developer_login_info login ON login.developer_id = d.id
+        WHERE login.email = $1",
+        email
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+/// Sets developer_login_info for the specified developer_id, overwriting on developer_id conflict
+/// Assumes that email is not associated to another developer, and doesn't handle a conflict on that unique index
+#[tracing::instrument(skip_all, fields(developer_id = %id))]
+pub async fn finalize_email_setup(
+    id: i32,
+    email: &ApprovedEmailAddress,
+    password: &PasswordHashString,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    let verified_at = Utc::now();
+    let email_str = email.email().to_string().to_lowercase();
+
+    sqlx::query!(
+        "INSERT INTO developer_login_info
+        (developer_id, email, email_verified_at, password)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (developer_id)
+        DO UPDATE
+            SET email = EXCLUDED.email,
+                email_verified_at = EXCLUDED.email_verified_at,
+                password = EXCLUDED.password",
+        id,
+        &email_str,
+        verified_at,
+        password.as_str()
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map(|_| ())
     .map_err(|e| e.into())
 }

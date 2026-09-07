@@ -1,4 +1,3 @@
-use argon2::PasswordHash;
 use chrono::Utc;
 use password_hash::PasswordHashString;
 use sqlx::PgConnection;
@@ -14,8 +13,8 @@ pub struct EmailSetupRequestRow {
 }
 
 impl EmailSetupRequestRow {
-    pub fn password(&self) -> Result<PasswordHash<'_>, password_hash::Error> {
-        PasswordHash::new(&self.password)
+    pub fn password(&self) -> Result<PasswordHashString, password_hash::Error> {
+        PasswordHashString::new(&self.password)
     }
 }
 
@@ -45,6 +44,7 @@ pub async fn find_for_developer(
     })
 }
 
+/// Finds a valid (not expired) EmailSetupRequest for the given token
 #[tracing::instrument(skip_all)]
 pub async fn find_for_token(
     token: Uuid,
@@ -53,7 +53,8 @@ pub async fn find_for_token(
     sqlx::query!(
         "SELECT developer_id, email, password, token
         FROM email_setup_requests
-        WHERE token = $1",
+        WHERE token = $1
+        AND expires_at > NOW()",
         token
     )
     .fetch_optional(&mut *conn)
