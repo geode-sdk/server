@@ -2,7 +2,6 @@ use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher};
 use maud::html;
-use password_hash::PasswordHashString;
 use serde::{Deserialize, Serialize};
 use sqlx::Connection;
 use utoipa::{IntoParams, ToSchema};

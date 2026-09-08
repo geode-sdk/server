@@ -50,7 +50,7 @@ impl Blocklist {
     pub fn load(path: PathBuf) -> Self {
         let entries = Self::read_file(&path)
             .inspect_err(|e| {
-                tracing::error!(
+                tracing::warn!(
                     "failed to parse blocklist {}, using empty blocklist: {e}",
                     path.display()
                 )
