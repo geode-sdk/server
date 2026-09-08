@@ -1,7 +1,7 @@
 use crate::database::DatabaseError;
 use crate::email::blocklist::ApprovedEmailAddress;
 use crate::types::api::PaginatedData;
-use crate::types::models::developer::{Developer, ModDeveloper};
+use crate::types::models::developer::{Developer, DeveloperEmailLogin, ModDeveloper};
 use chrono::Utc;
 use password_hash::PasswordHashString;
 use sqlx::PgConnection;
@@ -514,6 +514,28 @@ pub async fn find_by_email(
         FROM developers d
         INNER JOIN developer_login_info login ON login.developer_id = d.id
         WHERE login.email = $1",
+        email
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+#[tracing::instrument(skip_all, fields(email = %email))]
+pub async fn find_login_data_by_email(
+    email: &str,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperEmailLogin>, DatabaseError> {
+    sqlx::query_as!(
+        DeveloperEmailLogin,
+        "SELECT
+            d.id,
+            login.email,
+            login.password as password_hash
+        FROM developers d
+        INNER JOIN developer_login_info login ON d.id = login.developer_id
+        WHERE email ILIKE $1",
         email
     )
     .fetch_optional(&mut *conn)

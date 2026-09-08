@@ -1,6 +1,6 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
+use argon2::PasswordHasher;
 use argon2::password_hash::{SaltString, rand_core::OsRng};
-use argon2::{Argon2, PasswordHasher};
 use maud::html;
 use serde::{Deserialize, Serialize};
 use sqlx::Connection;
@@ -11,6 +11,7 @@ use validator::Validate;
 use std::str::FromStr;
 
 use super::ApiError;
+use crate::auth;
 use crate::config::AppData;
 use crate::database::repository::{
     auth_tokens, developers, email_setup_requests, mods, refresh_tokens,
@@ -476,8 +477,10 @@ pub async fn setup_email(
     let salt = SaltString::generate(&mut OsRng);
     let password = json.password.clone();
 
+    let pepper = data.password_hash_pepper().cloned();
+
     let hash = tokio::task::spawn_blocking(move || {
-        Argon2::default()
+        auth::password::argon2(pepper.as_ref())
             .hash_password(password.as_bytes(), &salt)
             .inspect_err(|e| tracing::error!("{:?}", e))
             .map_err(|_| ApiError::InternalError("failed to hash password".into()))
@@ -485,7 +488,8 @@ pub async fn setup_email(
             .map_err(|_| ApiError::InternalError("failed to hash password".into()))
     })
     .await
-    .map_err(|e| ApiError::InternalError(format!("hashing task panicked: {e}")))??;
+    .inspect_err(|e| tracing::error!("spawn_blocking failed: {e}"))
+    .map_err(|_| ApiError::InternalError("hashing task panicked".into()))??;
 
     let uuid = Uuid::new_v4();
 

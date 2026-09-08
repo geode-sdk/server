@@ -122,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::auth::github::poll_github_login)
             .service(endpoints::auth::github::github_token_login)
             .service(endpoints::auth::github::start_github_login)
+            .service(endpoints::auth::database::login)
             .service(endpoints::developers::developer_index)
             .service(endpoints::developers::get_developer)
             .service(endpoints::developers::add_developer_to_mod)

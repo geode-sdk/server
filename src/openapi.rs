@@ -50,6 +50,7 @@ use crate::{endpoints, types};
         endpoints::loader::get_many,
         endpoints::health::health,
         endpoints::auth::refresh_token,
+        endpoints::auth::database::login,
         endpoints::auth::github::start_github_login,
         endpoints::auth::github::start_github_web_login,
         endpoints::auth::github::github_web_callback,

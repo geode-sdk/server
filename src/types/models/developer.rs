@@ -19,6 +19,12 @@ pub struct Developer {
     pub github_id: i64,
 }
 
+pub struct DeveloperEmailLogin {
+    pub id: i32,
+    pub email: String,
+    pub password_hash: String,
+}
+
 #[derive(sqlx::FromRow, Serialize, Clone, Debug, ToSchema)]
 pub struct SelfDeveloper {
     pub id: i32,

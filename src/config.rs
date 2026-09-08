@@ -36,6 +36,7 @@ pub struct AppData {
     max_download_mb: u32,
     port: u16,
     debug: bool,
+    password_hash_pepper: Option<String>,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
@@ -70,6 +71,14 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
+    let password_hash_pepper = dotenvy::var("PASSWORD_HASH_PEPPER").ok();
+
+    if password_hash_pepper.is_none() {
+        tracing::warn!(
+            "IMPORTANT: no password hash pepper found, password storage will be LESS secure. Check https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#peppering for more information."
+        );
+    }
+
     let index_admin_webhook_url =
         dotenvy::var("INDEX_ADMIN_DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
     let disable_downloads =
@@ -134,6 +143,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         max_download_mb,
         port,
         debug,
+        password_hash_pepper,
         mods_cache,
         http_client: reqwest::Client::builder()
             .pool_max_idle_per_host(4)
@@ -204,6 +214,10 @@ impl AppData {
 
     pub fn debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn password_hash_pepper(&self) -> Option<&String> {
+        self.password_hash_pepper.as_ref()
     }
 
     pub fn static_storage(&self) -> &PublicDisk {
