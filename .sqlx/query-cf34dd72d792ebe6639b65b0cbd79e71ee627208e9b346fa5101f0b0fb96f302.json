@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(\n            SELECT 1 FROM mods m\n            WHERE m.id = $1 AND m.status = $2\n        ) AS \"exists!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "cf34dd72d792ebe6639b65b0cbd79e71ee627208e9b346fa5101f0b0fb96f302"
+}

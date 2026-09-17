@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at\n            FROM mods m\n            WHERE id = $1",
+  "query": "SELECT\n                m.id, m.repository, m.about, m.changelog, m.featured,\n                m.download_count, m.created_at, m.updated_at,\n                m.status AS \"status: _\", m.status_info\n            FROM mods m\n            WHERE m.id = $1",
   "describe": {
     "columns": [
       {
@@ -90,6 +90,39 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "status: _",
+        "type_info": {
+          "Custom": {
+            "name": "mod_status",
+            "kind": {
+              "Enum": [
+                "default",
+                "archived",
+                "unlisted"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "status_info",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mods",
+            "name": "status_info"
+          }
+        }
       }
     ],
     "parameters": {
@@ -105,8 +138,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "959d6a60bbb47b24bc86963c0063bdd1268c75d03563eaf78eec41752cc1a491"
+  "hash": "6b3265a168fb436018db26f164d24dc2fe6bb074a2766cbac68b07f2592f93d9"
 }

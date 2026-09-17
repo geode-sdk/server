@@ -8,6 +8,7 @@ pub mod github_login_attempt;
 pub mod incompatibility;
 pub mod loader_version;
 pub mod mod_entity;
+pub mod mod_status;
 pub mod mod_gd_version;
 pub mod mod_link;
 pub mod mod_version;

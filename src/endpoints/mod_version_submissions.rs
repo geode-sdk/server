@@ -7,6 +7,7 @@ use crate::extractors::auth::Auth;
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::developer::Developer;
+use crate::types::models::mod_status::ModStatusEnum;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
 use crate::types::models::mod_version_submission::{
     CreateCommentPayload, ModVersionSubmission, ModVersionSubmissionAttachment,
@@ -79,6 +80,10 @@ async fn check_submission_lock(
 ) -> Result<bool, DatabaseError> {
     if dev.admin {
         return Ok(true);
+    }
+
+    if mods::has_status(mod_id, ModStatusEnum::Archived, &mut *conn).await? {
+        return Ok(false);
     }
 
     let access_to_mod = developers::has_access_to_mod(dev.id, mod_id, &mut *conn).await?;
