@@ -12,8 +12,6 @@ use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
 
-use crate::endpoints::ApiError::ModZip;
-
 #[derive(thiserror::Error, Debug)]
 pub enum ModZipError {
     #[error("I/O error: {0}")]
@@ -46,11 +44,11 @@ impl ModZipError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             ModZipError::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ModZipError::ImageError(e) => match (e) {
+            ModZipError::ImageError(e) => match e {
                 ImageError::Limits(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
-            ModZipError::ZipError(e) => match (e) {
+            ModZipError::ZipError(e) => match e {
                 ZipError::InvalidArchive(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
