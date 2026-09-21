@@ -9,6 +9,7 @@ use moka::future::Cache;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
+    auth::github::GithubClient,
     dns::ValidateDnsResolver,
     email::{SmtpConfig, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer},
     endpoints::mods::IndexQueryParams,
@@ -25,13 +26,13 @@ pub struct AppData {
     db: sqlx::postgres::PgPool,
     app_url: String,
     front_url: String,
-    github: GitHubClientData,
+    github_client: GithubClient,
     webhook_url: String,
     index_admin_webhook_url: String,
     static_storage: PublicDisk,
     public_storage: PublicDisk,
     private_storage: PrivateDisk,
-    mod_storage: Option<PublicDisk>,
+    cdn_storage: Option<PublicDisk>,
     disable_downloads: bool,
     max_download_mb: u32,
     port: u16,
@@ -45,12 +46,6 @@ pub struct AppData {
     email_blocklist: Option<Blocklist>,
 
     s3_sender: OnceLock<Sender<S3WorkerTask>>,
-}
-
-#[derive(Clone)]
-pub struct GitHubClientData {
-    client_id: String,
-    client_secret: String,
 }
 
 pub async fn build_config() -> anyhow::Result<AppData> {
@@ -93,7 +88,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .time_to_live(Duration::from_mins(10))
         .build();
 
-    let mod_storage = if let Some(s3_config) = S3Configuration::from_env()? {
+    let cdn_storage = if let Some(s3_config) = S3Configuration::from_env()? {
         let backend = Arc::new(S3Backend::new(&s3_config)?);
         Some(PublicDisk::new(backend, s3_config.public_url))
     } else {
@@ -118,15 +113,17 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     } else {
         None
     };
+    let http_client = reqwest::Client::builder()
+        .pool_max_idle_per_host(4)
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(30))
+        .build()?;
 
     Ok(AppData {
         db: pool,
         app_url: app_url.clone(),
         front_url,
-        github: GitHubClientData {
-            client_id: github_client,
-            client_secret: github_secret,
-        },
+        github_client: GithubClient::new(github_client, github_secret, http_client.clone()),
         webhook_url,
         index_admin_webhook_url,
         static_storage: PublicDisk::new(
@@ -138,18 +135,14 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             format!("{app_url}/storage"),
         ),
         private_storage: PrivateDisk::new(Arc::new(LocalBackend::new("storage/private"))),
-        mod_storage,
+        cdn_storage,
         disable_downloads,
         max_download_mb,
         port,
         debug,
         password_hash_pepper,
         mods_cache,
-        http_client: reqwest::Client::builder()
-            .pool_max_idle_per_host(4)
-            .connect_timeout(Duration::from_secs(10))
-            .read_timeout(Duration::from_secs(30))
-            .build()?,
+        http_client,
         check_dns_http_client,
         mailer: smtp_config
             .and_then(|config| match LettreBackend::new(&config) {
@@ -165,16 +158,6 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     })
 }
 
-impl GitHubClientData {
-    pub fn client_id(&self) -> &str {
-        &self.client_id
-    }
-
-    pub fn client_secret(&self) -> &str {
-        &self.client_secret
-    }
-}
-
 impl AppData {
     pub fn db(&self) -> &sqlx::postgres::PgPool {
         &self.db
@@ -188,8 +171,8 @@ impl AppData {
         &self.front_url
     }
 
-    pub fn github(&self) -> &GitHubClientData {
-        &self.github
+    pub fn github_client(&self) -> &GithubClient {
+        &self.github_client
     }
 
     pub fn webhook_url(&self) -> &str {
@@ -232,8 +215,8 @@ impl AppData {
         &self.private_storage
     }
 
-    pub fn mod_storage(&self) -> Option<&PublicDisk> {
-        self.mod_storage.as_ref()
+    pub fn cdn_storage(&self) -> Option<&PublicDisk> {
+        self.cdn_storage.as_ref()
     }
 
     pub fn mods_cache(&self) -> &Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>> {

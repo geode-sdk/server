@@ -1,6 +1,7 @@
 use std::io::Seek;
 use std::io::{BufReader, Cursor, Read};
 
+use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
 use image::codecs::png::PngDecoder;
 use image::codecs::png::PngEncoder;
@@ -39,6 +40,23 @@ pub enum ModZipError {
     InvalidBinaries(String),
 }
 
+impl ModZipError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            ModZipError::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ModZipError::ImageError(e) => match e {
+                ImageError::Limits(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            ModZipError::ZipError(e) => match e {
+                ZipError::InvalidArchive(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            _ => StatusCode::BAD_REQUEST,
+        }
+    }
+}
+
 pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZipError> {
     const FIVE_MEGABYTES: u64 = 5 * 1000 * 1000;
     if file.size() > FIVE_MEGABYTES {
@@ -48,7 +66,8 @@ pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZi
     }
 
     let mut logo: Vec<u8> = Vec::with_capacity(file.size() as usize);
-    file.read_to_end(&mut logo)
+    file.take(file.size())
+        .read_to_end(&mut logo)
         .inspect_err(|e| tracing::error!("logo.png read fail: {}", e))?;
 
     let mut reader = BufReader::new(Cursor::new(logo));

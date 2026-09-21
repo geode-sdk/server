@@ -30,20 +30,27 @@ pub struct Stats {
 
 impl Stats {
     #[tracing::instrument(skip_all)]
-    pub async fn get_cached(pool: &mut PgConnection) -> Result<Stats, ApiError> {
+    pub async fn get_cached(
+        pool: &mut PgConnection,
+        http_client: &Client,
+    ) -> Result<Stats, ApiError> {
         let mod_stats = Mod::get_stats(&mut *pool).await?;
         Ok(Stats {
             total_mod_count: mod_stats.total_count,
             total_mod_downloads: mod_stats.total_downloads,
             total_registered_developers: developers::index_count(None, &mut *pool).await?,
-            total_geode_downloads: Self::get_latest_github_release_download_count(&mut *pool)
-                .await?,
+            total_geode_downloads: Self::get_latest_github_release_download_count(
+                &mut *pool,
+                http_client,
+            )
+            .await?,
         })
     }
 
     #[tracing::instrument(skip_all)]
     async fn get_latest_github_release_download_count(
         pool: &mut PgConnection,
+        http_client: &Client,
     ) -> Result<i64, ApiError> {
         // If release stats were fetched less than a day ago, just use cached stats
         if let Ok((cache_time, total_download_count)) = sqlx::query!(
@@ -61,7 +68,7 @@ impl Stats {
         }
 
         // Fetch latest stats
-        let new = Self::fetch_github_release_stats().await?;
+        let new = Self::fetch_github_release_stats(http_client).await?;
         sqlx::query!(
             "INSERT INTO github_loader_release_stats (total_download_count, latest_loader_version)
             VALUES ($1, $2)",
@@ -74,9 +81,8 @@ impl Stats {
         Ok(new.0)
     }
 
-    async fn fetch_github_release_stats() -> Result<(i64, String), ApiError> {
-        let client = Client::new();
-        let resp = client
+    async fn fetch_github_release_stats(http_client: &Client) -> Result<(i64, String), ApiError> {
+        let resp = http_client
             .get("https://api.github.com/repos/geode-sdk/geode/releases")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")

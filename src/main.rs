@@ -42,8 +42,8 @@ async fn main() -> anyhow::Result<()> {
     let app_data = config::build_config().await?;
     app_data.static_storage().init().await?;
     app_data.private_storage().init().await?;
-    if let Some(mod_storage) = app_data.mod_storage() {
-        mod_storage.init().await?;
+    if let Some(cdn_storage) = app_data.cdn_storage() {
+        cdn_storage.init().await?;
     }
 
     if cli::maybe_cli(&app_data).await? {
@@ -76,9 +76,8 @@ async fn main() -> anyhow::Result<()> {
             .wrap(
                 Cors::default()
                     .allow_any_origin()
-                    .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
-                    .allow_any_header()
-                    .supports_credentials()
+                    .allowed_methods(vec!["GET", "HEAD"])
+                    .allowed_headers(vec![actix_web::http::header::ACCEPT])
                     .max_age(3600),
             )
             .wrap(tracing_actix_web::TracingLogger::default());

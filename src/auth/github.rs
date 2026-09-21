@@ -47,9 +47,11 @@ pub struct GithubErrorResponse {
     error_uri: String,
 }
 
+#[derive(Clone)]
 pub struct GithubClient {
     client_id: String,
     client_secret: String,
+    http_client: Client,
 }
 
 #[derive(Serialize)]
@@ -77,11 +79,16 @@ pub struct GitHubFetchedUser {
 }
 
 impl GithubClient {
-    pub fn new(client_id: String, client_secret: String) -> GithubClient {
+    pub fn new(client_id: String, client_secret: String, http_client: Client) -> GithubClient {
         GithubClient {
             client_id,
             client_secret,
+            http_client,
         }
+    }
+
+    pub fn client_id(&self) -> &str {
+        &self.client_id
     }
 
     pub async fn start_polling_auth(
@@ -98,7 +105,8 @@ impl GithubClient {
             }
         }
 
-        let res = Client::new()
+        let res = self
+            .http_client
             .post("https://github.com/login/device/code")
             .header("Accept", HeaderValue::from_static("application/json"))
             .basic_auth(&self.client_id, Some(&self.client_secret))
@@ -172,7 +180,8 @@ impl GithubClient {
             }
         };
 
-        let resp = Client::new()
+        let resp = self
+            .http_client
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header(
@@ -203,7 +212,8 @@ impl GithubClient {
             .to_string())
     }
     pub async fn get_user(&self, token: &str) -> Result<GitHubFetchedUser, AuthenticationError> {
-        let resp = Client::new()
+        let resp = self
+            .http_client
             .get("https://api.github.com/user")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")
@@ -234,8 +244,8 @@ impl GithubClient {
         &self,
         token: &str,
     ) -> Result<GitHubFetchedUser, AuthenticationError> {
-        let client = Client::new();
-        let resp = client
+        let resp = self
+            .http_client
             .get("https://api.github.com/installation/repositories")
             .header("Accept", HeaderValue::from_str("application/json").unwrap())
             .header("User-Agent", "geode_index")

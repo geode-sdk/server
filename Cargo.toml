@@ -1,6 +1,6 @@
 [package]
 name = "geode-index"
-version = "0.57.1"
+version = "0.59.1"
 edition = "2024"
 
 [features]
@@ -8,14 +8,14 @@ serve-static = ["dep:actix-files"]
 
 [dependencies]
 actix-cors = "0.7"
-actix-files = { version = "0.6", optional = true }
+actix-files = { version = "0.7", optional = true }
 actix-multipart = "0.8"
 actix-web = "4.10"
 ammonia = "4"
 anyhow = "1.0"
 argon2 = "0.5.3"
 bytes = "1.11"
-chrono = { version = "0.4", features = ["default", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 constant_time_eq = "0.5.0"
 dotenvy = "0.15"
@@ -23,7 +23,6 @@ futures = "0.3"
 hex = "0.4.3"
 html2text = "0.17.1"
 http = "0.2" # 0.2 is required for actix-web compat in middleware
-image = { version = "0.25", features = ["png", "jpeg", "webp"] }
 lettre = { version = "0.11.23", default-features = false, features = [
     "builder",
     "hostname",
@@ -33,16 +32,18 @@ lettre = { version = "0.11.23", default-features = false, features = [
     "ring",
     "rustls-platform-verifier",
 ] }
+image = "0.25"
 moka = { version = "0.12.13", features = ["future"] }
 parking_lot = "0.12.5"
 password-hash = { version = "0.5", features = ["getrandom"] }
 regex = "1.10"
-reqwest = { version = "0.13", default-features = false, features = [
-    "json",
+reqwest = { version = "0.13", features = [
     "gzip",
-    "rustls",
+    "brotli",
+    "deflate",
+    "zstd",
+    "json",
     "query",
-    "http2",
 ] }
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -70,7 +71,7 @@ urlencoding = "2.1.3"
 utoipa = { version = "5.4.0", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web"] }
 uuid = { version = "1.8", features = ["v4", "fast-rng", "macro-diagnostics"] }
-validator = { version = "0.20.0", features = ["derive"] }
+validator = { version = "0.21.0", features = ["derive"] }
 zip = "8.6.0"
 # have to do this until https://github.com/durch/rust-s3/pull/452 is merged :(
 rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", default-features = false, features = [
@@ -78,6 +79,10 @@ rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", defa
     "fail-on-err",
 ] }
 maud = "0.27.0"
+
+[profile.release]
+opt-level = 's'
+lto = true
 
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "0.1.52"
