@@ -1,6 +1,7 @@
 use std::io::Seek;
 use std::io::{BufReader, Cursor, Read};
 
+use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
 use image::codecs::png::PngDecoder;
 use image::codecs::png::PngEncoder;
@@ -10,6 +11,8 @@ use url::Url;
 use zip::ZipArchive;
 use zip::read::ZipFile;
 use zip::result::ZipError;
+
+use crate::endpoints::ApiError::ModZip;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ModZipError {
@@ -37,6 +40,23 @@ pub enum ModZipError {
     InvalidModJson(String),
     #[error("Invalid binaries: {0}")]
     InvalidBinaries(String),
+}
+
+impl ModZipError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            ModZipError::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ModZipError::ImageError(e) => match (e) {
+                ImageError::Limits(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            ModZipError::ZipError(e) => match (e) {
+                ZipError::InvalidArchive(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            _ => StatusCode::BAD_REQUEST,
+        }
+    }
 }
 
 pub fn extract_mod_logo<R: Read>(file: &mut ZipFile<R>) -> Result<Vec<u8>, ModZipError> {
