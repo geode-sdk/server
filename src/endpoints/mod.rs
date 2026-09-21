@@ -70,6 +70,8 @@ impl actix_web::ResponseError for ApiError {
             ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
             ApiError::NotFound(_) => StatusCode::NOT_FOUND,
             ApiError::BadRequest(..) => StatusCode::BAD_REQUEST,
+            ApiError::ModZip(err) => err.status_code(),
+            ApiError::PlatformParseError(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
