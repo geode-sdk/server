@@ -7,22 +7,21 @@ edition = "2024"
 serve-static = ["dep:actix-files"]
 
 [dependencies]
+argon2 = "0.6.0"
 actix-cors = "0.7"
 actix-files = { version = "0.7", optional = true }
 actix-multipart = "0.8"
 actix-web = "4.10"
 ammonia = "4"
 anyhow = "1.0"
-argon2 = "0.5.3"
 bytes = "1.11"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
-constant_time_eq = "0.5.0"
+constant_time_eq = "0.6.0"
 dotenvy = "0.15"
 futures = "0.3"
 hex = "0.4.3"
 html2text = "0.17.1"
-http = "0.2" # 0.2 is required for actix-web compat in middleware
 lettre = { version = "0.11.23", default-features = false, features = [
     "builder",
     "hostname",
@@ -35,7 +34,6 @@ lettre = { version = "0.11.23", default-features = false, features = [
 image = "0.25"
 moka = { version = "0.12.13", features = ["future"] }
 parking_lot = "0.12.5"
-password-hash = { version = "0.5", features = ["getrandom"] }
 regex = "1.10"
 reqwest = { version = "0.13", features = [
     "gzip",
@@ -48,7 +46,6 @@ reqwest = { version = "0.13", features = [
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.11.0" # I know we already use sha256, it pulls sha2 anyway, I added it for urisign
 sha256 = "1.5"
 sqlx = { version = "0.9", features = [
     "postgres",
@@ -79,6 +76,7 @@ rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", defa
     "fail-on-err",
 ] }
 maud = "0.27.0"
+phc = "0.6.1"
 
 [profile.release]
 opt-level = 's'

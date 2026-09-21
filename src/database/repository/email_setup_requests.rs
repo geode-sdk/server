@@ -1,5 +1,4 @@
 use chrono::Utc;
-use password_hash::PasswordHashString;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -9,13 +8,7 @@ pub struct EmailSetupRequestRow {
     pub token: Uuid,
     pub developer_id: i32,
     pub email: String,
-    password: String,
-}
-
-impl EmailSetupRequestRow {
-    pub fn password(&self) -> Result<PasswordHashString, password_hash::Error> {
-        PasswordHashString::new(&self.password)
-    }
+    pub password: String,
 }
 
 #[tracing::instrument(skip_all)]
@@ -76,7 +69,7 @@ pub async fn create(
     uuid: Uuid,
     developer_id: i32,
     email: &ApprovedEmailAddress,
-    password: PasswordHashString,
+    password: String,
     conn: &mut PgConnection,
 ) -> Result<(), DatabaseError> {
     let expires_at = Utc::now() + chrono::Duration::minutes(30);

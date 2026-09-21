@@ -3,7 +3,6 @@ use crate::email::blocklist::ApprovedEmailAddress;
 use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, DeveloperEmailLogin, ModDeveloper};
 use chrono::Utc;
-use password_hash::PasswordHashString;
 use sqlx::PgConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -550,7 +549,7 @@ pub async fn find_login_data_by_email(
 pub async fn finalize_email_setup(
     id: i32,
     email: &ApprovedEmailAddress,
-    password: &PasswordHashString,
+    password: &String,
     conn: &mut PgConnection,
 ) -> Result<(), DatabaseError> {
     let verified_at = Utc::now();

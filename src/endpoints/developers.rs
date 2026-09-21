@@ -1,7 +1,7 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use argon2::PasswordHasher;
-use argon2::password_hash::{SaltString, rand_core::OsRng};
 use maud::html;
+use phc::PasswordHash;
 use serde::{Deserialize, Serialize};
 use sqlx::Connection;
 use utoipa::{IntoParams, ToSchema};
@@ -474,14 +474,12 @@ pub async fn setup_email(
         data.email_blocklist(),
     )?;
 
-    let salt = SaltString::generate(&mut OsRng);
     let password = json.password.clone();
-
     let pepper = data.password_hash_pepper().cloned();
 
     let hash = tokio::task::spawn_blocking(move || {
         auth::password::argon2(pepper.as_ref())
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .inspect_err(|e| tracing::error!("{:?}", e))
             .map_err(|_| ApiError::InternalError("failed to hash password".into()))
             .map(|hash| hash.serialize())
@@ -530,7 +528,7 @@ pub async fn setup_email(
     let mut pool = data.db().acquire().await?;
     let mut tx = pool.begin().await?;
     email_setup_requests::delete_for_developer(developer.id, &mut tx).await?;
-    email_setup_requests::create(uuid, developer.id, &email, hash, &mut tx).await?;
+    email_setup_requests::create(uuid, developer.id, &email, hash.to_string(), &mut tx).await?;
     tx.commit().await?;
 
     Ok(HttpResponse::Created().json(ApiResponse {
@@ -612,10 +610,17 @@ pub async fn verify_email_setup(
         data.email_blocklist(),
     )?;
 
-    // This should basically never fail
-    let password = request.password()
-        .inspect_err(|e| tracing::error!("Invalid hashed password in EmailSetupRequest: {e}"))
-        .map_err(|_| ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again".into()))?;
+    let password = request.password;
+
+    // This should basically never fail, but just check we have a valid
+    // phc string in the buffer
+    if let Err(e) = PasswordHash::new(&password) {
+        tracing::error!("Invalid hashed password in EmailSetupRequest: {}", e);
+        email_setup_requests::delete(&request.token, &mut tx).await?;
+        tx.commit().await?;
+
+        return Err(ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again".into()));
+    }
 
     developers::finalize_email_setup(developer.id, &email, &password, &mut tx).await?;
 
