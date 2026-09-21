@@ -62,5 +62,9 @@ rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", defa
     "fail-on-err",
 ] }
 
+[profile.release]
+opt-level = 's'
+lto = true
+
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "0.1.52"
