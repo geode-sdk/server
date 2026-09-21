@@ -333,6 +333,7 @@ pub async fn create_version(
             ModVersionStatusEnum::Accepted,
             ModVersionStatusEnum::Pending,
             ModVersionStatusEnum::Unlisted,
+            ModVersionStatusEnum::Rejected,
         ]),
         &mut pool,
     )
