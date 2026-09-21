@@ -20,13 +20,11 @@ mod events;
 mod extractors;
 mod jobs;
 mod logging;
-mod middleware;
 mod mod_zip;
 mod openapi;
 mod s3_worker;
 mod storage;
 mod types;
-mod urisign;
 mod webhook;
 
 // Avoid musl's default allocator due to lackluster performance
