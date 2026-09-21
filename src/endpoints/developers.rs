@@ -482,8 +482,7 @@ pub async fn setup_email(
             .hash_password(password.as_bytes())
             .inspect_err(|e| tracing::error!("{:?}", e))
             .map_err(|_| ApiError::InternalError("failed to hash password".into()))
-            .map(|hash| hash.serialize())
-            .map_err(|_| ApiError::InternalError("failed to hash password".into()))
+            .map(|hash| hash.to_string())
     })
     .await
     .inspect_err(|e| tracing::error!("spawn_blocking failed: {e}"))
