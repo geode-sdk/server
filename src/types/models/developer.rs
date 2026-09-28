@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -42,4 +43,14 @@ impl Developer {
             has_accepted_mod,
         }
     }
+}
+
+#[derive(sqlx::FromRow, Serialize, Clone, Debug, ToSchema)]
+pub struct DeveloperBan {
+    pub id: i32,
+    pub developer_id: i32,
+    pub reason: Option<String>,
+    pub admin_id: Option<i32>,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
 }

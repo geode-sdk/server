@@ -223,6 +223,7 @@ pub async fn create(
     payload.validate()?;
 
     let dev = auth.developer()?;
+
     let bytes = mod_zip::download_mod(
         data.check_dns_http_client(),
         &payload.download_link,
@@ -233,6 +234,11 @@ pub async fn create(
     json.validate()?;
 
     let mut pool = data.db().acquire().await?;
+  
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+  
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {

@@ -1,7 +1,8 @@
 use crate::database::DatabaseError;
 use crate::types::api::PaginatedData;
-use crate::types::models::developer::{Developer, ModDeveloper};
+use crate::types::models::developer::{Developer, DeveloperBan, ModDeveloper};
 use sqlx::PgConnection;
+use sqlx::types::chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -492,4 +493,80 @@ pub async fn has_accepted_mod(id: i32, conn: &mut PgConnection) -> Result<bool, 
     .inspect_err(|e| tracing::error!("{:?}", e))
     .map(|x| x.is_some())
     .map_err(|e| e.into())
+}
+
+pub async fn create_ban(
+    dev_id: i32,
+    admin_id: i32,
+    reason: Option<&str>,
+    revoked_at: Option<DateTime<Utc>>,
+    conn: &mut PgConnection,
+) -> Result<DeveloperBan, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "INSERT INTO bans (developer_id, reason, admin_id, revoked_at)
+            VALUES ($1, $2, $3, $4)
+        RETURNING
+            id, developer_id, reason, admin_id, created_at, revoked_at",
+        dev_id, reason, admin_id, revoked_at
+    )
+    .fetch_one(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn check_ban(
+    dev_id: i32,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperBan>, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1", dev_id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn get_bans(
+    dev_id: i32,
+    conn: &mut PgConnection,
+) -> Result<Vec<DeveloperBan>, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 ORDER BY revoked_at DESC NULLS FIRST, id DESC", dev_id
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn update_ban(
+    ban_id: i32,
+    revoked_at: Option<DateTime<Utc>>,
+    reason: Option<&str>,
+    developer_id: i32,
+    conn: &mut PgConnection
+) -> Result<DeveloperBan, DatabaseError> {
+    sqlx::query_as!(DeveloperBan,
+        "UPDATE bans
+            SET revoked_at=$2, reason=$3, admin_id=$4 WHERE id=$1
+        RETURNING
+            id, developer_id, reason, admin_id, created_at, revoked_at",
+        ban_id, revoked_at, reason, developer_id)
+    .fetch_one(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
+    if let Some(current_ban) = check_ban(dev_id, conn).await? {
+        sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)
+            .execute(conn)
+            .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
+    }
+
+    Ok(())
 }
