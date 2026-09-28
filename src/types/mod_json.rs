@@ -8,6 +8,7 @@ use serde::Deserialize;
 use validator::{Validate, ValidationError};
 use zip::read::ZipFile;
 
+use crate::endpoints::format_validation_errors;
 use crate::mod_zip::{self, ModZipError};
 
 use super::models::{
@@ -244,7 +245,7 @@ impl ModJson {
                     }
 
                     json.about = Some(
-                        parse_zip_entry_to_str(&mut file)
+                        parse_zip_entry_to_str(&mut file, MAX_MARKDOWN_FILE_SIZE)
                             .inspect_err(|e| {
                                 tracing::error!("Failed to parse about.md for mod: {e}")
                             })
@@ -261,7 +262,7 @@ impl ModJson {
                     }
 
                     json.changelog = Some(
-                        parse_zip_entry_to_str(&mut file)
+                        parse_zip_entry_to_str(&mut file, MAX_MARKDOWN_FILE_SIZE)
                             .inspect_err(|e| tracing::error!("Failed to parse changelog.md: {e}"))
                             .map_err(|e| {
                                 ModZipError::InvalidModJson(format!(
@@ -502,7 +503,7 @@ impl ModJson {
     pub fn validate(&self) -> Result<(), ModZipError> {
         if let Err(e) = <Self as Validate>::validate(self) {
             tracing::warn!("mod.json validation error: {e}");
-            let useful_error = extract_validation_error(&e);
+            let useful_error = format_validation_errors(&e);
             return Err(ModZipError::InvalidModJson(format!(
                 "validation error: {useful_error}"
             )));
@@ -616,9 +617,9 @@ impl ModJson {
     }
 }
 
-fn parse_zip_entry_to_str<R: Read>(file: &mut ZipFile<R>) -> Result<String, String> {
+fn parse_zip_entry_to_str<R: Read>(file: &mut ZipFile<R>, limit: u64) -> Result<String, String> {
     let mut string: String = String::from("");
-    match file.read_to_string(&mut string) {
+    match file.take(limit).read_to_string(&mut string) {
         Ok(_) => Ok(string),
         Err(e) => {
             tracing::error!("{}", e);
@@ -727,75 +728,4 @@ fn validate_vec_string(vec: &Vec<String>) -> Result<(), ValidationError> {
         }
     }
     Ok(())
-}
-
-fn map_field_error(e: &validator::ValidationError) -> String {
-    if let Some(msg) = &e.message {
-        return msg.to_string();
-    }
-
-    match e.code.as_ref() {
-        "length" => {
-            let min = e
-                .params
-                .get("min")
-                .and_then(|v| v.as_u64())
-                .map(|v| v.to_string());
-
-            let max = e
-                .params
-                .get("max")
-                .and_then(|v| v.as_u64())
-                .map(|v| v.to_string());
-
-            match (min, max) {
-                (Some(min), Some(max)) => {
-                    format!("length must be between {min} and {max} characters")
-                }
-                (Some(min), None) => format!("length must be at least {min} characters"),
-                (None, Some(max)) => format!("length must be at most {max} characters"),
-                (None, None) => "invalid length".to_string(),
-            }
-        }
-
-        e => e.to_owned(),
-    }
-}
-
-fn extract_validation_error(e: &validator::ValidationErrors) -> String {
-    use validator::ValidationErrorsKind;
-
-    let mut str_errors = Vec::new();
-
-    for (field, err) in e.errors() {
-        match err {
-            ValidationErrorsKind::Struct(s) => {
-                str_errors.push(format!(
-                    "field '{field}' is invalid ({})",
-                    extract_validation_error(s)
-                ));
-            }
-
-            ValidationErrorsKind::Field(errors) => {
-                let joined = errors
-                    .iter()
-                    .map(map_field_error)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                str_errors.push(format!("field '{field}' is invalid: {}", joined));
-            }
-
-            ValidationErrorsKind::List(map) => {
-                for (index, errors) in map {
-                    str_errors.push(format!(
-                        "field '{field}' at index {index} is invalid ({})",
-                        extract_validation_error(errors)
-                    ));
-                }
-            }
-        }
-    }
-
-    str_errors.join(", ")
 }

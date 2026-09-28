@@ -19,6 +19,6 @@ pub async fn get_stats(data: web::Data<AppData>) -> Result<impl Responder, ApiEr
     let mut pool = data.db().acquire().await?;
     Ok(web::Json(ApiResponse {
         error: "".into(),
-        payload: Stats::get_cached(&mut pool).await?,
+        payload: Stats::get_cached(&mut pool, data.http_client()).await?,
     }))
 }

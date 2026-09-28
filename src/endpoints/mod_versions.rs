@@ -4,6 +4,7 @@ use actix_web::{HttpResponse, Responder, dev::ConnectionInfo, get, post, put, we
 use serde::Deserialize;
 use sqlx::{Acquire, types::ipnetwork::IpNetwork};
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
 
 use crate::config::AppData;
 use crate::database::repository::{
@@ -44,8 +45,9 @@ pub struct GetOnePath {
     version: String,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
+    #[validate(length(max = 1024))]
     download_link: String,
 }
 
@@ -121,7 +123,7 @@ pub async fn get_version_index(
         mod_version::IndexQuery {
             mod_id: path.id.clone(),
             page: query.page.unwrap_or(1),
-            per_page: query.per_page.unwrap_or(10),
+            per_page: query.per_page.unwrap_or(10).min(50),
             compare,
             gd: query.gd,
             platforms,
@@ -241,7 +243,7 @@ pub async fn download_version(
     let url = mod_version
         .managed_download_link
         .as_deref()
-        .take_if(|_| data.mod_storage().is_some())
+        .take_if(|_| data.cdn_storage().is_some())
         .unwrap_or(&mod_version.download_link);
 
     if data.disable_downloads() || mod_version.status != ModVersionStatusEnum::Accepted {
@@ -310,6 +312,8 @@ pub async fn create_version(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    payload.validate()?;
+
     let dev = auth.developer()?;
     let mut pool = data.db().acquire().await?;
 
@@ -333,6 +337,7 @@ pub async fn create_version(
             ModVersionStatusEnum::Accepted,
             ModVersionStatusEnum::Pending,
             ModVersionStatusEnum::Unlisted,
+            ModVersionStatusEnum::Rejected,
         ]),
         &mut pool,
     )
@@ -460,7 +465,9 @@ pub async fn create_version(
     }
 
     if !make_accepted {
-        mod_version_submissions::create(version.id, &mut tx).await?;
+        if let None = mod_version_submissions::get_for_mod_version(version.id, &mut tx).await? {
+            mod_version_submissions::create(version.id, &mut tx).await?;
+        }
     }
 
     tx.commit().await?;

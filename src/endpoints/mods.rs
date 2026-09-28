@@ -10,6 +10,7 @@ use crate::database::repository::mod_links;
 use crate::database::repository::mod_tags;
 use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
+use crate::database::repository::mods::ModLogo;
 use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
 use crate::endpoints::ApiError;
 use crate::events::mod_created::NewUnverifiedModVersionCreated;
@@ -30,6 +31,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
+
+const MAX_UPDATE_BATCH_SIZE: usize = 200;
 
 #[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -63,8 +67,9 @@ pub struct IndexQueryParams {
     pub status: Option<ModVersionStatusEnum>,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
+    #[validate(length(max = 1024))]
     download_link: String,
 }
 
@@ -215,12 +220,9 @@ pub async fn create(
     payload: web::Json<CreateQueryParams>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
-    let dev = auth.developer()?;
-    let mut pool = data.db().acquire().await?;
+    payload.validate()?;
 
-    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
-        return Err(ApiError::Banned(ban.reason));
-    }
+    let dev = auth.developer()?;
 
     let bytes = mod_zip::download_mod(
         data.check_dns_http_client(),
@@ -231,6 +233,12 @@ pub async fn create(
     let json = ModJson::from_zip(&bytes, &payload.download_link, false)?;
     json.validate()?;
 
+    let mut pool = data.db().acquire().await?;
+  
+    if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
+        return Err(ApiError::Banned(ban.reason));
+    }
+  
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
@@ -369,6 +377,7 @@ pub async fn get_mod_updates(
     let ids = query
         .ids
         .split(';')
+        .take(MAX_UPDATE_BATCH_SIZE)
         .map(String::from)
         .collect::<Vec<String>>();
 
@@ -423,10 +432,13 @@ pub async fn get_logo(
 ) -> Result<impl Responder, ApiError> {
     use crate::database::repository::*;
     let mut pool = data.db().acquire().await?;
-    let image: Option<Vec<u8>> = mods::get_logo(&path.into_inner(), &mut pool).await?;
+    let image = mods::get_logo(&path.into_inner(), &mut pool).await?;
 
     Ok(match image {
-        Some(i) => HttpResponse::Ok().content_type("image/png").body(i),
+        Some(ModLogo::Data(i)) => HttpResponse::Ok().content_type("image/png").body(i),
+        Some(ModLogo::Url(url)) => HttpResponse::Found()
+            .append_header(("Location", url))
+            .finish(),
         None => HttpResponse::NotFound().body(""),
     })
 }
