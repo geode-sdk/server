@@ -59,6 +59,8 @@ pub enum ApiError {
     IO(#[from] std::io::Error),
     #[error("failed to send email")]
     Mailer(#[from] MailerError),
+    #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
+    Banned(Option<String>),
 }
 
 impl ApiError {
