@@ -569,6 +569,28 @@ pub async fn check_ban(
     .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip_all, fields(id = %id))]
+pub async fn find_login_data_for_developer(
+    id: i32,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperEmailLogin>, DatabaseError> {
+    sqlx::query_as!(
+        DeveloperEmailLogin,
+        "SELECT
+            d.id,
+            login.email,
+            login.password as password_hash
+        FROM developers d
+        INNER JOIN developer_login_info login ON d.id = login.developer_id
+        WHERE d.id = $1",
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
 #[tracing::instrument(skip_all, fields(email = %email))]
 pub async fn find_login_data_by_email(
     email: &str,

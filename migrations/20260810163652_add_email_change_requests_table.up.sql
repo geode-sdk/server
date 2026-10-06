@@ -9,3 +9,13 @@ CREATE TABLE email_change_requests (
 
     FOREIGN KEY (developer_id) REFERENCES developers(id) ON DELETE CASCADE
 );
+
+CREATE TABLE email_change_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    developer_id INTEGER NOT NULL,
+    old_email TEXT NOT NULL,
+    new_email TEXT NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL,
+
+    FOREIGN KEY (developer_id) REFERENCES developers(id) ON DELETE CASCADE
+);

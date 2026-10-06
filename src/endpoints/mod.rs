@@ -9,6 +9,7 @@ use validator::{ValidationError, ValidationErrors};
 pub mod auth;
 pub mod deprecations;
 pub mod developers;
+pub mod email_change_requests;
 pub mod health;
 pub mod loader;
 pub mod mod_status_badge;

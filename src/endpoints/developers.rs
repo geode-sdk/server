@@ -5,7 +5,6 @@ use maud::html;
 use phc::PasswordHash;
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
-use sqlx::Connection;
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -17,9 +16,9 @@ use crate::config::AppData;
 use crate::database::repository::{
     auth_tokens, developers, email_setup_requests, mods, refresh_tokens,
 };
-use crate::email::EmailAddress;
 use crate::email::blocklist::ApprovedEmailAddress;
 use crate::email::mailer::{EmailBody, OutgoingEmail};
+use crate::email::{EmailAddress, partials};
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::developer::SelfDeveloper;
 use crate::{
@@ -467,6 +466,15 @@ pub async fn setup_email(
     {
         let mut conn = data.db().acquire().await?;
 
+        let existing_email_login =
+            developers::find_login_data_for_developer(developer.id, &mut conn).await?;
+
+        if existing_email_login.is_some() {
+            return Err(ApiError::Conflict(
+                "You already have email login setup. Use /v1/me/email/change for changing your email or /v1/me/password/change for changing your password".into(),
+            ));
+        }
+
         // Prevent someone stealing an address
         let existing = developers::find_by_email(&json.email, &mut conn).await?;
 
@@ -507,11 +515,11 @@ pub async fn setup_email(
 
     let uuid = Uuid::new_v4();
 
-    let endpoint = format!("{}/email/verify?token={}", data.front_url(), uuid);
+    let endpoint = format!("{}/email/setup/verify?token={}", data.front_url(), uuid);
 
     // TODO: maybe make a good looking email template sometime in the future
     let html = html! {
-        p { "Hi " (developer.display_name) "," }
+        (partials::salute(&developer.display_name))
         p {
             "Someone (hopefully you) requested to setup email sign-in for your Geode SDK developer account using this address."
         }
@@ -519,15 +527,14 @@ pub async fn setup_email(
             "If you didn't request this, you can safely ignore this email. No changes will be made to your account."
         }
         p {
-            a href=(endpoint) { "Confirm this email address" }
-        }
-        p {
-            "Or paste this link into your browser:" br;
-            (endpoint)
+            "Visit"
+            a href=(endpoint) { (endpoint) }
+            "to confirm this email address"
         }
         p {
             "This link expires in 30 minutes."
         }
+        (partials::footer())
     }
     .into_string();
 

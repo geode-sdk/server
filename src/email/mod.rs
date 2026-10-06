@@ -9,6 +9,7 @@ use crate::email::blocklist::BlocklistError;
 pub mod blocklist;
 pub mod lettre;
 pub mod mailer;
+pub mod partials;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmailError {
