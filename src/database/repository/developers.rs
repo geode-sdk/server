@@ -4,7 +4,7 @@ use crate::types::api::PaginatedData;
 use crate::types::models::developer::{Developer, DeveloperBan, DeveloperEmailLogin, ModDeveloper};
 use chrono::Utc;
 use sqlx::PgConnection;
-use sqlx::types::chrono::{DateTime, Utc};
+use sqlx::types::chrono::DateTime;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -497,7 +497,6 @@ pub async fn has_accepted_mod(id: i32, conn: &mut PgConnection) -> Result<bool, 
     .map_err(|e| e.into())
 }
 
-<<<<<<< HEAD
 #[tracing::instrument(skip_all, fields(email = %email))]
 pub async fn find_by_email(
     email: &str,
@@ -516,7 +515,13 @@ pub async fn find_by_email(
         INNER JOIN developer_login_info login ON login.developer_id = d.id
         WHERE login.email = $1",
         email
-=======
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
 pub async fn create_ban(
     dev_id: i32,
     admin_id: i32,
@@ -524,12 +529,16 @@ pub async fn create_ban(
     revoked_at: Option<DateTime<Utc>>,
     conn: &mut PgConnection,
 ) -> Result<DeveloperBan, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
+    sqlx::query_as!(
+        DeveloperBan,
         "INSERT INTO bans (developer_id, reason, admin_id, revoked_at)
             VALUES ($1, $2, $3, $4)
         RETURNING
             id, developer_id, reason, admin_id, created_at, revoked_at",
-        dev_id, reason, admin_id, revoked_at
+        dev_id,
+        reason,
+        admin_id,
+        revoked_at
     )
     .fetch_one(&mut *conn)
     .await
@@ -541,9 +550,18 @@ pub async fn check_ban(
     dev_id: i32,
     conn: &mut PgConnection,
 ) -> Result<Option<DeveloperBan>, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
-        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1", dev_id
->>>>>>> main
+    sqlx::query_as!(
+        DeveloperBan,
+        "SELECT
+            developer_id, reason, admin_id, created_at,
+            id, revoked_at
+        FROM bans
+        WHERE developer_id=$1
+        AND revoked_at > NOW()
+        OR revoked_at IS NULL
+        ORDER BY revoked_at DESC NULLS FIRST, id DESC
+        LIMIT 1",
+        dev_id
     )
     .fetch_optional(&mut *conn)
     .await
@@ -551,7 +569,6 @@ pub async fn check_ban(
     .map_err(|e| e.into())
 }
 
-<<<<<<< HEAD
 #[tracing::instrument(skip_all, fields(email = %email))]
 pub async fn find_login_data_by_email(
     email: &str,
@@ -569,7 +586,11 @@ pub async fn find_login_data_by_email(
         email
     )
     .fetch_optional(&mut *conn)
-=======
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
 pub async fn get_bans(
     dev_id: i32,
     conn: &mut PgConnection,
@@ -578,7 +599,6 @@ pub async fn get_bans(
         "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 ORDER BY revoked_at DESC NULLS FIRST, id DESC", dev_id
     )
     .fetch_all(&mut *conn)
->>>>>>> main
     .await
     .inspect_err(|e| tracing::error!("{:?}", e))
     .map_err(|e| e.into())
@@ -622,14 +642,19 @@ pub async fn update_ban(
     revoked_at: Option<DateTime<Utc>>,
     reason: Option<&str>,
     developer_id: i32,
-    conn: &mut PgConnection
+    conn: &mut PgConnection,
 ) -> Result<DeveloperBan, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
+    sqlx::query_as!(
+        DeveloperBan,
         "UPDATE bans
             SET revoked_at=$2, reason=$3, admin_id=$4 WHERE id=$1
         RETURNING
             id, developer_id, reason, admin_id, created_at, revoked_at",
-        ban_id, revoked_at, reason, developer_id)
+        ban_id,
+        revoked_at,
+        reason,
+        developer_id
+    )
     .fetch_one(&mut *conn)
     .await
     .inspect_err(|e| tracing::error!("{:?}", e))
@@ -638,12 +663,14 @@ pub async fn update_ban(
 
 pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     if let Some(current_ban) = check_ban(dev_id, conn).await? {
-        sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)
-            .execute(conn)
-            .await
+        sqlx::query!(
+            "UPDATE bans SET revoked_at=NOW() WHERE id=$1",
+            current_ban.id
+        )
+        .execute(conn)
+        .await
         .inspect_err(|e| tracing::error!("{:?}", e))?;
     }
 
     Ok(())
 }
-

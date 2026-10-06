@@ -509,6 +509,7 @@ pub async fn setup_email(
 
     let endpoint = format!("{}/email/verify?token={}", data.front_url(), uuid);
 
+    // TODO: maybe make a good looking email template sometime in the future
     let html = html! {
         p { "Hi " (developer.display_name) "," }
         p {
