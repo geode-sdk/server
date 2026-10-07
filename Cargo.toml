@@ -81,6 +81,7 @@ rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", defa
 ] }
 maud = "0.27.0"
 phc = "0.6.1"
+idna = "1.1.0"
 
 [profile.release]
 lto = true

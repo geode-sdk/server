@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use idna::{AsciiDenyList, domain_to_ascii_cow};
 use parking_lot::RwLock;
 
 use crate::email::{EmailAddress, EmailError};
@@ -25,7 +26,7 @@ impl ApprovedEmailAddress {
     pub fn parse(email: EmailAddress, blocklist: Option<&Blocklist>) -> Result<Self, EmailError> {
         match blocklist {
             Some(blocklist) => {
-                if blocklist.is_blocked(&email.domain) {
+                if blocklist.is_blocked(&email) {
                     Err(EmailError::BlocklistError(BlocklistError::BlockedDomain))
                 } else {
                     Ok(Self(email))
@@ -63,8 +64,23 @@ impl Blocklist {
         }
     }
 
-    pub fn is_blocked(&self, domain: &str) -> bool {
-        self.entries.read().contains(domain)
+    pub fn is_blocked(&self, email: &EmailAddress) -> bool {
+        let domain = email.domain.as_str();
+        let mut rest = domain;
+
+        let entries = self.entries.read();
+
+        loop {
+            if entries.contains(rest) {
+                return true;
+            }
+
+            // Yeah this also checks the TLD against the blocklist, whatever
+            match rest.split_once('.') {
+                Some((_, parent)) => rest = parent,
+                None => return false,
+            }
+        }
     }
 
     pub fn refresh(&self) {
@@ -93,13 +109,70 @@ impl Blocklist {
 
         let content = std::fs::read_to_string(path)?;
 
-        let entries = content
+        Ok(Blocklist::parse_entries(&content))
+    }
+
+    fn parse_entries(content: &str) -> HashSet<String> {
+        content
             .lines()
             .map(str::trim)
             .filter(|&line| !line.is_empty() && !line.starts_with('#'))
-            .map(str::to_lowercase)
-            .collect();
+            .filter_map(
+                |line| match domain_to_ascii_cow(line.as_bytes(), AsciiDenyList::STD3) {
+                    Ok(d) => Some(d.trim_end_matches('.').to_owned()),
+                    Err(_) => {
+                        tracing::warn!("skipping invalid blocklist entry: {line}");
+                        None
+                    }
+                },
+            )
+            .filter(|d| !d.is_empty())
+            .collect()
+    }
+}
 
-        Ok(entries)
+#[cfg(test)]
+mod tests {
+    use parking_lot::lock_api::RwLock;
+    use std::str::FromStr;
+
+    use super::*;
+
+    impl Blocklist {
+        fn from_str_entries(content: &str) -> Self {
+            Self {
+                entries: Arc::new(RwLock::new(Self::parse_entries(content))),
+                path: Arc::new(PathBuf::new()),
+            }
+        }
+    }
+
+    #[test]
+    fn test_unicode_domain_parsed_as_ascii() {
+        let entries = Blocklist::parse_entries("よう.jp");
+
+        assert!(entries.contains("xn--p8j3g.jp"));
+    }
+
+    #[test]
+    fn test_domains_are_lowercased() {
+        let entries = Blocklist::parse_entries("ExAmPLE.cOm");
+
+        assert!(entries.contains("example.com"));
+    }
+
+    #[test]
+    fn test_subdomain_blocked() {
+        let list = Blocklist::from_str_entries("example.com");
+        let email = EmailAddress::from_str("test@a.example.com").unwrap();
+        assert!(list.is_blocked(&email));
+    }
+
+    #[test]
+    fn test_multiple_line_blocklist() {
+        let entries = Blocklist::parse_entries("example.com\ntest.com");
+
+        assert!(entries.contains("example.com"));
+        assert!(entries.contains("test.com"));
     }
 }

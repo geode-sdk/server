@@ -1650,6 +1650,7 @@ dependencies = [
  "dotenvy",
  "futures",
  "html2text",
+ "idna",
  "image",
  "lettre",
  "maud",

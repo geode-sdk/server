@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use idna::AsciiDenyList;
 use validator::ValidateEmail;
 
 use crate::email::blocklist::BlocklistError;
@@ -31,6 +32,7 @@ pub struct EmailAddress {
     domain: String,
 }
 
+#[derive(PartialEq)]
 pub enum SmtpSecurity {
     None,
     StartTls,
@@ -101,9 +103,14 @@ impl FromStr for EmailAddress {
             .split_once('@')
             .expect("validate_email already confirmed an '@' is present");
 
+        let domain = idna::domain_to_ascii_cow(domain.as_bytes(), AsciiDenyList::STD3)
+            .map_err(|_| EmailAddressParseError::InvalidEmail)?
+            .trim_end_matches('.')
+            .to_owned();
+
         Ok(EmailAddress {
             local_part: local_part.into(),
-            domain: domain.into(),
+            domain,
         })
     }
 }
