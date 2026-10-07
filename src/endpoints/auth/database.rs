@@ -1,5 +1,7 @@
+use std::{str::FromStr, sync::OnceLock};
+
 use actix_web::{Responder, post, web};
-use argon2::{PasswordHash, PasswordVerifier};
+use argon2::{PasswordHash, PasswordHasher, PasswordVerifier};
 use serde::Deserialize;
 use sqlx::Connection;
 use utoipa::ToSchema;
@@ -9,6 +11,7 @@ use crate::{
     auth,
     config::AppData,
     database::repository::{auth_tokens, developers, refresh_tokens},
+    email::EmailAddress,
     endpoints::{ApiError, auth::TokensResponse},
     types::api::ApiResponse,
 };
@@ -40,17 +43,22 @@ pub async fn login(
     let login_data = {
         let mut pool = data.db().acquire().await?;
 
-        developers::find_login_data_by_email(&json.email, &mut pool)
-            .await?
-            .ok_or(ApiError::BadRequest(
-                "No user found with these credentials".into(),
-            ))?
+        let email = EmailAddress::from_str(&json.email)
+            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?
+            .to_string();
+
+        developers::find_login_data_by_email(&email, &mut pool).await?
     };
 
-    let password_hash = login_data.password_hash.clone();
+    let password_hash = login_data.as_ref().map(|data| &data.password_hash).cloned();
     let pepper = data.password_hash_pepper().cloned();
 
     tokio::task::spawn_blocking(move || {
+        // Run the hash check anyway to reduce timing attack probability.
+        // Of course, someone putting in "soggymod" would pass this (if no dev exists with given email)
+        // but will fail when login data is unwrapped.
+        let password_hash = password_hash.unwrap_or_else(|| dummy_hash(pepper.as_ref()).to_owned());
+
         let parsed_hash = PasswordHash::new(&password_hash)
             .inspect_err(|e| tracing::error!("failed to parse password hash - pretty bad: {e}"))
             .map_err(|_| ApiError::InternalError("couldn't read user password".into()))?;
@@ -62,6 +70,10 @@ pub async fn login(
     .await
     .inspect_err(|e| tracing::error!("spawn_blocking failed: {e}"))
     .map_err(|_| ApiError::InternalError("hash check task panicked".into()))??;
+
+    let login_data = login_data.ok_or(ApiError::BadRequest(
+        "No user found with these credentials".into(),
+    ))?;
 
     let mut pool = data.db().acquire().await?;
     let mut tx = pool.begin().await?;
@@ -78,4 +90,15 @@ pub async fn login(
             refresh_token: refresh.to_string(),
         },
     }))
+}
+
+fn dummy_hash(pepper: Option<&String>) -> &'static str {
+    static HASH: OnceLock<String> = OnceLock::new();
+
+    HASH.get_or_init(|| {
+        auth::password::argon2(pepper)
+            .hash_password(b"soggymod")
+            .expect("hashing a static str can't fail")
+            .to_string()
+    })
 }

@@ -462,6 +462,12 @@ pub async fn setup_email(
 
     let developer = auth.developer()?;
 
+    let email = ApprovedEmailAddress::parse(
+        EmailAddress::from_str(&json.email.to_lowercase())
+            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?,
+        data.email_blocklist(),
+    )?;
+
     // We're trying to keep the DB connection occupied as little as possible.
     // So do this chunk, send the email with no DB connection hogged,
     // then get another connection to finish the insert
@@ -478,7 +484,7 @@ pub async fn setup_email(
         }
 
         // Prevent someone stealing an address
-        let existing = developers::find_by_email(&json.email, &mut conn).await?;
+        let existing = developers::find_by_email(&email.email().to_string(), &mut conn).await?;
 
         if existing.is_some_and(|e| e.id != developer.id) {
             return Err(ApiError::Conflict(
@@ -495,11 +501,6 @@ pub async fn setup_email(
             ));
         }
     }
-
-    let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email.to_lowercase()).expect("email validated by json struct"),
-        data.email_blocklist(),
-    )?;
 
     let password = json.password.clone();
     let pepper = data.password_hash_pepper().cloned();
@@ -521,7 +522,7 @@ pub async fn setup_email(
 
     // TODO: maybe make a good looking email template sometime in the future
     let html = html! {
-        (partials::salute(&developer.display_name))
+        (partials::salute())
         p {
             "Someone (hopefully you) requested to setup email sign-in for your Geode SDK developer account using this address."
         }
@@ -575,7 +576,7 @@ struct VerifyEmailConfigurationPayload {
     request_body = VerifyEmailConfigurationPayload,
     tag = "developers",
     responses(
-        (status = 200, description = "Email settings applied", body = inline(ApiResponse<String>)),
+        (status = 204, description = "Email settings applied"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Setup request not found"),
         (status = 409, description = "Email already configured")

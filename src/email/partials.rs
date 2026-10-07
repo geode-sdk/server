@@ -1,9 +1,9 @@
 use maud::{Markup, html};
 
-pub fn salute(name: &str) -> Markup {
+pub fn salute() -> Markup {
     html!(
         p {
-            "Hi, " (name) "!"
+            "Hi!"
         }
     )
 }

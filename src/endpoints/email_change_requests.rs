@@ -52,6 +52,8 @@ pub async fn start_email_change(
     json: web::Json<StartEmailChangePayload>,
     data: web::Data<AppData>,
 ) -> Result<impl Responder, ApiError> {
+    json.validate()?;
+
     let mailer = data.mailer().ok_or(ApiError::NotImplemented)?;
     let front_url = data.front_url();
 
@@ -61,6 +63,12 @@ pub async fn start_email_change(
 
     let developer = auth.developer()?;
     let now = Utc::now();
+
+    let email = ApprovedEmailAddress::parse(
+        EmailAddress::from_str(&json.email.to_lowercase())
+            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?,
+        data.email_blocklist(),
+    )?;
 
     {
         let mut conn = data.db().acquire().await?;
@@ -91,17 +99,12 @@ pub async fn start_email_change(
             repository::email_change_requests::delete(developer.id, &mut conn).await?;
         }
 
-        if existing_email_login.email.to_lowercase() == json.email.to_lowercase() {
+        if existing_email_login.email.to_lowercase() == email.email().to_string().to_lowercase() {
             return Err(ApiError::BadRequest(
                 "Your new email cannot be the same as your current email".into(),
             ));
         }
     }
-
-    let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email.to_lowercase()).expect("email validated by json struct"),
-        data.email_blocklist(),
-    )?;
 
     let expiry_date = now.add(Duration::minutes(30));
 
@@ -111,9 +114,9 @@ pub async fn start_email_change(
 
     // TODO: maybe make a good looking email template sometime in the future
     let html = html! {
-        (partials::salute(&developer.display_name))
+        (partials::salute())
         p {
-            "Someone (hopefully you) requested to change the email address for your Geode SDK developer account to this one."
+            "Someone (hopefully you) requested to change the email address for the Geode SDK developer account " (&developer.username) " to this one."
         }
         p {
             "If you didn't request this, you can safely ignore this email."
@@ -164,7 +167,7 @@ struct FinalizeEmailChange {
     request_body = FinalizeEmailChange,
     tag = "developers",
     responses(
-        (status = 200, description = "Email changed", body = inline(ApiResponse<String>)),
+        (status = 204, description = "Email changed"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Change request not found"),
         (status = 409, description = "You don't actually an email setup or you already have the requested address (should never happen)")
@@ -211,7 +214,7 @@ pub async fn finalize_email_change(
 
     if existing.is_some_and(|e| e.id != developer.id) {
         return Err(ApiError::Conflict(
-            "You already have the requested email address! Congratulations!".into(),
+            "Someone else already has this email address".into(),
         ));
     }
 
@@ -229,7 +232,6 @@ pub async fn finalize_email_change(
     )?;
 
     repository::developers::change_email(developer.id, &current_email, &email, &mut tx).await?;
-    repository::email_change_requests::delete(developer.id, &mut tx).await?;
 
     tx.commit().await?;
 
