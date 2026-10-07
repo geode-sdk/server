@@ -99,7 +99,7 @@ pub async fn start_email_change(
     }
 
     let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email).expect("email validated by json struct"),
+        EmailAddress::from_str(&json.email.to_lowercase()).expect("email validated by json struct"),
         data.email_blocklist(),
     )?;
 
@@ -214,7 +214,7 @@ pub async fn finalize_email_change(
 
     // Who knows, maybe the blocklist gets updated while the request is running
     let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&request.new_email)
+        EmailAddress::from_str(&request.new_email.to_lowercase())
             .inspect_err(|e| tracing::error!("failed to parse email from EmailChangeRequest: {e}"))
             .map_err(|e| {
                 ApiError::InternalError(format!("Failed to read email from request: {e}"))

@@ -513,7 +513,7 @@ pub async fn find_by_email(
             d.github_user_id as github_id
         FROM developers d
         INNER JOIN developer_login_info login ON login.developer_id = d.id
-        WHERE login.email = $1",
+        WHERE LOWER(login.email) = LOWER($1)",
         email
     )
     .fetch_optional(&mut *conn)

@@ -497,7 +497,7 @@ pub async fn setup_email(
     }
 
     let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email).expect("email validated by json struct"),
+        EmailAddress::from_str(&json.email.to_lowercase()).expect("email validated by json struct"),
         data.email_blocklist(),
     )?;
 
@@ -627,7 +627,7 @@ pub async fn verify_email_setup(
 
     // Who knows, maybe the blocklist gets updated while the request is running
     let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&request.email)
+        EmailAddress::from_str(&request.email.to_lowercase())
             .inspect_err(|e| tracing::error!("failed to parse email from EmailSetupRequest: {e}"))
             .map_err(|e| {
                 ApiError::InternalError(format!(
