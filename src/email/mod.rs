@@ -1,8 +1,9 @@
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 use std::str::FromStr;
 
 use anyhow::anyhow;
 use idna::AsciiDenyList;
+use idna::uts46::Uts46;
 use validator::ValidateEmail;
 
 use crate::email::blocklist::BlocklistError;
@@ -119,8 +120,41 @@ impl EmailAddress {
     pub fn local_part(&self) -> &str {
         &self.local_part
     }
+
+    pub fn local_part_masked(&self) -> &str {
+        let shown = if self.local_part.chars().count() <= 2 {
+            1
+        } else {
+            2
+        };
+
+        let end = self.local_part.char_indices().nth(shown).map_or(self.local_part.len(), |(i, _)| i);
+
+        &self.local_part[..end]
+    }
+
     pub fn domain(&self) -> &str {
         &self.domain
+    }
+
+    pub fn to_masked_string(&self) -> String {
+        let (display, result) = Uts46::new().to_user_interface(
+            self.domain.as_bytes(),
+            AsciiDenyList::STD3,
+            idna::uts46::Hyphens::Allow,
+            |_label, _tld, _is_bidi| true,
+        );
+
+        let domain: &str = if result.is_ok() { display.as_ref() } else { &self.domain };
+        let local_part_masked = self.local_part_masked();
+
+        let mut ret = format!("{}***@{}", local_part_masked, domain);
+
+        if self.domain != domain {
+            write!(ret, " ({}***@{})", local_part_masked, self.domain).ok();
+        }
+
+        ret
     }
 }
 
