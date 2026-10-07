@@ -188,6 +188,8 @@ pub async fn finalize_email_change(
         )
     })?;
 
+    let now = Utc::now();
+
     let mut conn = data.db().acquire().await?;
     let mut tx = conn.begin().await?;
 
@@ -198,6 +200,10 @@ pub async fn finalize_email_change(
         .ok_or(ApiError::NotFound(not_found_msg.into()))?;
 
     if request.developer_id != developer.id {
+        return Err(ApiError::NotFound(not_found_msg.into()));
+    }
+
+    if request.expires_at.lt(&now) {
         return Err(ApiError::NotFound(not_found_msg.into()));
     }
 
