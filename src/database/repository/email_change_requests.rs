@@ -12,7 +12,7 @@ pub struct EmailChangeRequestRow {
     pub expires_at: DateTime<Utc>,
 }
 
-pub async fn get_one(
+pub async fn find_one(
     id: i32,
     conn: &mut PgConnection,
 ) -> Result<Option<EmailChangeRequestRow>, DatabaseError> {

@@ -74,7 +74,7 @@ pub async fn start_email_change(
                     )
                 })?;
 
-        let exists = repository::email_change_requests::get_one(developer.id, &mut conn).await?;
+        let exists = repository::email_change_requests::find_one(developer.id, &mut conn).await?;
 
         let force = json.force.unwrap_or(false);
         let exists_and_is_valid = exists
