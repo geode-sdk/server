@@ -11,7 +11,9 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
-    email::{SmtpConfig, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer},
+    email::{
+        SmtpConfig, SmtpSecurity, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer,
+    },
     endpoints::mods::IndexQueryParams,
     s3_worker::S3WorkerTask,
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
@@ -104,6 +106,16 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .build()?;
 
     let smtp_config = SmtpConfig::from_env()?;
+
+    if !debug
+        && smtp_config
+            .as_ref()
+            .is_some_and(|x| x.security == SmtpSecurity::None)
+    {
+        tracing::warn!(
+            "You are using no SMTP security for sending emails with APP_DEBUG=0. You have been warned."
+        );
+    }
 
     let blocklist = if smtp_config.is_some() {
         let env_var = dotenvy::var("EMAIL_BLOCKLIST_PATH").unwrap_or("./blocklist.conf".into());
