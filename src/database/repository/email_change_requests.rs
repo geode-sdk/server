@@ -31,6 +31,25 @@ pub async fn find_one(
     .map_err(|e| e.into())
 }
 
+pub async fn find_one_by_token(
+    token: &Uuid,
+    conn: &mut PgConnection,
+) -> Result<Option<EmailChangeRequestRow>, DatabaseError> {
+    sqlx::query_as!(
+        EmailChangeRequestRow,
+        "SELECT
+            developer_id, token, new_email,
+            created_at, expires_at
+        FROM email_change_requests
+        WHERE token = $1",
+        token
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{}", e))
+    .map_err(|e| e.into())
+}
+
 pub async fn create(
     id: i32,
     token: &Uuid,

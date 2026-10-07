@@ -657,6 +657,58 @@ pub async fn finalize_email_setup(
     .map_err(|e| e.into())
 }
 
+pub async fn get_email(id: i32, conn: &mut PgConnection) -> Result<Option<String>, DatabaseError> {
+    sqlx::query!(
+        "SELECT email FROM developer_login_info
+        WHERE developer_id = $1",
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map(|r| r.map(|r| r.email))
+    .map_err(|e| e.into())
+}
+
+/// Assumes developer_login_info exists for given ID.
+/// Also adds a history entry.
+#[tracing::instrument(skip_all, fields(developer_id = %id))]
+pub async fn change_email(
+    id: i32,
+    old_email: &str,
+    email: &ApprovedEmailAddress,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    let now = Utc::now();
+    let email_str = email.email().to_string().to_lowercase();
+
+    sqlx::query!(
+        "UPDATE developer_login_info
+        SET email = $1
+        WHERE developer_id = $2",
+        email_str,
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "INSERT INTO email_change_history
+        (developer_id, old_email, new_email, changed_at)
+        VALUES ($1, $2, $3, $4)",
+        id,
+        old_email,
+        email_str,
+        now
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
+}
+
 pub async fn update_ban(
     ban_id: i32,
     revoked_at: Option<DateTime<Utc>>,

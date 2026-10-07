@@ -153,3 +153,79 @@ pub async fn start_email_change(
         error: "".into(),
     }))
 }
+
+#[derive(Deserialize, ToSchema)]
+struct FinalizeEmailChange {
+    request_id: String,
+}
+
+/// Finalize email change
+#[utoipa::path(
+    request_body = FinalizeEmailChange,
+    tag = "developers",
+    responses(
+        (status = 200, description = "Email changed", body = inline(ApiResponse<String>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Change request not found"),
+        (status = 409, description = "You don't actually an email setup or you already have the requested address (should never happen)")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[tracing::instrument(skip_all)]
+#[post("v1/me/email/change/verify")]
+pub async fn finalize_email_change(
+    data: web::Data<AppData>,
+    json: web::Json<FinalizeEmailChange>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    let developer = auth.developer()?;
+
+    let request_id = Uuid::try_parse(&json.request_id).map_err(|_| {
+        ApiError::NotFound(
+            "The request associated with this ID either does not exist or has expired".into(),
+        )
+    })?;
+
+    let mut conn = data.db().acquire().await?;
+    let mut tx = conn.begin().await?;
+
+    let not_found_msg = "The request associated with this ID either does not exist or has expired";
+
+    let request = repository::email_change_requests::find_one_by_token(&request_id, &mut tx)
+        .await?
+        .ok_or(ApiError::NotFound(not_found_msg.into()))?;
+
+    if request.developer_id != developer.id {
+        return Err(ApiError::NotFound(not_found_msg.into()));
+    }
+
+    let existing = repository::developers::find_by_email(&request.new_email, &mut tx).await?;
+
+    if existing.is_some_and(|e| e.id != developer.id) {
+        return Err(ApiError::Conflict(
+            "You already have the requested email address! Congratulations!".into(),
+        ));
+    }
+
+    let current_email = repository::developers::get_email(developer.id, &mut tx).await?
+        .ok_or(ApiError::Conflict("Somehow, you don't have an email address, but manged to get this far. Congratulations! You broke the index!".into()))?;
+
+    // Who knows, maybe the blocklist gets updated while the request is running
+    let email = ApprovedEmailAddress::parse(
+        EmailAddress::from_str(&request.new_email)
+            .inspect_err(|e| tracing::error!("failed to parse email from EmailChangeRequest: {e}"))
+            .map_err(|e| {
+                ApiError::InternalError(format!("Failed to read email from request: {e}"))
+            })?,
+        data.email_blocklist(),
+    )?;
+
+    repository::developers::change_email(developer.id, &current_email, &email, &mut tx).await?;
+    repository::email_change_requests::delete(developer.id, &mut tx).await?;
+
+    tx.commit().await?;
+
+    Ok(HttpResponse::NoContent())
+}
