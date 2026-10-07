@@ -604,7 +604,7 @@ pub async fn find_login_data_by_email(
             login.password as password_hash
         FROM developers d
         INNER JOIN developer_login_info login ON d.id = login.developer_id
-        WHERE email ILIKE $1",
+        WHERE LOWER(email) = LOWER($1)",
         email
     )
     .fetch_optional(&mut *conn)
