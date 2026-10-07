@@ -175,4 +175,18 @@ mod tests {
         assert!(entries.contains("example.com"));
         assert!(entries.contains("test.com"));
     }
+
+    #[test]
+    fn test_dont_block_substring() {
+        let list = Blocklist::from_str_entries("example.com");
+        let email = EmailAddress::from_str("test@anexample.com").unwrap();
+        assert!(!list.is_blocked(&email));
+    }
+
+    #[test]
+    fn test_dont_read_trailing_dot() {
+        let entries = Blocklist::parse_entries("example.com.");
+
+        assert!(entries.contains("example.com"));
+    }
 }
