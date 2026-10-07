@@ -626,13 +626,11 @@ pub async fn get_bans(
     .map_err(|e| e.into())
 }
 
-/// Sets developer_login_info for the specified developer_id, overwriting on developer_id conflict
-/// Assumes that email is not associated to another developer, and doesn't handle a conflict on that unique index
 #[tracing::instrument(skip_all, fields(developer_id = %id))]
 pub async fn finalize_email_setup(
     id: i32,
     email: &ApprovedEmailAddress,
-    password: &String,
+    password: &str,
     conn: &mut PgConnection,
 ) -> Result<(), DatabaseError> {
     let verified_at = Utc::now();
@@ -650,7 +648,7 @@ pub async fn finalize_email_setup(
         id,
         &email_str,
         verified_at,
-        password.as_str()
+        password
     )
     .execute(&mut *conn)
     .await
