@@ -520,7 +520,7 @@ pub async fn check_ban(
     conn: &mut PgConnection,
 ) -> Result<Option<DeveloperBan>, DatabaseError> {
     sqlx::query_as!(DeveloperBan,
-        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1", dev_id
+        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND (revoked_at > NOW() or revoked_at IS NULL) ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1", dev_id
     )
     .fetch_optional(&mut *conn)
     .await
