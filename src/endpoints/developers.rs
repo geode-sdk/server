@@ -449,6 +449,8 @@ pub async fn setup_email(
     data: web::Data<AppData>,
     json: web::Json<StartEmailConfigurationPayload>,
 ) -> Result<impl Responder, ApiError> {
+    json.validate()?;
+
     let mailer = data.mailer().ok_or(ApiError::NotImplemented)?;
     let front_url = data.front_url();
 
@@ -589,6 +591,8 @@ pub async fn verify_email_setup(
     json: web::Json<VerifyEmailConfigurationPayload>,
     auth: Auth,
 ) -> Result<impl Responder, ApiError> {
+    json.validate()?;
+
     let developer = auth.developer()?;
 
     let request_id = Uuid::try_parse(&json.request_id).map_err(|_| {
@@ -598,7 +602,6 @@ pub async fn verify_email_setup(
     })?;
 
     let mut conn = data.db().acquire().await?;
-
     let mut tx = conn.begin().await?;
 
     let request = email_setup_requests::find_for_token(request_id, &mut tx)
@@ -650,10 +653,7 @@ pub async fn verify_email_setup(
 
     tx.commit().await?;
 
-    Ok(HttpResponse::Ok().json(ApiResponse {
-        payload: "".to_string(),
-        error: "".into(),
-    }))
+    Ok(HttpResponse::NoContent())
 }
 
 #[derive(Deserialize, IntoParams)]
