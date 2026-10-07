@@ -72,7 +72,7 @@ pub async fn build_config() -> anyhow::Result<AppData> {
 
     if password_hash_pepper.is_none() {
         tracing::warn!(
-            "IMPORTANT: no password hash pepper found, password storage will be LESS secure. Check https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#peppering for more information."
+            "IMPORTANT: no password hash pepper found, password storage will be LESS secure. Check https://en.wikipedia.org/wiki/Pepper_(cryptography) for more information."
         );
     }
 
