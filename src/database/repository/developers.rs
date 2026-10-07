@@ -652,9 +652,17 @@ pub async fn finalize_email_setup(
     )
     .execute(&mut *conn)
     .await
-    .inspect_err(|e| tracing::error!("{:?}", e))
-    .map(|_| ())
-    .map_err(|e| e.into())
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "DELETE FROM email_setup_requests WHERE developer_id = $1",
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
 }
 
 pub async fn get_email(id: i32, conn: &mut PgConnection) -> Result<Option<String>, DatabaseError> {
@@ -687,6 +695,14 @@ pub async fn change_email(
         SET email = $1
         WHERE developer_id = $2",
         email_str,
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "DELETE FROM email_change_requests WHERE developer_id = $1",
         id
     )
     .execute(&mut *conn)
