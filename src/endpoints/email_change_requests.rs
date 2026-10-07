@@ -5,6 +5,7 @@ use chrono::{Duration, Utc};
 use maud::html;
 use serde::Deserialize;
 use sqlx::Connection;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -22,13 +23,29 @@ use crate::{
     types::api::ApiResponse,
 };
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize, Validate, ToSchema)]
 struct StartEmailChangePayload {
     #[validate(email, length(max = 512))]
     email: String,
     force: Option<bool>,
 }
 
+/// Finalize email configuration
+#[utoipa::path(
+    request_body = StartEmailChangePayload,
+    tag = "developers",
+    responses(
+        (status = 201, description = "Request created", body = inline(ApiResponse<String>)),
+        (status = 400, description = "New email is same as old email"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Setup request not found"),
+        (status = 409, description = "You already have a pending request, retry with \"force\" in JSON to confirm / Email address is not setup")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[tracing::instrument(skip_all)]
 #[post("v1/me/email/change")]
 pub async fn start_email_change(
     auth: Auth,
