@@ -436,7 +436,7 @@ struct StartEmailConfigurationPayload {
     responses(
         (status = 201, description = "Email setup request started", body = inline(ApiResponse<String>)),
         (status = 401, description = "Unauthorized"),
-        (status = 409, description = "E-mail already configured")
+        (status = 409, description = "Email already configured")
     ),
     security(
         ("bearer_token" = [])
@@ -576,7 +576,7 @@ struct VerifyEmailConfigurationPayload {
         (status = 200, description = "Email settings applied", body = inline(ApiResponse<String>)),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Setup request not found"),
-        (status = 409, description = "E-mail already configured")
+        (status = 409, description = "Email already configured")
     ),
     security(
         ("bearer_token" = [])
