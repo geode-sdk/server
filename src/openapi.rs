@@ -45,6 +45,8 @@ use crate::{endpoints, types};
         endpoints::developers::ban_developer,
         endpoints::developers::unban_developer,
         endpoints::developers::get_developer_ban,
+        endpoints::email_change_requests::start_email_change,
+        endpoints::email_change_requests::finalize_email_change,
         endpoints::tags::index,
         endpoints::tags::detailed_index,
         endpoints::stats::get_stats,

@@ -135,6 +135,8 @@ async fn main() -> anyhow::Result<()> {
             .service(endpoints::developers::ban_developer)
             .service(endpoints::developers::unban_developer)
             .service(endpoints::developers::get_developer_ban)
+            .service(endpoints::email_change_requests::start_email_change)
+            .service(endpoints::email_change_requests::finalize_email_change)
             .service(endpoints::tags::index)
             .service(endpoints::tags::detailed_index)
             .service(endpoints::stats::get_stats)
