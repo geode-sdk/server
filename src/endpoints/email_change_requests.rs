@@ -10,23 +10,19 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    config::AppData,
-    database::repository,
-    email::{
+    auth, config::AppData, database::repository, email::{
         EmailAddress,
         blocklist::ApprovedEmailAddress,
         mailer::{EmailBody, OutgoingEmail},
         partials,
-    },
-    endpoints::ApiError,
-    extractors::auth::Auth,
-    types::api::ApiResponse,
+    }, endpoints::ApiError, extractors::auth::Auth, types::api::ApiResponse,
 };
 
 #[derive(Deserialize, Validate, ToSchema)]
 struct StartEmailChangePayload {
     #[validate(email, length(max = 512))]
     email: String,
+    password: String,
     force: Option<bool>,
 }
 
@@ -36,7 +32,7 @@ struct StartEmailChangePayload {
     tag = "developers",
     responses(
         (status = 201, description = "Request created", body = inline(ApiResponse<String>)),
-        (status = 400, description = "New email is same as old email"),
+        (status = 400, description = "New email is same as old email / Invalid password provided"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Setup request not found"),
         (status = 409, description = "You already have a pending request, retry with \"force\" in JSON to confirm / Email address is not setup")
@@ -70,7 +66,7 @@ pub async fn start_email_change(
         data.email_blocklist(),
     )?;
 
-    {
+    let existing_email_login = {
         let mut conn = data.db().acquire().await?;
 
         let existing_email_login =
@@ -91,12 +87,8 @@ pub async fn start_email_change(
 
         if !force && exists_and_is_valid {
             return Err(ApiError::Conflict(
-            "You already have a pending email change request. Please confirm you want to invalidate it.".into(),
-        ));
-        }
-
-        if exists.is_some() {
-            repository::email_change_requests::delete(developer.id, &mut conn).await?;
+                "You already have a pending email change request. Please confirm you want to invalidate it.".into(),
+            ));
         }
 
         if existing_email_login.email.to_lowercase() == email.email().to_string().to_lowercase() {
@@ -104,12 +96,19 @@ pub async fn start_email_change(
                 "Your new email cannot be the same as your current email".into(),
             ));
         }
+
+        existing_email_login
+    };
+
+    let password_hash = existing_email_login.password_hash.clone();
+    let pepper = data.password_hash_pepper().cloned();
+
+    if !auth::password::verify(password_hash, json.password.clone(), pepper).await? {
+        return Err(ApiError::BadRequest("Invalid password".into()));
     }
 
     let expiry_date = now.add(Duration::minutes(30));
-
     let uuid = Uuid::new_v4();
-
     let endpoint = format!("{}/email/change/verify?token={}", data.front_url(), uuid);
 
     // TODO: maybe make a good looking email template sometime in the future

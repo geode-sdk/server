@@ -1,7 +1,5 @@
 use crate::{
-    email::mailer::MailerError,
-    mod_zip::ModZipError,
-    types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
+    auth::password::PasswordError, email::mailer::MailerError, mod_zip::ModZipError, types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
 };
 use actix_web::{HttpResponse, http::StatusCode};
 use validator::{ValidationError, ValidationErrors};
@@ -62,6 +60,8 @@ pub enum ApiError {
     Mailer(#[from] MailerError),
     #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
     Banned(Option<String>),
+    #[error("{0}")]
+    Password(#[from] PasswordError)
 }
 
 impl ApiError {
