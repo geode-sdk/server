@@ -51,17 +51,16 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.2082")]
     #[sqlx(rename = "2.2082")]
     GD22082,
+    #[serde(rename = "2.209")]
+    #[sqlx(rename = "2.209")]
+    GD2209,
 }
 
 impl GDVersionEnum {
     /// GD versions that are currently actively supported
     #[allow(unused)]
     pub fn latest_supported() -> &'static [GDVersionEnum] {
-        &[
-            GDVersionEnum::All,
-            GDVersionEnum::GD22081,
-            GDVersionEnum::GD22082,
-        ]
+        &[GDVersionEnum::All, GDVersionEnum::GD2209]
     }
 
     /// GD versions for which we apply auto-migration to S3 storage
@@ -72,6 +71,7 @@ impl GDVersionEnum {
             GDVersionEnum::GD2206,
             GDVersionEnum::GD22074,
             GDVersionEnum::GD22081,
+            GDVersionEnum::GD2209,
         ]
     }
 }
@@ -94,6 +94,7 @@ impl FromStr for GDVersionEnum {
             "2.208" => Ok(GDVersionEnum::GD2208),
             "2.2081" => Ok(GDVersionEnum::GD22081),
             "2.2082" => Ok(GDVersionEnum::GD22082),
+            "2.209" => Ok(GDVersionEnum::GD2209),
             _ => Err(()),
         }
     }
@@ -221,7 +222,9 @@ impl DetailedGDVersion {
                 })
             }
         }
-        if let Some(win) = self.win && json.windows {
+        if let Some(win) = self.win
+            && json.windows
+        {
             ret.push(ModGDVersionCreate {
                 gd: win,
                 platform: VerPlatform::Win,
@@ -241,7 +244,9 @@ impl DetailedGDVersion {
                 })
             }
         }
-        if let Some(ios) = self.ios && json.ios {
+        if let Some(ios) = self.ios
+            && json.ios
+        {
             ret.push(ModGDVersionCreate {
                 gd: ios,
                 platform: VerPlatform::Ios,
