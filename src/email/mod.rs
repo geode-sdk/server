@@ -12,6 +12,7 @@ pub mod blocklist;
 pub mod lettre;
 pub mod mailer;
 pub mod partials;
+pub mod templates;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmailError {
@@ -128,7 +129,11 @@ impl EmailAddress {
             2
         };
 
-        let end = self.local_part.char_indices().nth(shown).map_or(self.local_part.len(), |(i, _)| i);
+        let end = self
+            .local_part
+            .char_indices()
+            .nth(shown)
+            .map_or(self.local_part.len(), |(i, _)| i);
 
         &self.local_part[..end]
     }
@@ -145,7 +150,11 @@ impl EmailAddress {
             |_label, _tld, _is_bidi| true,
         );
 
-        let domain: &str = if result.is_ok() { display.as_ref() } else { &self.domain };
+        let domain: &str = if result.is_ok() {
+            display.as_ref()
+        } else {
+            &self.domain
+        };
         let local_part_masked = self.local_part_masked();
 
         let mut ret = format!("{}***@{}", local_part_masked, domain);

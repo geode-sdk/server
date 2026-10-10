@@ -1,7 +1,6 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
 use argon2::PasswordHasher;
 use chrono::{DateTime, Utc};
-use maud::html;
 use phc::PasswordHash;
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
@@ -18,7 +17,7 @@ use crate::database::repository::{
 };
 use crate::email::blocklist::ApprovedEmailAddress;
 use crate::email::mailer::{EmailBody, OutgoingEmail};
-use crate::email::{EmailAddress, partials};
+use crate::email::{EmailAddress, templates};
 use crate::types::api::{ApiResponse, PaginatedData};
 use crate::types::models::developer::SelfDeveloper;
 use crate::{
@@ -520,26 +519,7 @@ pub async fn setup_email(
 
     let endpoint = format!("{}/email/setup/verify?token={}", data.front_url(), uuid);
 
-    // TODO: maybe make a good looking email template sometime in the future
-    let html = html! {
-        (partials::salute())
-        p {
-            "Someone (hopefully you) requested to setup email sign-in for your Geode SDK developer account using this address."
-        }
-        p {
-            "If you didn't request this, you can safely ignore this email. No changes will be made to your account."
-        }
-        p {
-            "Visit"
-            a href=(endpoint) { (endpoint) }
-            "to confirm this email address"
-        }
-        p {
-            "This link expires in 30 minutes."
-        }
-        (partials::footer())
-    }
-    .into_string();
+    let html = templates::change_email::setup_email(&endpoint).into_string();
 
     let outgoing = OutgoingEmail {
         to: email.clone(),
