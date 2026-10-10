@@ -7,7 +7,12 @@ use utoipa::ToSchema;
 use validator::Validate;
 
 use crate::{
-    auth, config::AppData, database::repository::{auth_tokens, developers, refresh_tokens}, email::EmailAddress, endpoints::{ApiError, auth::TokensResponse}, types::api::ApiResponse,
+    auth,
+    config::AppData,
+    database::repository::{auth_tokens, developers, refresh_tokens},
+    email::EmailAddress,
+    endpoints::{ApiError, auth::TokensResponse},
+    types::api::ApiResponse,
 };
 
 #[derive(ToSchema, Validate, Deserialize)]
@@ -34,6 +39,8 @@ pub async fn login(
     data: web::Data<AppData>,
     json: web::Json<EmailLogin>,
 ) -> Result<impl Responder, ApiError> {
+    data.mailer().ok_or(ApiError::NotImplemented)?;
+
     let login_data = {
         let mut pool = data.db().acquire().await?;
 
@@ -48,7 +55,9 @@ pub async fn login(
     let pepper = data.password_hash_pepper().cloned();
 
     if !auth::password::verify_or_dummy(password_hash, json.password.clone(), pepper).await? {
-        return Err(ApiError::BadRequest("No user found with these credentials".into()));
+        return Err(ApiError::BadRequest(
+            "No user found with these credentials".into(),
+        ));
     }
 
     let login_data = login_data.ok_or(ApiError::BadRequest(
@@ -70,4 +79,43 @@ pub async fn login(
             refresh_token: refresh.to_string(),
         },
     }))
+}
+
+#[derive(ToSchema, Deserialize, Validate)]
+struct ForgotPassword {
+    #[validate(email)]
+    email: String,
+}
+
+/// Start forgot password flow
+#[utoipa::path(
+    tag = "auth",
+    responses(
+        (status = 204, description = "Maybe sent password reset notification"),
+        (status = 500, description = "Server error")
+    )
+)]
+#[tracing::instrument(skip_all)]
+#[post("v1/forgot-password")]
+pub async fn forgot_password(
+    data: web::Data<AppData>,
+    json: web::Json<ForgotPassword>,
+) -> Result<impl Responder, ApiError> {
+    data.mailer().ok_or(ApiError::NotImplemented)?;
+    let front_url = data.front_url();
+    if front_url.is_empty() {
+        return Err(ApiError::NotImplemented);
+    }
+
+    let developer = {
+        let mut conn = data.db().acquire().await?;
+
+        let email = EmailAddress::from_str(&json.email.to_lowercase())
+            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?
+            .to_string();
+
+        developers::find_by_email(&email, &mut conn).await?
+    };
+
+    Ok(web::Json({}))
 }
