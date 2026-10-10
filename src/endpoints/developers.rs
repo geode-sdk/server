@@ -478,7 +478,7 @@ pub async fn setup_email(
 
         if existing_email_login.is_some() {
             return Err(ApiError::Conflict(
-                "You already have email login setup. Use /v1/me/email/change for changing your email or /v1/me/password/change for changing your password".into(),
+                "You already have a configured email address. Use /v1/me/email/change for changing your email or /v1/me/password/change for changing your password".into(),
             ));
         }
 
@@ -496,7 +496,7 @@ pub async fn setup_email(
 
         if existing.is_some() && !force {
             return Err(ApiError::Conflict(
-                "user already has an active email setup request".into(),
+                "User already has an active email setup request".into(),
             ));
         }
     }
@@ -576,26 +576,21 @@ pub async fn verify_email_setup(
 
     let developer = auth.developer()?;
 
-    let request_id = Uuid::try_parse(&json.request_id).map_err(|_| {
-        ApiError::NotFound(
-            "The request associated with this ID either does not exist or has expired".into(),
-        )
-    })?;
+    let notfound_msg = "The request associated with this ID either does not exist or has expired";
+
+    let request_id =
+        Uuid::try_parse(&json.request_id).map_err(|_| ApiError::NotFound(notfound_msg.into()))?;
 
     let mut conn = data.db().acquire().await?;
     let mut tx = conn.begin().await?;
 
     let request = email_setup_requests::find_for_token(request_id, &mut tx)
         .await?
-        .ok_or(ApiError::NotFound(
-            "The request associated with this ID either does not exist or has expired".into(),
-        ))?;
+        .ok_or(ApiError::NotFound(notfound_msg.into()))?;
 
     if request.developer_id != developer.id {
         // Let's be a little sneaky here... >:)
-        return Err(ApiError::NotFound(
-            "The request associated with this ID either does not exist or has expired".into(),
-        ));
+        return Err(ApiError::NotFound(notfound_msg.into()));
     }
 
     let existing = developers::find_by_email(&request.email, &mut tx).await?;
@@ -627,7 +622,7 @@ pub async fn verify_email_setup(
         email_setup_requests::delete(&request.token, &mut tx).await?;
         tx.commit().await?;
 
-        return Err(ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again".into()));
+        return Err(ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again.".into()));
     }
 
     developers::finalize_email_setup(developer.id, &email, &password, &mut tx).await?;

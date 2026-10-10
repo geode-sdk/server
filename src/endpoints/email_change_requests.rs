@@ -67,7 +67,7 @@ pub async fn start_email_change(
 
     let email = ApprovedEmailAddress::parse(
         EmailAddress::from_str(&json.email.to_lowercase())
-            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?,
+            .map_err(|_| ApiError::BadRequest("Invalid email address".into()))?,
         data.email_blocklist(),
     )?;
 
