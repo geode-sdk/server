@@ -54,13 +54,16 @@ pub enum GDVersionEnum {
     #[serde(rename = "2.209")]
     #[sqlx(rename = "2.209")]
     GD2209,
+    #[serde(rename = "2.2091")]
+    #[sqlx(rename = "2.2091")]
+    GD22091,
 }
 
 impl GDVersionEnum {
     /// GD versions that are currently actively supported
     #[allow(unused)]
     pub fn latest_supported() -> &'static [GDVersionEnum] {
-        &[GDVersionEnum::All, GDVersionEnum::GD2209]
+        &[GDVersionEnum::All, GDVersionEnum::GD22091]
     }
 
     /// GD versions for which we apply auto-migration to S3 storage
@@ -71,7 +74,7 @@ impl GDVersionEnum {
             GDVersionEnum::GD2206,
             GDVersionEnum::GD22074,
             GDVersionEnum::GD22081,
-            GDVersionEnum::GD2209,
+            GDVersionEnum::GD22091,
         ]
     }
 }
@@ -95,6 +98,7 @@ impl FromStr for GDVersionEnum {
             "2.2081" => Ok(GDVersionEnum::GD22081),
             "2.2082" => Ok(GDVersionEnum::GD22082),
             "2.209" => Ok(GDVersionEnum::GD2209),
+            "2.2091" => Ok(GDVersionEnum::GD22091),
             _ => Err(()),
         }
     }
