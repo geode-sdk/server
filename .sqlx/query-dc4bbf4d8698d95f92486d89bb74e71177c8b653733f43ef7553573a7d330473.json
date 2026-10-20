@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND revoked_at > NOW() or revoked_at IS NULL ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1",
+  "query": "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND (revoked_at > NOW() or revoked_at IS NULL) ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -84,5 +84,5 @@
       true
     ]
   },
-  "hash": "4fdaf48f6563fb3e2ceb6f0f14dceac6934ec8f6b63a3e17aff00b1ec37aa7a6"
+  "hash": "dc4bbf4d8698d95f92486d89bb74e71177c8b653733f43ef7553573a7d330473"
 }
