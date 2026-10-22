@@ -1,5 +1,5 @@
 use crate::config::AppData;
-use crate::endpoints::ApiError;
+use crate::http::error::ApiError;
 use actix_web::{HttpResponse, Responder, get, web};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
@@ -23,9 +23,12 @@ pub struct StatusBadgeQuery {
     pub stat: StatusBadgeStat,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(status_badge);
+}
+
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/status_badge",
     tag = "mods",
     params(
         ("id" = String, Path, description = "Mod ID"),
@@ -37,7 +40,7 @@ pub struct StatusBadgeQuery {
         (status = 404, description = "Mod not found")
     )
 )]
-#[get("/v1/mods/{id}/status_badge")]
+#[get("/mods/{id}/status_badge")]
 #[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn status_badge(
     data: web::Data<AppData>,

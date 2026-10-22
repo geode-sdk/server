@@ -1,10 +1,11 @@
-use super::ApiError;
+use crate::http::error::ApiError;
 use crate::config::AppData;
 use crate::database::DatabaseError;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::events::thread_comment::NewThreadComment;
-use crate::extractors::auth::Auth;
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::extractors::auth::Auth;
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::developer::Developer;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
@@ -95,10 +96,23 @@ async fn check_submission_lock(
     })
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(get_submission)
+        .service(get_submission_audit)
+        .service(update_submission)
+        .service(get_comments)
+        .service(get_comment_audit)
+        .service(create_comment)
+        .service(update_comment)
+        .service(delete_comment)
+        .service(get_attachments)
+        .service(upload_attachments)
+        .service(delete_attachment);
+}
+
 /// Get the submission for a mod version, or create one if the mod version is pending and has no submission
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}/submission",
     tag = "mod_version_submissions",
     params(SubmissionPath),
     responses(
@@ -108,7 +122,7 @@ async fn check_submission_lock(
     ),
     security(("bearer_token" = []))
 )]
-#[get("v1/mods/{id}/versions/{version}/submission")]
+#[get("/mods/{id}/versions/{version}/submission")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn get_submission(
     path: web::Path<SubmissionPath>,
@@ -154,7 +168,6 @@ pub async fn get_submission(
 }
 
 #[utoipa::path(
-    path = "/v1/mods/{id}/versions/{version}/submission/audit",
     tag = "mod_version_submissions",
     params(SubmissionPath),
     responses(
@@ -165,7 +178,7 @@ pub async fn get_submission(
     ),
     security(("bearer_token" = []))
 )]
-#[get("v1/mods/{id}/versions/{version}/submission/audit")]
+#[get("/mods/{id}/versions/{version}/submission/audit")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn get_submission_audit(
     path: web::Path<SubmissionPath>,
@@ -197,8 +210,6 @@ pub async fn get_submission_audit(
 
 /// Update (lock / unlock) a submission (admin only)
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}/versions/{version}/submission",
     tag = "mod_version_submissions",
     params(SubmissionPath),
     request_body = UpdateSubmissionPayload,
@@ -210,7 +221,7 @@ pub async fn get_submission_audit(
     ),
     security(("bearer_token" = []))
 )]
-#[put("v1/mods/{id}/versions/{version}/submission")]
+#[put("/mods/{id}/versions/{version}/submission")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn update_submission(
     path: web::Path<SubmissionPath>,
@@ -258,8 +269,6 @@ pub async fn update_submission(
 
 /// List comments for a mod version submission
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments",
     tag = "mod_version_submissions",
     params(SubmissionPath, CommentsQuery),
     responses(
@@ -269,7 +278,7 @@ pub async fn update_submission(
     ),
     security(("bearer_token" = []))
 )]
-#[get("v1/mods/{id}/versions/{version}/submission/comments")]
+#[get("/mods/{id}/versions/{version}/submission/comments")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn get_comments(
     path: web::Path<SubmissionPath>,
@@ -350,7 +359,6 @@ pub async fn get_comments(
 }
 
 #[utoipa::path(
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/audit",
     tag = "mod_version_submissions",
     params(CommentPath),
     responses(
@@ -361,7 +369,7 @@ pub async fn get_comments(
     ),
     security(("bearer_token" = []))
 )]
-#[get("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/audit")]
+#[get("/mods/{id}/versions/{version}/submission/comments/{comment_id}/audit")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id))]
 pub async fn get_comment_audit(
     path: web::Path<CommentPath>,
@@ -400,8 +408,6 @@ pub async fn get_comment_audit(
 
 /// Add a comment to a mod version submission
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments",
     tag = "mod_version_submissions",
     params(SubmissionPath),
     request_body = CreateCommentPayload,
@@ -413,7 +419,7 @@ pub async fn get_comment_audit(
     ),
     security(("bearer_token" = []))
 )]
-#[post("v1/mods/{id}/versions/{version}/submission/comments")]
+#[post("/mods/{id}/versions/{version}/submission/comments")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn create_comment(
     path: web::Path<SubmissionPath>,
@@ -482,8 +488,6 @@ pub async fn create_comment(
 
 /// Update a comment on a mod version submission
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}",
     tag = "mod_version_submissions",
     params(CommentPath),
     request_body = UpdateCommentPayload,
@@ -496,7 +500,7 @@ pub async fn create_comment(
     ),
     security(("bearer_token" = []))
 )]
-#[put("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}")]
+#[put("/mods/{id}/versions/{version}/submission/comments/{comment_id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id))]
 pub async fn update_comment(
     path: web::Path<CommentPath>,
@@ -584,8 +588,6 @@ pub async fn update_comment(
 
 /// Delete a comment on a mod version submission
 #[utoipa::path(
-    delete,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}",
     tag = "mod_version_submissions",
     params(CommentPath),
     responses(
@@ -596,7 +598,7 @@ pub async fn update_comment(
     ),
     security(("bearer_token" = []))
 )]
-#[delete("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}")]
+#[delete("/mods/{id}/versions/{version}/submission/comments/{comment_id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id))]
 pub async fn delete_comment(
     path: web::Path<CommentPath>,
@@ -672,8 +674,6 @@ pub async fn delete_comment(
 
 /// List attachments for a submission comment
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments",
     tag = "mod_version_submissions",
     params(CommentPath),
     responses(
@@ -683,7 +683,7 @@ pub async fn delete_comment(
     ),
     security(("bearer_token" = []))
 )]
-#[get("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments")]
+#[get("/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id))]
 pub async fn get_attachments(
     path: web::Path<CommentPath>,
@@ -737,8 +737,6 @@ pub struct UploadAttachmentsForm {
 
 /// Upload attachments to a submission comment
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments",
     tag = "mod_version_submissions",
     params(CommentPath),
     request_body(
@@ -754,7 +752,7 @@ pub struct UploadAttachmentsForm {
     ),
     security(("bearer_token" = []))
 )]
-#[post("v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments")]
+#[post("/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id))]
 pub async fn upload_attachments(
     path: web::Path<CommentPath>,
@@ -916,8 +914,6 @@ pub async fn upload_attachments(
 
 /// Delete an attachment from a submission comment
 #[utoipa::path(
-    delete,
-    path = "/v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments/{attachment_id}",
     tag = "mod_version_submissions",
     params(AttachmentPath),
     responses(
@@ -929,7 +925,7 @@ pub async fn upload_attachments(
     security(("bearer_token" = []))
 )]
 #[delete(
-    "v1/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments/{attachment_id}"
+    "/mods/{id}/versions/{version}/submission/comments/{comment_id}/attachments/{attachment_id}"
 )]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version, comment_id = %path.comment_id, attachment_id = %path.attachment_id))]
 pub async fn delete_attachment(

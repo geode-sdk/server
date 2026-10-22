@@ -1,41 +1,23 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
 use chrono::{DateTime, Utc};
 
-use super::ApiError;
+use crate::http::error::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::models::developer::SelfDeveloper;
 use crate::{
-    extractors::auth::Auth,
+    http::extractors::auth::Auth,
     types::models::{
-        developer::{Developer, ModDeveloper, DeveloperBan},
-        mod_entity::Mod,
+        developer::{Developer, DeveloperBan},
+        mod_entity::{Mod, SimpleDevMod},
         mod_version_status::ModVersionStatusEnum,
     },
 };
-
-#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
-pub struct SimpleDevMod {
-    pub id: String,
-    pub featured: bool,
-    pub download_count: i32,
-    pub versions: Vec<SimpleDevModVersion>,
-    pub developers: Vec<ModDeveloper>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
-pub struct SimpleDevModVersion {
-    pub name: String,
-    pub version: String,
-    pub download_count: i32,
-    pub validated: bool,
-    pub info: Option<String>,
-    pub status: ModVersionStatusEnum,
-}
 
 #[derive(Deserialize, IntoParams)]
 struct AddDevPath {
@@ -77,17 +59,32 @@ struct DeveloperBanPayload {
     revoked_at: Option<DateTime<Utc>>,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(developer_index)
+        .service(get_developer)
+        .service(add_developer_to_mod)
+        .service(remove_dev_from_mod)
+        .service(delete_token)
+        .service(delete_tokens)
+        .service(update_profile)
+        .service(get_own_mods)
+        .service(get_me)
+        .service(update_developer)
+        .service(ban_developer)
+        .service(unban_developer)
+        .service(get_developer_ban);
+}
+
 /// List all developers with optional search and pagination
 #[utoipa::path(
-    get,
-    path = "/v1/developers",
     tag = "developers",
     params(DeveloperIndexQuery),
     responses(
         (status = 200, description = "List of developers", body = inline(ApiResponse<PaginatedData<Developer>>))
     )
 )]
-#[get("v1/developers")]
+#[get("/developers")]
 #[tracing::instrument(skip_all)]
 pub async fn developer_index(
     data: web::Data<AppData>,
@@ -108,8 +105,6 @@ pub async fn developer_index(
 
 /// Add a developer to a mod
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/developers",
     tag = "developers",
     params(AddDevPath),
     request_body = AddDevPayload,
@@ -124,7 +119,7 @@ pub async fn developer_index(
         ("bearer_token" = [])
     )
 )]
-#[post("v1/mods/{id}/developers")]
+#[post("/mods/{id}/developers")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, username = %json.username))]
 pub async fn add_developer_to_mod(
     data: web::Data<AppData>,
@@ -164,8 +159,6 @@ pub async fn add_developer_to_mod(
 
 /// Remove a developer from a mod
 #[utoipa::path(
-    delete,
-    path = "/v1/mods/{id}/developers/{username}",
     tag = "developers",
     params(RemoveDevPath),
     responses(
@@ -179,7 +172,7 @@ pub async fn add_developer_to_mod(
         ("bearer_token" = [])
     )
 )]
-#[delete("v1/mods/{id}/developers/{username}")]
+#[delete("/mods/{id}/developers/{username}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, username = %path.username))]
 pub async fn remove_dev_from_mod(
     data: web::Data<AppData>,
@@ -225,8 +218,6 @@ pub async fn remove_dev_from_mod(
 
 /// Delete the current API token
 #[utoipa::path(
-    delete,
-    path = "/v1/me/token",
     tag = "developers",
     responses(
         (status = 204, description = "Token deleted successfully"),
@@ -236,7 +227,7 @@ pub async fn remove_dev_from_mod(
         ("bearer_token" = [])
     )
 )]
-#[delete("v1/me/token")]
+#[delete("/me/token")]
 #[tracing::instrument(skip_all)]
 pub async fn delete_token(
     data: web::Data<AppData>,
@@ -252,8 +243,6 @@ pub async fn delete_token(
 
 /// Delete all API tokens for the current developer
 #[utoipa::path(
-    delete,
-    path = "/v1/me/tokens",
     tag = "developers",
     responses(
         (status = 204, description = "All tokens deleted successfully"),
@@ -263,7 +252,7 @@ pub async fn delete_token(
         ("bearer_token" = [])
     )
 )]
-#[delete("v1/me/tokens")]
+#[delete("/me/tokens")]
 #[tracing::instrument(skip_all)]
 pub async fn delete_tokens(
     data: web::Data<AppData>,
@@ -285,8 +274,6 @@ struct UploadProfilePayload {
 
 /// Update the current developer's profile
 #[utoipa::path(
-    put,
-    path = "/v1/me",
     tag = "developers",
     request_body = UploadProfilePayload,
     responses(
@@ -298,7 +285,7 @@ struct UploadProfilePayload {
         ("bearer_token" = [])
     )
 )]
-#[put("v1/me")]
+#[put("/me")]
 #[tracing::instrument(skip_all)]
 pub async fn update_profile(
     data: web::Data<AppData>,
@@ -344,8 +331,6 @@ pub fn default_own_mods_status() -> ModVersionStatusEnum {
 
 /// Get all mods owned by the current developer
 #[utoipa::path(
-    get,
-    path = "/v1/me/mods",
     tag = "developers",
     params(GetOwnModsQuery),
     responses(
@@ -356,7 +341,7 @@ pub fn default_own_mods_status() -> ModVersionStatusEnum {
         ("bearer_token" = [])
     )
 )]
-#[get("v1/me/mods")]
+#[get("/me/mods")]
 #[tracing::instrument(skip_all)]
 pub async fn get_own_mods(
     data: web::Data<AppData>,
@@ -375,8 +360,6 @@ pub async fn get_own_mods(
 
 /// Get the current developer's profile
 #[utoipa::path(
-    get,
-    path = "/v1/me",
     tag = "developers",
     responses(
         (status = 200, description = "Current developer profile", body = inline(ApiResponse<SelfDeveloper>)),
@@ -386,7 +369,7 @@ pub async fn get_own_mods(
         ("bearer_token" = [])
     )
 )]
-#[get("v1/me")]
+#[get("/me")]
 #[tracing::instrument(skip_all)]
 pub async fn get_me(auth: Auth, data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
@@ -407,8 +390,6 @@ struct GetDeveloperPath {
 
 /// Get a specific developer by ID
 #[utoipa::path(
-    get,
-    path = "/v1/developers/{id}",
     tag = "developers",
     params(GetDeveloperPath),
     responses(
@@ -416,7 +397,7 @@ struct GetDeveloperPath {
         (status = 404, description = "Developer not found")
     )
 )]
-#[get("v1/developers/{id}")]
+#[get("/developers/{id}")]
 #[tracing::instrument(skip_all, fields(developer_id = %path.id))]
 pub async fn get_developer(
     data: web::Data<AppData>,
@@ -435,8 +416,6 @@ pub async fn get_developer(
 
 /// Update a developer's admin/verified status (admin only)
 #[utoipa::path(
-    put,
-    path = "/v1/developers/{id}",
     tag = "developers",
     params(UpdateDeveloperPath),
     request_body = DeveloperUpdatePayload,
@@ -451,7 +430,7 @@ pub async fn get_developer(
         ("bearer_token" = [])
     )
 )]
-#[put("v1/developers/{id}")]
+#[put("/developers/{id}")]
 #[tracing::instrument(skip_all, fields(developer_id = %path.id))]
 pub async fn update_developer(
     auth: Auth,
@@ -510,8 +489,6 @@ struct CreateDeveloperBanPath {
 ///
 /// If the developer is already banned, this will overwrite that ban.
 #[utoipa::path(
-    post,
-    path = "/v1/developers/{id}/bans",
     tag = "developers",
     params(CreateDeveloperBanPath),
     request_body = DeveloperBanPayload,
@@ -526,7 +503,7 @@ struct CreateDeveloperBanPath {
         ("bearer_token" = [])
     )
 )]
-#[post("/v1/developers/{id}/bans")]
+#[post("/developers/{id}/bans")]
 pub async fn ban_developer(
     auth: Auth,
     data: web::Data<AppData>,
@@ -587,8 +564,6 @@ struct DeleteDeveloperBanPath {
 
 /// Revoke a developer's current ban (admin only)
 #[utoipa::path(
-    delete,
-    path = "/v1/developers/{id}/bans",
     tag = "developers",
     params(DeleteDeveloperBanPath),
     responses(
@@ -601,7 +576,7 @@ struct DeleteDeveloperBanPath {
         ("bearer_token" = [])
     )
 )]
-#[delete("/v1/developers/{id}/bans")]
+#[delete("/developers/{id}/bans")]
 pub async fn unban_developer(
     auth: Auth,
     data: web::Data<AppData>,
@@ -627,8 +602,6 @@ struct GetDeveloperBanPath {
 
 /// Fetch a list of a developer's bans (admin only)
 #[utoipa::path(
-    get,
-    path = "/v1/developers/{id}/bans",
     tag = "developers",
     params(GetDeveloperBanPath),
     responses(
@@ -642,7 +615,7 @@ struct GetDeveloperBanPath {
         ("bearer_token" = [])
     )
 )]
-#[get("/v1/developers/{id}/bans")]
+#[get("/developers/{id}/bans")]
 pub async fn get_developer_ban(
     auth: Auth,
     data: web::Data<AppData>,

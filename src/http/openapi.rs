@@ -1,7 +1,8 @@
 use utoipa::OpenApi;
 
-use crate::{endpoints, types};
+use crate::{http, http::endpoints, types};
 
+/// Routes served under the `/v1` scope. Their paths are relative to it, like the actix macros.
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -49,17 +50,23 @@ use crate::{endpoints, types};
         endpoints::loader::get_one,
         endpoints::loader::create_version,
         endpoints::loader::get_many,
-        endpoints::health::health,
         endpoints::auth::refresh_token,
         endpoints::auth::github::start_github_login,
         endpoints::auth::github::start_github_web_login,
         endpoints::auth::github::github_web_callback,
         endpoints::auth::github::poll_github_login,
         endpoints::auth::github::github_token_login,
-    ),
+    )
+)]
+struct V1Api;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(endpoints::health::health),
+    nest((path = "/v1", api = V1Api)),
     components(
         schemas(
-            types::api::ApiResponse<String>,
+            http::response::ApiResponse<String>,
             types::api::PaginatedData<types::models::mod_entity::Mod>,
             types::api::PaginatedData<types::models::developer::Developer>,
             types::api::PaginatedData<types::models::loader_version::LoaderVersion>,
@@ -90,9 +97,9 @@ use crate::{endpoints, types};
             types::models::mod_version_submission::CreateCommentPayload,
             types::models::mod_version_submission::UpdateCommentPayload,
             types::models::mod_version_submission::ModVersionSubmissionAttachment,
-            endpoints::mods::IndexSortType,
-            endpoints::developers::SimpleDevMod,
-            endpoints::developers::SimpleDevModVersion,
+            types::models::mod_entity::IndexSortType,
+            types::models::mod_entity::SimpleDevMod,
+            types::models::mod_entity::SimpleDevModVersion,
         )
     ),
     tags(
@@ -109,7 +116,6 @@ use crate::{endpoints, types};
     ),
     info(
         title = "Geode Index API",
-        version = "0.53.2",
         description = "API for the Geode mod index",
         contact(
             name = "Geode Team",

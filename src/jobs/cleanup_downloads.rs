@@ -1,8 +1,7 @@
 use crate::database::repository::mod_downloads;
-use crate::endpoints::ApiError;
 use sqlx::PgConnection;
 
-pub async fn cleanup_downloads(conn: &mut PgConnection) -> Result<(), ApiError> {
+pub async fn cleanup_downloads(conn: &mut PgConnection) -> anyhow::Result<()> {
     mod_downloads::cleanup(conn).await?;
 
     Ok(())

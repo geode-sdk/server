@@ -1,8 +1,8 @@
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, refresh_tokens};
-use crate::endpoints::ApiError;
-use crate::extractors::auth::Auth;
-use crate::types::api::ApiResponse;
+use crate::http::error::ApiError;
+use crate::http::extractors::auth::Auth;
+use crate::http::response::ApiResponse;
 use actix_web::{Responder, post, web};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;
@@ -22,10 +22,14 @@ struct RefreshBody {
     refresh_token: String,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(refresh_token)
+        .configure(github::router_config);
+}
+
 /// Refresh an access token using a refresh token
 #[utoipa::path(
-    post,
-    path = "/v1/login/refresh",
     tag = "auth",
     request_body = RefreshBody,
     responses(
@@ -33,7 +37,7 @@ struct RefreshBody {
         (status = 400, description = "Invalid or expired refresh token")
     )
 )]
-#[post("v1/login/refresh")]
+#[post("/login/refresh")]
 #[tracing::instrument(skip_all)]
 pub async fn refresh_token(
     json: web::Json<RefreshBody>,
