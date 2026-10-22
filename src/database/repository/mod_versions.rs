@@ -134,6 +134,26 @@ pub async fn get_for_mod(
     Ok(versions)
 }
 
+pub async fn has_newer_accepted(
+    id: &str,
+    version_id: i32,
+    conn: &mut PgConnection,
+) -> Result<bool, DatabaseError> {
+    sqlx::query!(
+        "SELECT EXISTS (
+            SELECT 1 FROM mod_versions mv
+            INNER JOIN mod_version_statuses mvs ON mv.status_id = mvs.id
+            WHERE mv.mod_id = $1 AND mvs.status = 'accepted' AND mv.id > $2
+        )",
+        id,
+        version_id
+    )
+    .fetch_one(&mut *conn)
+    .await
+    .map(|row| row.exists.unwrap_or_default())
+    .map_err(|e| e.into())
+}
+
 #[tracing::instrument(skip_all, fields(mod_version_id = %id))]
 pub async fn increment_downloads(id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     sqlx::query!(

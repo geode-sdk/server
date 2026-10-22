@@ -11,11 +11,11 @@ use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
     mod_tags, mod_version_submissions, mod_versions, mods,
 };
-use crate::http::error::ApiError;
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
     NewUnverifiedModVersionCreated,
 };
+use crate::http::error::ApiError;
 use crate::mod_zip::{self, download_mod};
 use crate::s3_worker::S3WorkerTask;
 use crate::types::models;
@@ -81,8 +81,7 @@ struct IndexQuery {
 }
 
 pub fn router_config(cfg: &mut web::ServiceConfig) {
-    cfg
-        .service(get_version_index)
+    cfg.service(get_version_index)
         .service(get_one)
         .service(download_version)
         .service(create_version)
@@ -580,7 +579,9 @@ pub async fn update_version(
     )
     .await?;
 
-    if old_status == ModVersionStatusEnum::Pending
+    let mut s3_task: Option<S3WorkerTask> = None;
+
+    if matches!(old_status, ModVersionStatusEnum::Pending | ModVersionStatusEnum::Rejected)
         && version.status == ModVersionStatusEnum::Accepted
     {
         if approved_count == 0 {
@@ -596,34 +597,37 @@ pub async fn update_version(
         )
         .await?;
 
-        let json = ModJson::from_zip(&bytes, &version.download_link, true)?;
+        if !mod_versions::has_newer_accepted(&mod_id, version.id, &mut tx).await? {
+            let json = ModJson::from_zip(&bytes, &version.download_link, true)?;
 
-        // Update links with data from mod.json
-        if let Some(links) = json.links.clone() {
-            mod_links::upsert(
-                &mod_id,
-                links.community,
-                links.homepage,
-                links.source,
-                &mut tx,
-            )
-            .await?;
-        } else {
-            mod_links::upsert(&mod_id, None, None, None, &mut tx).await?;
+            // Update links with data from mod.json
+            if let Some(links) = json.links.clone() {
+                mod_links::upsert(
+                    &mod_id,
+                    links.community,
+                    links.homepage,
+                    links.source,
+                    &mut tx,
+                )
+                .await?;
+            } else {
+                mod_links::upsert(&mod_id, None, None, None, &mut tx).await?;
+            }
+
+            // Update tags with data from mod.json
+            let tags = if let Some(tags) = &json.tags {
+                models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?
+            } else {
+                vec![]
+            };
+
+            mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
+
+            mods::update_with_json_moved(the_mod, json, &mut tx).await?;
         }
 
-        // Update tags with data from mod.json
-        let tags = if let Some(tags) = &json.tags {
-            models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?
-        } else {
-            vec![]
-        };
-
-        mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
-
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
-
-        data.send_s3_task(S3WorkerTask::UploadMod {
+        // Just send the file to s3, it gets cleaned up later anyway
+        s3_task = Some(S3WorkerTask::UploadMod {
             data: bytes,
             mod_id,
             version: version.version.clone(),
@@ -646,6 +650,10 @@ pub async fn update_version(
     }
 
     tx.commit().await?;
+
+    if let Some(task) = s3_task {
+        data.send_s3_task(task);
+    }
 
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;
