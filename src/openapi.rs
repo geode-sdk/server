@@ -1,7 +1,8 @@
 use utoipa::OpenApi;
 
-use crate::{endpoints, types};
+use crate::{http::endpoints, types};
 
+/// Routes served under the `/v1` scope. Their paths are relative to it, like the actix macros.
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -49,14 +50,20 @@ use crate::{endpoints, types};
         endpoints::loader::get_one,
         endpoints::loader::create_version,
         endpoints::loader::get_many,
-        endpoints::health::health,
         endpoints::auth::refresh_token,
         endpoints::auth::github::start_github_login,
         endpoints::auth::github::start_github_web_login,
         endpoints::auth::github::github_web_callback,
         endpoints::auth::github::poll_github_login,
         endpoints::auth::github::github_token_login,
-    ),
+    )
+)]
+struct V1Api;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(endpoints::health::health),
+    nest((path = "/v1", api = V1Api)),
     components(
         schemas(
             types::api::ApiResponse<String>,

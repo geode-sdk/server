@@ -2,7 +2,7 @@ use actix_web::{HttpRequest, error::QueryPayloadError};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::endpoints::ApiError;
+use crate::http::endpoints::ApiError;
 
 #[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct PaginatedData<T> {

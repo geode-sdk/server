@@ -11,7 +11,7 @@ use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
     mod_tags, mod_version_submissions, mod_versions, mods,
 };
-use crate::endpoints::ApiError;
+use crate::http::endpoints::ApiError;
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
     NewUnverifiedModVersionCreated,
@@ -81,10 +81,17 @@ struct IndexQuery {
     compare: Option<String>,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(get_version_index)
+        .service(get_one)
+        .service(download_version)
+        .service(create_version)
+        .service(update_version);
+}
+
 /// List all versions for a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions",
     tag = "mod_versions",
     params(IndexPath, IndexQuery),
     responses(
@@ -92,7 +99,7 @@ struct IndexQuery {
         (status = 404, description = "Mod not found")
     )
 )]
-#[get("v1/mods/{id}/versions")]
+#[get("/mods/{id}/versions")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id))]
 pub async fn get_version_index(
     path: web::Path<IndexPath>,
@@ -144,8 +151,6 @@ pub async fn get_version_index(
 
 /// Get a specific version of a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}",
     tag = "mod_versions",
     params(GetOnePath, GetOneQuery),
     responses(
@@ -153,7 +158,7 @@ pub async fn get_version_index(
         (status = 404, description = "Mod or version not found")
     )
 )]
-#[get("v1/mods/{id}/versions/{version}")]
+#[get("/mods/{id}/versions/{version}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -207,8 +212,6 @@ struct DownloadQuery {
 
 /// Download a specific version of a mod (redirects to download URL)
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}/download",
     tag = "mod_versions",
     params(GetOnePath, DownloadQuery),
     responses(
@@ -216,7 +219,7 @@ struct DownloadQuery {
         (status = 404, description = "Mod or version not found")
     )
 )]
-#[get("v1/mods/{id}/versions/{version}/download")]
+#[get("/mods/{id}/versions/{version}/download")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
@@ -286,8 +289,6 @@ pub async fn download_version(
 
 /// Create a new version for a mod
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/versions",
     tag = "mod_versions",
     params(
         ("id" = String, Path, description = "Mod ID")
@@ -304,7 +305,7 @@ pub async fn download_version(
         ("bearer_token" = [])
     )
 )]
-#[post("v1/mods/{id}/versions")]
+#[post("/mods/{id}/versions")]
 #[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn create_version(
     path: web::Path<String>,
@@ -515,8 +516,6 @@ pub async fn create_version(
 
 /// Update a mod version status (admin only)
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}/versions/{version}",
     tag = "mod_versions",
     params(UpdateVersionPath),
     request_body = UpdatePayload,
@@ -531,7 +530,7 @@ pub async fn create_version(
         ("bearer_token" = [])
     )
 )]
-#[put("v1/mods/{id}/versions/{version}")]
+#[put("/mods/{id}/versions/{version}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn update_version(
     path: web::Path<UpdateVersionPath>,

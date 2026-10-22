@@ -1,12 +1,4 @@
-use crate::openapi::ApiDoc;
-use crate::types::api;
-use actix_cors::Cors;
-use actix_web::{
-    App, HttpServer,
-    web::{self, QueryConfig},
-};
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
+use actix_web::web;
 
 mod abbreviate;
 mod auth;
@@ -14,9 +6,9 @@ mod cli;
 mod config;
 mod database;
 mod dns;
-mod endpoints;
 mod events;
 mod extractors;
+mod http;
 mod jobs;
 mod logging;
 mod mod_zip;
@@ -50,99 +42,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Running migrations");
     sqlx::migrate!("./migrations").run(app_data.db()).await?;
 
-    let port = app_data.port();
-    let debug = app_data.debug();
-
-    let data = web::Data::new(app_data.clone());
+    let data = web::Data::new(app_data);
     tokio::spawn(s3_worker::run_s3_worker(data.clone()));
 
-    tracing::info!("Starting server on 0.0.0.0:{}", port);
-    let server = HttpServer::new(move || {
-        let openapi = ApiDoc::openapi();
-
-        let app = App::new()
-            .app_data(data.clone())
-            .app_data(QueryConfig::default().error_handler(api::query_error_handler))
-            .service(
-                SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()),
-            )
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allowed_methods(vec!["GET", "HEAD"])
-                    .allowed_headers(vec![actix_web::http::header::ACCEPT])
-                    .max_age(3600),
-            )
-            .wrap(tracing_actix_web::TracingLogger::default());
-
-        #[cfg(feature = "serve-static")]
-        let app = app
-            .service(actix_files::Files::new("/static", "static"))
-            .service(actix_files::Files::new("/storage", "storage/public"));
-
-        app.service(endpoints::mods::index)
-            .service(endpoints::mods::get_mod_updates)
-            .service(endpoints::mods::get)
-            .service(endpoints::mods::create)
-            .service(endpoints::mods::update_mod)
-            .service(endpoints::mods::get_logo)
-            .service(endpoints::mod_status_badge::status_badge)
-            .service(endpoints::mod_versions::get_version_index)
-            .service(endpoints::mod_versions::get_one)
-            .service(endpoints::mod_versions::download_version)
-            .service(endpoints::mod_versions::create_version)
-            .service(endpoints::mod_versions::update_version)
-            .service(endpoints::mod_version_submissions::get_submission)
-            .service(endpoints::mod_version_submissions::get_submission_audit)
-            .service(endpoints::mod_version_submissions::update_submission)
-            .service(endpoints::mod_version_submissions::get_comments)
-            .service(endpoints::mod_version_submissions::get_comment_audit)
-            .service(endpoints::mod_version_submissions::create_comment)
-            .service(endpoints::mod_version_submissions::update_comment)
-            .service(endpoints::mod_version_submissions::delete_comment)
-            .service(endpoints::mod_version_submissions::get_attachments)
-            .service(endpoints::mod_version_submissions::upload_attachments)
-            .service(endpoints::mod_version_submissions::delete_attachment)
-            .service(endpoints::deprecations::index)
-            .service(endpoints::deprecations::store)
-            .service(endpoints::deprecations::update)
-            .service(endpoints::deprecations::clear_all)
-            .service(endpoints::deprecations::delete)
-            .service(endpoints::auth::github::start_github_web_login)
-            .service(endpoints::auth::refresh_token)
-            .service(endpoints::auth::github::github_web_callback)
-            .service(endpoints::auth::github::poll_github_login)
-            .service(endpoints::auth::github::github_token_login)
-            .service(endpoints::auth::github::start_github_login)
-            .service(endpoints::developers::developer_index)
-            .service(endpoints::developers::get_developer)
-            .service(endpoints::developers::add_developer_to_mod)
-            .service(endpoints::developers::remove_dev_from_mod)
-            .service(endpoints::developers::delete_token)
-            .service(endpoints::developers::delete_tokens)
-            .service(endpoints::developers::update_profile)
-            .service(endpoints::developers::get_own_mods)
-            .service(endpoints::developers::get_me)
-            .service(endpoints::developers::update_developer)
-            .service(endpoints::developers::ban_developer)
-            .service(endpoints::developers::unban_developer)
-            .service(endpoints::developers::get_developer_ban)
-            .service(endpoints::tags::index)
-            .service(endpoints::tags::detailed_index)
-            .service(endpoints::stats::get_stats)
-            .service(endpoints::loader::get_one)
-            .service(endpoints::loader::create_version)
-            .service(endpoints::loader::get_many)
-            .service(endpoints::health::health)
-    })
-    .bind(("0.0.0.0", port))?;
-
-    if debug {
-        tracing::info!("Running in debug mode, using 1 thread.");
-        server.workers(1).run().await?;
-    } else {
-        server.run().await?;
-    }
-
-    anyhow::Ok(())
+    http::serve_http(data).await
 }

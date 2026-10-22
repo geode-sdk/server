@@ -1,4 +1,4 @@
-use crate::{database::repository::developers, endpoints::ApiError};
+use crate::{database::repository::developers, http::endpoints::ApiError};
 use chrono::Utc;
 use reqwest::{Client, header::HeaderValue};
 use serde::{Deserialize, Serialize};

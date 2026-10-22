@@ -3,7 +3,7 @@ use std::pin::Pin;
 use crate::auth::AuthenticationError;
 use crate::config::AppData;
 use crate::database::repository::developers;
-use crate::endpoints::ApiError;
+use crate::http::endpoints::ApiError;
 use crate::types::models::developer::Developer;
 use actix_web::http::header::HeaderMap;
 use actix_web::{FromRequest, HttpRequest, web};

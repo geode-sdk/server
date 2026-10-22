@@ -8,7 +8,7 @@ use serde::Deserialize;
 use validator::{Validate, ValidationError};
 use zip::read::ZipFile;
 
-use crate::endpoints::format_validation_errors;
+use crate::http::endpoints::format_validation_errors;
 use crate::mod_zip::{self, ModZipError};
 
 use super::models::{

@@ -9,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
-    endpoints::mods::IndexQueryParams,
+    http::endpoints::mods::IndexQueryParams,
     s3_worker::S3WorkerTask,
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{

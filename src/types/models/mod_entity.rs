@@ -9,10 +9,10 @@ use super::{
 };
 use crate::{
     database::{DatabaseError, repository::developers},
-    endpoints::ApiError,
+    http::endpoints::ApiError,
 };
 use crate::{
-    endpoints::{
+    http::endpoints::{
         developers::{SimpleDevMod, SimpleDevModVersion},
         mods::{IndexQueryParams, IndexSortType},
     },

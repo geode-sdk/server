@@ -1,0 +1,93 @@
+use actix_cors::Cors;
+use actix_web::{
+    App, HttpServer,
+    body::MessageBody,
+    dev::{ServiceFactory, ServiceRequest, ServiceResponse},
+    web::{self, QueryConfig},
+};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+use crate::{
+    config::AppData,
+    http::endpoints::{
+        auth, deprecations, developers, health, loader, mod_status_badge, mod_version_submissions,
+        mod_versions, mods, stats, tags,
+    },
+    openapi::ApiDoc,
+    types::api,
+};
+
+pub mod endpoints;
+
+fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/v1")
+            .configure(mods::router_config)
+            .configure(mod_status_badge::router_config)
+            .configure(mod_versions::router_config)
+            .configure(mod_version_submissions::router_config)
+            .configure(deprecations::router_config)
+            .configure(auth::router_config)
+            .configure(developers::router_config)
+            .configure(tags::router_config)
+            .configure(stats::router_config)
+            .configure(loader::router_config),
+    )
+    .configure(health::router_config);
+}
+
+pub fn cors_settings() -> Cors {
+    Cors::default()
+        .allow_any_origin()
+        .allowed_methods(vec!["GET", "HEAD"])
+        .allowed_headers(vec![actix_web::http::header::ACCEPT])
+        .max_age(3600)
+}
+
+pub fn create_app(
+    data: web::Data<AppData>,
+    openapi: utoipa::openapi::OpenApi,
+) -> App<
+    impl ServiceFactory<
+        ServiceRequest,
+        Config = (),
+        Response = ServiceResponse<impl MessageBody>,
+        Error = actix_web::Error,
+        InitError = (),
+    >,
+> {
+    let app = App::new()
+        .app_data(data.clone())
+        .app_data(QueryConfig::default().error_handler(api::query_error_handler))
+        .service(SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()))
+        .wrap(cors_settings())
+        .wrap(tracing_actix_web::TracingLogger::default());
+
+    #[cfg(feature = "serve-static")]
+    let app = app
+        .service(actix_files::Files::new("/static", "static"))
+        .service(actix_files::Files::new("/storage", "storage/public"));
+
+    app.configure(router_config)
+}
+
+pub async fn serve_http(data: web::Data<AppData>) -> anyhow::Result<()> {
+    let port = data.port();
+    let debug = data.debug();
+
+    tracing::info!("Starting server on 0.0.0.0:{}", port);
+
+    let openapi = ApiDoc::openapi();
+    let server = HttpServer::new(move || create_app(data.clone(), openapi.clone()))
+        .bind(("0.0.0.0", port))?;
+
+    if debug {
+        tracing::info!("Running in debug mode, using 1 thread.");
+        server.workers(1).run().await?;
+    } else {
+        server.run().await?;
+    }
+
+    Ok(())
+}
