@@ -1,68 +1,32 @@
-use crate::config::AppData;
-use crate::jobs;
+use crate::{cli::serve::ServeArgs, config::AppData};
 use clap::{Parser, Subcommand};
+
+mod jobs;
+mod serve;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
-struct Args {
+pub struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
-enum Commands {
+pub enum Commands {
+    /// Run the HTTP server (default)
+    Serve(serve::ServeArgs),
     /// Run an internal job
     #[command(subcommand)]
-    Job(JobCommand),
+    Job(jobs::JobCommand),
 }
 
-#[derive(Debug, Subcommand)]
-enum JobCommand {
-    /// Cleans up mod_downloads from more than 30 days ago
-    CleanupDownloads,
-    /// Cleans up auth and refresh tokens that are expired
-    CleanupTokens,
-    /// Emergency logout for a developer
-    LogoutDeveloper {
-        /// Username of the developer
-        username: String,
-    },
-    /// Runs migrations
-    Migrate,
-}
-
-pub async fn maybe_cli(data: &AppData) -> anyhow::Result<bool> {
-    let cli = Args::parse();
-
-    if let Some(c) = cli.command {
-        return match c {
-            Commands::Job(job) => match job {
-                JobCommand::Migrate => {
-                    let mut conn = data.db().acquire().await?;
-                    jobs::migrate::migrate(&mut conn).await?;
-
-                    Ok(true)
-                }
-                JobCommand::CleanupDownloads => {
-                    let mut conn = data.db().acquire().await?;
-                    jobs::cleanup_downloads::cleanup_downloads(&mut conn).await?;
-
-                    Ok(true)
-                }
-                JobCommand::LogoutDeveloper { username } => {
-                    let mut conn = data.db().acquire().await?;
-                    jobs::logout_user::logout_user(&username, &mut conn).await?;
-
-                    Ok(true)
-                }
-                JobCommand::CleanupTokens => {
-                    let mut conn = data.db().acquire().await?;
-                    jobs::token_cleanup::token_cleanup(&mut conn).await?;
-
-                    Ok(true)
-                }
-            },
-        };
+#[tracing::instrument(skip_all, fields(command = ?args.command))]
+pub async fn run(args: Args, data: AppData) -> anyhow::Result<()> {
+    match args
+        .command
+        .unwrap_or_else(|| Commands::Serve(ServeArgs::default()))
+    {
+        Commands::Serve(serve_args) => serve::run(serve_args, data).await,
+        Commands::Job(job) => jobs::run(job, data).await,
     }
-    Ok(false)
 }

@@ -1,4 +1,4 @@
-use actix_web::web;
+use clap::Parser;
 
 mod abbreviate;
 mod auth;
@@ -26,24 +26,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args = cli::Args::parse();
     logging::init();
-
     let app_data = config::build_config().await?;
-    app_data.static_storage().init().await?;
-    app_data.private_storage().init().await?;
-    if let Some(cdn_storage) = app_data.cdn_storage() {
-        cdn_storage.init().await?;
-    }
-
-    if cli::maybe_cli(&app_data).await? {
-        return Ok(());
-    }
-
-    tracing::info!("Running migrations");
-    sqlx::migrate!("./migrations").run(app_data.db()).await?;
-
-    let data = web::Data::new(app_data);
-    tokio::spawn(s3_worker::run_s3_worker(data.clone()));
-
-    http::serve_http(data).await
+    cli::run(args, app_data).await
 }
