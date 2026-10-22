@@ -219,19 +219,32 @@ async fn upload_mod_logo(
 
         update_mod_logo_url(mod_id, &logo_public_url, db).await?;
 
-        tracing::info!("Uploaded logo for {} to S3 at {}", mod_id, logo_public_url);
+        tracing::info!(url = %logo_public_url, "uploaded mod logo");
     }
 
     Ok(())
 }
 
+#[tracing::instrument(
+    name = "s3_task",
+    skip_all,
+    fields(
+        is_migration = is_migration,
+        kind = tracing::field::Empty,
+        mod_id = tracing::field::Empty,
+        version = tracing::field::Empty,
+        version_id = tracing::field::Empty,
+        size = tracing::field::Empty,
+        tag = tracing::field::Empty,
+    ),
+    err(Debug)
+)]
 async fn process_task(
     data: &AppData,
     task: S3WorkerTask,
     is_migration: bool,
 ) -> anyhow::Result<()> {
-    let storage = data.cdn_storage().expect("mod storage must be set by now");
-    let mut db = data.db().acquire().await?;
+    let span = tracing::Span::current();
 
     match task {
         S3WorkerTask::UploadMod {
@@ -240,57 +253,83 @@ async fn process_task(
             version,
             version_id,
         } => {
-            let path = path_for_mod(&mod_id, &version);
-            let public_url = storage.asset_url(&path);
+            span.record("kind", "upload_mod")
+                .record("mod_id", mod_id.as_str())
+                .record("version", version.as_str())
+                .record("version_id", version_id)
+                .record("size", bytes.len());
 
-            storage
-                .store(&path, &bytes, "application/octet-stream")
-                .await?;
-
-            update_managed_download_link(version_id, Some(&public_url), &mut db).await?;
-
-            // upload logo if not migrating mods
-            if !is_migration {
-                upload_mod_logo(data, &mod_id, None, &mut db).await?;
-            }
-
-            tracing::info!(
-                "Uploaded mod {} {} to S3 at {}",
-                mod_id,
-                version,
-                public_url
-            );
+            upload_mod(data, bytes, &mod_id, &version, version_id, is_migration).await
         }
 
         S3WorkerTask::UploadLoader { tag } => {
-            tracing::info!("Preparing to upload Geode v{tag} to S3");
+            span.record("kind", "upload_loader")
+                .record("tag", tag.as_str());
 
-            let mut tx = data.db().begin().await?;
-
-            let downloads = LoaderDownloads {
-                win: migrate_geode_version(data, &mut tx, &tag, "win").await?,
-                mac: migrate_geode_version(data, &mut tx, &tag, "mac").await?,
-                android32: migrate_geode_version(data, &mut tx, &tag, "android32").await?,
-                android64: migrate_geode_version(data, &mut tx, &tag, "android64").await?,
-                ios: migrate_artifact(data, &mut tx, &LoaderMigration::new(&tag, "ios"))
-                    .await?
-                    .unwrap_or_default(),
-                resources: migrate_resources(data, &mut tx, &tag).await?,
-
-                win_installer: migrate_geode_installer(data, &mut tx, &tag, "win").await?,
-                mac_installer: migrate_geode_installer(data, &mut tx, &tag, "mac").await?,
-                linux_installer: migrate_geode_installer(data, &mut tx, &tag, "linux").await?,
-            };
-
-            tx.commit().await?;
-
-            tracing::info!("Uploaded new loader release to S3: {downloads:?}");
+            upload_loader(data, &tag).await
         }
     }
+}
+
+async fn upload_mod(
+    data: &AppData,
+    bytes: Bytes,
+    mod_id: &str,
+    version: &str,
+    version_id: i32,
+    is_migration: bool,
+) -> anyhow::Result<()> {
+    let storage = data.cdn_storage().expect("mod storage must be set by now");
+    let mut db = data.db().acquire().await?;
+
+    let path = path_for_mod(mod_id, version);
+    let public_url = storage.asset_url(&path);
+
+    storage
+        .store(&path, &bytes, "application/octet-stream")
+        .await?;
+
+    update_managed_download_link(version_id, Some(&public_url), &mut db).await?;
+
+    // upload logo if not migrating mods
+    if !is_migration {
+        upload_mod_logo(data, mod_id, None, &mut db).await?;
+    }
+
+    tracing::info!(url = %public_url, "uploaded mod");
 
     Ok(())
 }
 
+async fn upload_loader(data: &AppData, tag: &str) -> anyhow::Result<()> {
+    tracing::info!("uploading loader release");
+
+    let mut tx = data.db().begin().await?;
+
+    let downloads = LoaderDownloads {
+        win: migrate_geode_version(data, &mut tx, tag, "win").await?,
+        mac: migrate_geode_version(data, &mut tx, tag, "mac").await?,
+        android32: migrate_geode_version(data, &mut tx, tag, "android32").await?,
+        android64: migrate_geode_version(data, &mut tx, tag, "android64").await?,
+        ios: migrate_artifact(data, &mut tx, &LoaderMigration::new(tag, "ios"))
+            .await?
+            .unwrap_or_default(),
+        resources: migrate_resources(data, &mut tx, tag).await?,
+
+        win_installer: migrate_geode_installer(data, &mut tx, tag, "win").await?,
+        mac_installer: migrate_geode_installer(data, &mut tx, tag, "mac").await?,
+        linux_installer: migrate_geode_installer(data, &mut tx, tag, "linux").await?,
+    };
+
+    tx.commit().await?;
+
+    tracing::info!("uploaded loader release");
+    tracing::debug!(?downloads, "loader release downloads");
+
+    Ok(())
+}
+
+#[tracing::instrument(name = "s3_cleanup", skip_all, err(Debug))]
 async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     let supported_gd = GDVersionEnum::supported_for_storage();
     let storage = data.cdn_storage().expect("mod storage must be set by now");
@@ -316,21 +355,20 @@ async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     .fetch_all(&mut *data.db().acquire().await?)
     .await?;
 
-    tracing::info!("Cleaning up {} old S3 files", versions.len());
+    if versions.is_empty() {
+        return Ok(());
+    }
+
+    tracing::info!(total = versions.len(), "cleaning up old S3 files");
 
     for record in versions {
         let path = path_for_mod(&record.mod_id, &record.version);
         if let Err(e) = storage.delete(&path).await {
-            tracing::error!(
-                "error deleting old S3 file for mod {} {} at {:?}: {e:?}",
-                record.mod_id,
-                record.version,
-                record.managed_download_link
-            );
+            tracing::error!(error = ?e, mod_id = %record.mod_id, version = %record.version, %path, "failed to delete old S3 file");
             continue;
         }
 
-        tracing::debug!("Deleted S3 file at path {}", path);
+        tracing::debug!(%path, "deleted old S3 file");
 
         let mut tx = data.db().begin().await?;
         update_managed_download_link(record.id, None, &mut tx).await?;
@@ -340,6 +378,12 @@ async fn cleanup_old_s3_files(data: &AppData) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(
+    name = "s3_migrate_mod",
+    skip_all,
+    fields(mod_id = %mod_id, version = %version, version_id = version_id),
+    err(Debug)
+)]
 async fn migrate_one(
     data: &AppData,
     original_url: &str,
@@ -354,19 +398,20 @@ async fn migrate_one(
     )
     .await?;
 
-    process_task(
-        data,
-        S3WorkerTask::UploadMod {
-            data: bytes,
-            mod_id: mod_id.to_owned(),
-            version: version.to_owned(),
-            version_id,
-        },
-        true,
-    )
-    .await
+    upload_mod(data, bytes, mod_id, version, version_id, true).await
 }
 
+#[tracing::instrument(name = "s3_migrate_logo", skip_all, fields(mod_id = %mod_id), err(Debug))]
+async fn migrate_mod_logo(
+    data: &AppData,
+    mod_id: &str,
+    image: Option<Vec<u8>>,
+    db: &mut PgConnection,
+) -> anyhow::Result<()> {
+    upload_mod_logo(data, mod_id, image, db).await
+}
+
+#[tracing::instrument(name = "s3_migrate_mods", skip_all, err(Debug))]
 async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     let supported_gd = GDVersionEnum::supported_for_storage();
 
@@ -390,24 +435,28 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     .fetch_all(&mut *data.db().acquire().await?)
     .await?;
 
-    tracing::info!("Migrating {} existing mods to S3", versions.len());
+    if !versions.is_empty() {
+        let total = versions.len();
+        let mut failed = 0;
 
-    for record in versions {
-        if let Err(e) = migrate_one(
-            data,
-            &record.download_link,
-            &record.id,
-            &record.version,
-            record.mv_id,
-        )
-        .await
-        {
-            tracing::error!(
-                "error migrating mod {} {} to S3: {e:?}",
-                record.id,
-                record.version
-            );
+        tracing::info!(total = versions.len(), "migrating existing mods to S3");
+
+        for record in versions {
+            if migrate_one(
+                data,
+                &record.download_link,
+                &record.id,
+                &record.version,
+                record.mv_id,
+            )
+            .await
+            .is_err()
+            {
+                failed += 1;
+            }
         }
+
+        tracing::info!(total, failed, "finished migrating mods");
     }
 
     // independently migrate mod logos
@@ -418,17 +467,28 @@ async fn migrate_existing_mods_to_s3(data: &AppData) -> anyhow::Result<()> {
     .fetch_all(&mut *db)
     .await?;
 
-    tracing::info!("Migrating {} existing mod logos to S3", mods.len());
+    if !mods.is_empty() {
+        let total = mods.len();
+        let mut failed = 0;
 
-    for record in mods {
-        if let Err(e) = upload_mod_logo(data, &record.id, record.image, &mut db).await {
-            tracing::error!("error migrating mod logo for {} to S3: {e:?}", record.id);
+        tracing::info!(total = mods.len(), "migrating mod logos to S3");
+
+        for record in mods {
+            if migrate_mod_logo(data, &record.id, record.image, &mut db)
+                .await
+                .is_err()
+            {
+                failed += 1;
+            }
         }
+
+        tracing::info!(total, failed, "finished migrating mod logos");
     }
 
     Ok(())
 }
 
+#[tracing::instrument(name = "s3_migrate_loader", skip_all, err(Debug))]
 async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
     let versions: Vec<String> = sqlx::query_scalar(
         "SELECT gv.tag FROM geode_versions gv WHERE NOT EXISTS (
@@ -439,14 +499,22 @@ async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
     .await
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    tracing::info!("Migrating {} Geode releases to S3", versions.len());
+    if !versions.is_empty() {
+        let total = versions.len();
+        let mut failed = 0;
 
-    for tag in versions {
-        if let Err(e) =
-            process_task(data, S3WorkerTask::UploadLoader { tag: tag.clone() }, true).await
-        {
-            tracing::error!("error migrating Geode release {} to S3: {e:?}", tag);
+        tracing::info!(total = versions.len(), "migrating Geode releases");
+
+        for tag in versions {
+            if process_task(data, S3WorkerTask::UploadLoader { tag }, true)
+                .await
+                .is_err()
+            {
+                failed += 1;
+            }
         }
+
+        tracing::info!(total, failed, "finished migrating Geode releases");
     }
 
     Ok(())
@@ -462,32 +530,26 @@ pub async fn run_s3_worker(data: web::Data<AppData>) {
 
     let s_data = data.clone();
     tokio::spawn(async move {
-        if let Err(e) = migrate_existing_mods_to_s3(&s_data).await {
-            tracing::error!("Error migrating existing mods to S3: {:?}", e);
-        }
+        let _ = migrate_existing_mods_to_s3(&s_data).await;
     });
 
     let s_data2 = data.clone();
     tokio::spawn(async move {
-        if let Err(e) = migrate_loader_versions_to_s3(&s_data2).await {
-            tracing::error!("Error migrating loader versions to S3: {:?}", e);
-        }
+        let _ = migrate_loader_versions_to_s3(&s_data2).await;
     });
 
     let mut interval = tokio::time::interval(Duration::from_mins(30));
 
     loop {
-        let result = tokio::select! {
-            task = rx.recv() => match task {
-                Some(task) => process_task(&data, task, false).await,
-                None => break,
+        tokio::select! {
+            task = rx.recv() => {
+                let Some(task) = task else { break };
+                let _ = process_task(&data, task, false).await;
+            }
+
+            _ = interval.tick() => {
+                let _ = cleanup_old_s3_files(&data).await;
             },
-
-            _ = interval.tick() => cleanup_old_s3_files(&data).await,
         };
-
-        if let Err(e) = result {
-            tracing::error!("Error processing S3 worker task: {:?}", e);
-        }
     }
 }

@@ -1,4 +1,5 @@
 use actix_web::web;
+use tracing::Instrument;
 
 use crate::{config::AppData, database, http, s3_worker};
 
@@ -22,6 +23,8 @@ pub async fn run(args: ServeArgs, data: AppData) -> anyhow::Result<()> {
     }
 
     let data = web::Data::new(data);
-    tokio::spawn(s3_worker::run_s3_worker(data.clone()));
+    tokio::spawn(
+        s3_worker::run_s3_worker(data.clone()).instrument(tracing::info_span!("s3_worker")),
+    );
     http::serve_http(data).await
 }
