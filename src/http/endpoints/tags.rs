@@ -2,8 +2,8 @@ use actix_web::{Responder, get, web};
 
 use crate::config::AppData;
 use crate::database::repository::mod_tags;
-use crate::http::endpoints::ApiError;
-use crate::types::api::ApiResponse;
+use crate::http::error::ApiError;
+use crate::http::response::ApiResponse;
 use crate::types::models::tag::Tag;
 
 pub fn router_config(cfg: &mut web::ServiceConfig) {

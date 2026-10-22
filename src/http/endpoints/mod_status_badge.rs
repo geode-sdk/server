@@ -1,5 +1,5 @@
 use crate::config::AppData;
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use actix_web::{HttpResponse, Responder, get, web};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};

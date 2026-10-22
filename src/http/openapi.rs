@@ -1,6 +1,6 @@
 use utoipa::OpenApi;
 
-use crate::{http::endpoints, types};
+use crate::{http, http::endpoints, types};
 
 /// Routes served under the `/v1` scope. Their paths are relative to it, like the actix macros.
 #[derive(OpenApi)]
@@ -66,7 +66,7 @@ struct V1Api;
     nest((path = "/v1", api = V1Api)),
     components(
         schemas(
-            types::api::ApiResponse<String>,
+            http::response::ApiResponse<String>,
             types::api::PaginatedData<types::models::mod_entity::Mod>,
             types::api::PaginatedData<types::models::developer::Developer>,
             types::api::PaginatedData<types::models::loader_version::LoaderVersion>,
@@ -97,9 +97,9 @@ struct V1Api;
             types::models::mod_version_submission::CreateCommentPayload,
             types::models::mod_version_submission::UpdateCommentPayload,
             types::models::mod_version_submission::ModVersionSubmissionAttachment,
-            endpoints::mods::IndexSortType,
-            endpoints::developers::SimpleDevMod,
-            endpoints::developers::SimpleDevModVersion,
+            types::models::mod_entity::IndexSortType,
+            types::models::mod_entity::SimpleDevMod,
+            types::models::mod_entity::SimpleDevModVersion,
         )
     ),
     tags(

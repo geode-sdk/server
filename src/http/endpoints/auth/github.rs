@@ -9,9 +9,9 @@ use crate::config::AppData;
 use crate::database::repository::{
     auth_tokens, developers, github_login_attempts, github_web_logins, refresh_tokens,
 };
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::http::endpoints::auth::TokensResponse;
-use crate::types::api::ApiResponse;
+use crate::http::response::ApiResponse;
 
 #[derive(Deserialize, ToSchema)]
 struct PollParams {

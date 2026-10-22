@@ -1,8 +1,8 @@
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, refresh_tokens};
-use crate::http::endpoints::ApiError;
-use crate::extractors::auth::Auth;
-use crate::types::api::ApiResponse;
+use crate::http::error::ApiError;
+use crate::http::extractors::auth::Auth;
+use crate::http::response::ApiResponse;
 use actix_web::{Responder, post, web};
 use serde::{Deserialize, Serialize};
 use sqlx::Acquire;

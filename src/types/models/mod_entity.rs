@@ -9,13 +9,9 @@ use super::{
 };
 use crate::{
     database::{DatabaseError, repository::developers},
-    http::endpoints::ApiError,
+    http::error::ApiError,
 };
 use crate::{
-    http::endpoints::{
-        developers::{SimpleDevMod, SimpleDevModVersion},
-        mods::{IndexQueryParams, IndexSortType},
-    },
     types::{
         api::PaginatedData,
         models::{mod_version::ModVersion, mod_version_status::ModVersionStatusEnum},
@@ -23,13 +19,64 @@ use crate::{
     },
 };
 use semver::Version;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{
     PgConnection,
     types::chrono::{DateTime, Utc},
 };
 use std::collections::HashMap;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
+
+#[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexSortType {
+    #[default]
+    Downloads,
+    RecentlyUpdated,
+    RecentlyPublished,
+    Oldest,
+    Name,
+    NameReverse,
+    Random,
+}
+
+#[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
+pub struct IndexQueryParams {
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+    pub query: Option<String>,
+    #[serde(default)]
+    pub gd: Option<GDVersionEnum>,
+    #[serde(default)]
+    pub platforms: Option<String>,
+    #[serde(default)]
+    pub sort: IndexSortType,
+    pub geode: Option<String>,
+    pub developer: Option<String>,
+    pub tags: Option<String>,
+    pub featured: Option<bool>,
+    pub jitless: Option<bool>,
+    pub status: Option<ModVersionStatusEnum>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
+pub struct SimpleDevMod {
+    pub id: String,
+    pub featured: bool,
+    pub download_count: i32,
+    pub versions: Vec<SimpleDevModVersion>,
+    pub developers: Vec<ModDeveloper>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
+pub struct SimpleDevModVersion {
+    pub name: String,
+    pub version: String,
+    pub download_count: i32,
+    pub validated: bool,
+    pub info: Option<String>,
+    pub status: ModVersionStatusEnum,
+}
 
 #[derive(Serialize, Debug, Clone, sqlx::FromRow, ToSchema)]
 pub struct Mod {

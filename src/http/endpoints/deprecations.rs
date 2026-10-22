@@ -1,9 +1,9 @@
 use crate::{
     config::AppData,
     database::repository::{deprecations, developers, mods},
-    http::endpoints::ApiError,
-    extractors::auth::Auth,
-    types::api::ApiResponse,
+    http::error::ApiError,
+    http::extractors::auth::Auth,
+    http::response::ApiResponse,
     types::models::deprecations::Deprecation,
 };
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};

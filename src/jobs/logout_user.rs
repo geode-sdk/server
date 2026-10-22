@@ -1,5 +1,5 @@
 use crate::database::repository::{auth_tokens, developers, refresh_tokens};
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use sqlx::PgConnection;
 
 pub async fn logout_user(username: &str, conn: &mut PgConnection) -> Result<(), ApiError> {

@@ -1,8 +1,9 @@
 use actix_web::{Responder, get, web};
 
-use super::ApiError;
+use crate::http::error::ApiError;
 use crate::config::AppData;
-use crate::types::{api::ApiResponse, models::stats::Stats};
+use crate::http::response::ApiResponse;
+use crate::types::models::stats::Stats;
 
 pub fn router_config(cfg: &mut web::ServiceConfig) {
     cfg

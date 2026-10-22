@@ -5,13 +5,13 @@ use utoipa::{IntoParams, ToSchema};
 
 use sqlx::Acquire;
 
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::s3_worker::S3WorkerTask;
 use crate::{
     config::AppData,
-    extractors::auth::Auth,
+    http::{extractors::auth::Auth, response::ApiResponse},
     types::{
-        api::{ApiResponse, PaginatedData},
+        api::PaginatedData,
         models::{
             gd_version_alias::GDVersionAlias,
             loader_version::{GetVersionsQuery, LoaderVersion, LoaderVersionCreate},

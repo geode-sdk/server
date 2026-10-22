@@ -12,16 +12,17 @@ use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::database::repository::mods::ModLogo;
 use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::events::mod_created::NewUnverifiedModVersionCreated;
 use crate::events::mod_feature::ModFeaturedEvent;
-use crate::extractors::auth::Auth;
+use crate::http::extractors::auth::Auth;
 use crate::mod_zip;
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::mod_json::ModJson;
 use crate::types::models;
 use crate::types::models::deprecations::Deprecation;
-use crate::types::models::mod_entity::{Mod, ModUpdate};
+use crate::types::models::mod_entity::{IndexQueryParams, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_link::ModLinks;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
@@ -34,38 +35,6 @@ use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 const MAX_UPDATE_BATCH_SIZE: usize = 200;
-
-#[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum IndexSortType {
-    #[default]
-    Downloads,
-    RecentlyUpdated,
-    RecentlyPublished,
-    Oldest,
-    Name,
-    NameReverse,
-    Random,
-}
-
-#[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
-pub struct IndexQueryParams {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
-    pub query: Option<String>,
-    #[serde(default)]
-    pub gd: Option<GDVersionEnum>,
-    #[serde(default)]
-    pub platforms: Option<String>,
-    #[serde(default)]
-    pub sort: IndexSortType,
-    pub geode: Option<String>,
-    pub developer: Option<String>,
-    pub tags: Option<String>,
-    pub featured: Option<bool>,
-    pub jitless: Option<bool>,
-    pub status: Option<ModVersionStatusEnum>,
-}
 
 #[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {

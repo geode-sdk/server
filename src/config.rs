@@ -9,12 +9,12 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
-    http::{self, endpoints::mods::IndexQueryParams},
+    http::{self, response::ApiResponse},
     s3_worker::{QueuedS3Task, S3WorkerTask},
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{
-        api::{ApiResponse, PaginatedData},
-        models::mod_entity::Mod,
+        api::PaginatedData,
+        models::mod_entity::{IndexQueryParams, Mod},
     },
 };
 

@@ -11,7 +11,7 @@ use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
     mod_tags, mod_version_submissions, mod_versions, mods,
 };
-use crate::http::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
     NewUnverifiedModVersionCreated,
@@ -22,9 +22,8 @@ use crate::types::models;
 use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth,
+    http::{extractors::auth::Auth, response::ApiResponse},
     types::{
-        api::ApiResponse,
         mod_json::{ModJson, split_version_and_compare},
         models::{
             mod_gd_version::{GDVersionEnum, VerPlatform},

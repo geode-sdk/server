@@ -1,41 +1,23 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Acquire;
 use utoipa::{IntoParams, ToSchema};
 use chrono::{DateTime, Utc};
 
-use super::ApiError;
+use crate::http::error::ApiError;
 use crate::config::AppData;
 use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::models::developer::SelfDeveloper;
 use crate::{
-    extractors::auth::Auth,
+    http::extractors::auth::Auth,
     types::models::{
-        developer::{Developer, ModDeveloper, DeveloperBan},
-        mod_entity::Mod,
+        developer::{Developer, DeveloperBan},
+        mod_entity::{Mod, SimpleDevMod},
         mod_version_status::ModVersionStatusEnum,
     },
 };
-
-#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
-pub struct SimpleDevMod {
-    pub id: String,
-    pub featured: bool,
-    pub download_count: i32,
-    pub versions: Vec<SimpleDevModVersion>,
-    pub developers: Vec<ModDeveloper>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, ToSchema)]
-pub struct SimpleDevModVersion {
-    pub name: String,
-    pub version: String,
-    pub download_count: i32,
-    pub validated: bool,
-    pub info: Option<String>,
-    pub status: ModVersionStatusEnum,
-}
 
 #[derive(Deserialize, IntoParams)]
 struct AddDevPath {

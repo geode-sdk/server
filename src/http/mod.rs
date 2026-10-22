@@ -1,6 +1,9 @@
 use actix_cors::Cors;
 use actix_web::{
-    App, HttpMessage, HttpServer, body::MessageBody, dev::{Service, ServiceFactory, ServiceRequest, ServiceResponse}, web::{self, QueryConfig},
+    App, HttpMessage, HttpServer,
+    body::MessageBody,
+    dev::{Service, ServiceFactory, ServiceRequest, ServiceResponse},
+    web::{self, QueryConfig},
 };
 use tracing_actix_web::RequestId;
 use utoipa::OpenApi;
@@ -12,11 +15,15 @@ use crate::{
         auth, deprecations, developers, health, loader, mod_status_badge, mod_version_submissions,
         mod_versions, mods, stats, tags,
     },
-    openapi::ApiDoc,
-    types::api,
+    http::{error::query_error_handler, openapi::ApiDoc},
 };
 
 pub mod endpoints;
+pub mod error;
+pub mod extractors;
+pub mod response;
+
+mod openapi;
 
 tokio::task_local! {
     pub static REQUEST_ID: RequestId;
@@ -61,7 +68,7 @@ pub fn create_app(
 > {
     let app = App::new()
         .app_data(data.clone())
-        .app_data(QueryConfig::default().error_handler(api::query_error_handler))
+        .app_data(QueryConfig::default().error_handler(query_error_handler))
         .service(SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()))
         .wrap(cors_settings())
         .wrap_fn(|req, srv| {
@@ -70,7 +77,7 @@ pub fn create_app(
             async move {
                 match request_id {
                     Some(id) => REQUEST_ID.scope(id, fut).await,
-                    None => fut.await
+                    None => fut.await,
                 }
             }
         })

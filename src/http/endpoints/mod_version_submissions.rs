@@ -1,10 +1,11 @@
-use super::ApiError;
+use crate::http::error::ApiError;
 use crate::config::AppData;
 use crate::database::DatabaseError;
 use crate::database::repository::{developers, mod_version_submissions, mod_versions, mods};
 use crate::events::thread_comment::NewThreadComment;
-use crate::extractors::auth::Auth;
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::extractors::auth::Auth;
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::models::audit_actions::{AuditAction, AuditActionRow};
 use crate::types::models::developer::Developer;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
