@@ -560,10 +560,11 @@ pub async fn update_version(
         return Ok(HttpResponse::NoContent());
     }
 
-    if payload.status == ModVersionStatusEnum::Pending {
-        return Err(ApiError::BadRequest(
-            "Cannot change version status to pending".into(),
-        ));
+    if !version.status.can_transition_to(payload.status) {
+        return Err(ApiError::BadRequest(format!(
+            "Cannot change version status from {} to {}",
+            version.status, payload.status
+        )));
     }
 
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
@@ -581,8 +582,10 @@ pub async fn update_version(
 
     let mut s3_task: Option<S3WorkerTask> = None;
 
-    if matches!(old_status, ModVersionStatusEnum::Pending | ModVersionStatusEnum::Rejected)
-        && version.status == ModVersionStatusEnum::Accepted
+    if matches!(
+        old_status,
+        ModVersionStatusEnum::Pending | ModVersionStatusEnum::Rejected
+    ) && version.status == ModVersionStatusEnum::Accepted
     {
         if approved_count == 0 {
             // Used to push new mods to the top of the "Recently created" list
