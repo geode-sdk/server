@@ -9,8 +9,8 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
-    http::endpoints::mods::IndexQueryParams,
-    s3_worker::S3WorkerTask,
+    http::{self, endpoints::mods::IndexQueryParams},
+    s3_worker::{QueuedS3Task, S3WorkerTask},
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
     types::{
         api::{ApiResponse, PaginatedData},
@@ -39,7 +39,7 @@ pub struct AppData {
     http_client: reqwest::Client,
     check_dns_http_client: reqwest::Client,
 
-    s3_sender: OnceLock<Sender<S3WorkerTask>>,
+    s3_sender: OnceLock<Sender<QueuedS3Task>>,
 }
 
 pub async fn build_config() -> anyhow::Result<AppData> {
@@ -198,17 +198,17 @@ impl AppData {
         &self.check_dns_http_client
     }
 
-    pub fn init_s3_sender(&self, sender: Sender<S3WorkerTask>) {
+    pub fn init_s3_sender(&self, sender: Sender<QueuedS3Task>) {
         self.s3_sender
             .set(sender)
             .expect("init_s3_sender must be called only once");
     }
 
     pub fn send_s3_task(&self, task: S3WorkerTask) -> bool {
-        if let Some(sender) = self.s3_sender.get() {
-            sender.try_send(task).is_ok()
-        } else {
-            false
-        }
+        let Some(sender) = self.s3_sender.get() else {
+            return false;
+        };
+        let request_id = http::REQUEST_ID.try_with(|id| *id).ok();
+        sender.try_send(QueuedS3Task { task, request_id }).is_ok()
     }
 }

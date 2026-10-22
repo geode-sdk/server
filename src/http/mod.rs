@@ -1,10 +1,8 @@
 use actix_cors::Cors;
 use actix_web::{
-    App, HttpServer,
-    body::MessageBody,
-    dev::{ServiceFactory, ServiceRequest, ServiceResponse},
-    web::{self, QueryConfig},
+    App, HttpMessage, HttpServer, body::MessageBody, dev::{Service, ServiceFactory, ServiceRequest, ServiceResponse}, web::{self, QueryConfig},
 };
+use tracing_actix_web::RequestId;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -19,6 +17,10 @@ use crate::{
 };
 
 pub mod endpoints;
+
+tokio::task_local! {
+    pub static REQUEST_ID: RequestId;
+}
 
 fn router_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -62,6 +64,16 @@ pub fn create_app(
         .app_data(QueryConfig::default().error_handler(api::query_error_handler))
         .service(SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()))
         .wrap(cors_settings())
+        .wrap_fn(|req, srv| {
+            let request_id = req.extensions().get::<RequestId>().copied();
+            let fut = srv.call(req);
+            async move {
+                match request_id {
+                    Some(id) => REQUEST_ID.scope(id, fut).await,
+                    None => fut.await
+                }
+            }
+        })
         .wrap(tracing_actix_web::TracingLogger::default());
 
     #[cfg(feature = "serve-static")]

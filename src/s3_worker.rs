@@ -4,6 +4,7 @@ use actix_web::web;
 use bytes::Bytes;
 use reqwest::StatusCode;
 use sqlx::PgConnection;
+use tracing_actix_web::RequestId;
 
 use crate::{
     config::AppData,
@@ -18,6 +19,11 @@ use crate::{
         mod_gd_version::GDVersionEnum,
     },
 };
+
+pub(crate) struct QueuedS3Task {
+    pub task: S3WorkerTask,
+    pub request_id: Option<RequestId>,
+}
 
 pub enum S3WorkerTask {
     UploadMod {
@@ -229,6 +235,7 @@ async fn upload_mod_logo(
     name = "s3_task",
     skip_all,
     fields(
+        request_id = request_id.map(tracing::field::display),
         is_migration = is_migration,
         kind = tracing::field::Empty,
         mod_id = tracing::field::Empty,
@@ -243,6 +250,7 @@ async fn process_task(
     data: &AppData,
     task: S3WorkerTask,
     is_migration: bool,
+    request_id: Option<RequestId>,
 ) -> anyhow::Result<()> {
     let span = tracing::Span::current();
 
@@ -506,7 +514,7 @@ async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
         tracing::info!(total = versions.len(), "migrating Geode releases");
 
         for tag in versions {
-            if process_task(data, S3WorkerTask::UploadLoader { tag }, true)
+            if process_task(data, S3WorkerTask::UploadLoader { tag }, true, None)
                 .await
                 .is_err()
             {
@@ -542,9 +550,9 @@ pub async fn run_s3_worker(data: web::Data<AppData>) {
 
     loop {
         tokio::select! {
-            task = rx.recv() => {
-                let Some(task) = task else { break };
-                let _ = process_task(&data, task, false).await;
+            queued = rx.recv() => {
+                let Some(queued) = queued else { break };
+                let _ = process_task(&data, queued.task, false, queued.request_id).await;
             }
 
             _ = interval.tick() => {
