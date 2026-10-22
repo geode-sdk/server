@@ -5,9 +5,11 @@ use actix_web::{
     dev::{Service, ServiceFactory, ServiceRequest, ServiceResponse},
     web::{self, QueryConfig},
 };
+use std::sync::Arc;
 use tracing_actix_web::RequestId;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use uuid::Uuid;
 
 use crate::{
     config::AppData,
@@ -26,7 +28,7 @@ pub mod response;
 mod openapi;
 
 tokio::task_local! {
-    pub static REQUEST_ID: RequestId;
+    pub static REQUEST_ID: Uuid;
 }
 
 fn router_config(cfg: &mut web::ServiceConfig) {
@@ -72,7 +74,7 @@ pub fn create_app(
         .service(SwaggerUi::new("/swagger/{_:.*}").url("/swagger/openapi.json", openapi.clone()))
         .wrap(cors_settings())
         .wrap_fn(|req, srv| {
-            let request_id = req.extensions().get::<RequestId>().copied();
+            let request_id = req.extensions().get::<RequestId>().map(|id| **id);
             let fut = srv.call(req);
             async move {
                 match request_id {
@@ -91,7 +93,8 @@ pub fn create_app(
     app.configure(router_config)
 }
 
-pub async fn serve_http(data: web::Data<AppData>) -> anyhow::Result<()> {
+pub async fn serve_http(data: Arc<AppData>) -> anyhow::Result<()> {
+    let data = web::Data::from(data);
     let port = data.port();
     let debug = data.debug();
 

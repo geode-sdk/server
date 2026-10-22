@@ -1,4 +1,5 @@
-use actix_web::web;
+use std::sync::Arc;
+
 use tracing::Instrument;
 
 use crate::{config::AppData, database, http, s3_worker};
@@ -22,7 +23,7 @@ pub async fn run(args: ServeArgs, data: AppData) -> anyhow::Result<()> {
         database::migrate(data.db()).await?;
     }
 
-    let data = web::Data::new(data);
+    let data = Arc::new(data);
     tokio::spawn(
         s3_worker::run_s3_worker(data.clone()).instrument(tracing::info_span!("s3_worker")),
     );

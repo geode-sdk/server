@@ -1,10 +1,10 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::web;
 use bytes::Bytes;
 use reqwest::StatusCode;
 use sqlx::PgConnection;
-use tracing_actix_web::RequestId;
+use uuid::Uuid;
 
 use crate::{
     config::AppData,
@@ -22,7 +22,7 @@ use crate::{
 
 pub(crate) struct QueuedS3Task {
     pub task: S3WorkerTask,
-    pub request_id: Option<RequestId>,
+    pub request_id: Option<Uuid>,
 }
 
 pub enum S3WorkerTask {
@@ -250,7 +250,7 @@ async fn process_task(
     data: &AppData,
     task: S3WorkerTask,
     is_migration: bool,
-    request_id: Option<RequestId>,
+    request_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
     let span = tracing::Span::current();
 
@@ -528,7 +528,7 @@ async fn migrate_loader_versions_to_s3(data: &AppData) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn run_s3_worker(data: web::Data<AppData>) {
+pub async fn run_s3_worker(data: Arc<AppData>) {
     if data.cdn_storage().is_none() {
         return;
     }
