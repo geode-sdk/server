@@ -25,7 +25,7 @@ pub(crate) struct QueuedS3Task {
     pub request_id: Option<Uuid>,
 }
 
-pub enum S3WorkerTask {
+pub(crate) enum S3WorkerTask {
     UploadMod {
         data: Bytes,
         mod_id: String,

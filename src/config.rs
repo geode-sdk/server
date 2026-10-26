@@ -198,13 +198,13 @@ impl AppData {
         &self.check_dns_http_client
     }
 
-    pub fn init_s3_sender(&self, sender: Sender<QueuedS3Task>) {
+    pub(crate) fn init_s3_sender(&self, sender: Sender<QueuedS3Task>) {
         self.s3_sender
             .set(sender)
             .expect("init_s3_sender must be called only once");
     }
 
-    pub fn send_s3_task(&self, task: S3WorkerTask) -> bool {
+    pub(crate) fn send_s3_task(&self, task: S3WorkerTask) -> bool {
         let Some(sender) = self.s3_sender.get() else {
             return false;
         };

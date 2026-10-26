@@ -1,20 +1,5 @@
 use clap::Parser;
-
-mod abbreviate;
-mod auth;
-mod cli;
-mod config;
-mod database;
-mod dns;
-mod events;
-mod http;
-mod jobs;
-mod logging;
-mod mod_zip;
-mod s3_worker;
-mod storage;
-mod types;
-mod webhook;
+use geode_index::{cli, config, logging};
 
 // Avoid musl's default allocator due to lackluster performance
 // https://nickb.dev/blog/default-musl-allocator-considered-harmful-to-performance
