@@ -11,7 +11,7 @@ pub struct ServeArgs {
     skip_migrations: bool,
 }
 
-pub async fn run(args: ServeArgs, data: AppData) -> anyhow::Result<()> {
+pub(super) async fn run(args: ServeArgs, data: AppData) -> anyhow::Result<()> {
     data.static_storage().init().await?;
     data.private_storage().init().await?;
 

@@ -15,7 +15,7 @@ pub enum JobCommand {
     Migrate,
 }
 
-pub async fn run(job: JobCommand, data: AppData) -> anyhow::Result<()> {
+pub(super) async fn run(job: JobCommand, data: AppData) -> anyhow::Result<()> {
     let mut conn = data.db().acquire().await?;
 
     match job {
