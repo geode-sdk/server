@@ -7,6 +7,7 @@ edition = "2024"
 serve-static = ["dep:actix-files"]
 
 [dependencies]
+argon2 = "0.6.0"
 actix-cors = "0.7"
 actix-files = { version = "0.7", optional = true }
 actix-multipart = "0.8"
@@ -16,10 +17,27 @@ anyhow = "1.0"
 bytes = "1.11"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
+constant_time_eq = "0.6.0"
 dotenvy = "0.15"
 futures = "0.3"
-image = "0.25"
+html2text = "0.17.1"
+lettre = { version = "0.11.23", default-features = false, features = [
+    "builder",
+    "hostname",
+    "smtp-transport",
+    "pool",
+    "tokio1-rustls-tls",
+    "rustls-platform-verifier",
+    "tracing",
+] }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+    "rayon",
+] }
 moka = { version = "0.12.13", features = ["future"] }
+parking_lot = "0.12.5"
 regex = "1.10"
 reqwest = { version = "0.13", features = [
     "gzip",
@@ -61,9 +79,11 @@ rust-s3 = { git = "https://github.com/w4nderlust/rust-s3", rev = "2936eb7", defa
     "tokio-rustls-tls",
     "fail-on-err",
 ] }
+maud = "0.27.0"
+phc = "0.6.1"
+idna = "1.1.0"
 
 [profile.release]
-opt-level = 's'
 lto = true
 
 [target.'cfg(target_env = "musl")'.dependencies]

@@ -6,6 +6,7 @@ mod abbreviate;
 mod auth;
 mod database;
 mod dns;
+mod email;
 mod events;
 mod http;
 mod jobs;

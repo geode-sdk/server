@@ -1,4 +1,6 @@
 use std::{
+    path::PathBuf,
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -9,6 +11,9 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
+    email::{
+        SmtpConfig, SmtpSecurity, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer,
+    },
     http::{self, response::ApiResponse},
     s3_worker::{QueuedS3Task, S3WorkerTask},
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
@@ -34,10 +39,13 @@ pub struct AppData {
     max_download_mb: u32,
     port: u16,
     debug: bool,
+    password_hash_pepper: Option<String>,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
     check_dns_http_client: reqwest::Client,
+    mailer: Option<Mailer>,
+    email_blocklist: Option<Blocklist>,
 
     s3_sender: OnceLock<Sender<QueuedS3Task>>,
 }
@@ -60,6 +68,14 @@ pub async fn build_config() -> anyhow::Result<AppData> {
     let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
     let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
     let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
+    let password_hash_pepper = dotenvy::var("PASSWORD_HASH_PEPPER").ok();
+
+    if password_hash_pepper.is_none() {
+        tracing::warn!(
+            "IMPORTANT: no password hash pepper found, password storage will be LESS secure. Check https://en.wikipedia.org/wiki/Pepper_(cryptography) for more information."
+        );
+    }
+
     let index_admin_webhook_url =
         dotenvy::var("INDEX_ADMIN_DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
     let disable_downloads =
@@ -89,6 +105,26 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .timeout(Duration::from_secs(30))
         .build()?;
 
+    let smtp_config = SmtpConfig::from_env()?;
+
+    if !debug
+        && smtp_config
+            .as_ref()
+            .is_some_and(|x| x.security == SmtpSecurity::None)
+    {
+        tracing::warn!(
+            "You are using no SMTP security for sending emails with APP_DEBUG=0. You have been warned."
+        );
+    }
+
+    let blocklist = if smtp_config.is_some() {
+        let env_var = dotenvy::var("EMAIL_BLOCKLIST_PATH").unwrap_or("./blocklist.conf".into());
+        let path = PathBuf::from_str(&env_var).ok();
+
+        path.map(Blocklist::load)
+    } else {
+        None
+    };
     let http_client = reqwest::Client::builder()
         .pool_max_idle_per_host(4)
         .connect_timeout(Duration::from_secs(10))
@@ -116,9 +152,20 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         max_download_mb,
         port,
         debug,
+        password_hash_pepper,
         mods_cache,
         http_client,
         check_dns_http_client,
+        mailer: smtp_config
+            .and_then(|config| match LettreBackend::new(&config) {
+                Ok(backend) => Some(Arc::new(backend)),
+                Err(e) => {
+                    tracing::warn!("failed to create SMTP backend: {e}");
+                    None
+                }
+            })
+            .map(|backend| Mailer::new(backend)),
+        email_blocklist: blocklist,
         s3_sender: OnceLock::new(),
     })
 }
@@ -164,6 +211,10 @@ impl AppData {
         self.debug
     }
 
+    pub fn password_hash_pepper(&self) -> Option<&String> {
+        self.password_hash_pepper.as_ref()
+    }
+
     pub fn static_storage(&self) -> &PublicDisk {
         &self.static_storage
     }
@@ -186,6 +237,14 @@ impl AppData {
 
     pub fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub fn mailer(&self) -> Option<&Mailer> {
+        self.mailer.as_ref()
+    }
+
+    pub fn email_blocklist(&self) -> Option<&Blocklist> {
+        self.email_blocklist.as_ref()
     }
 
     /// Client that validates passed host, denies all private resolved IP addresses.
