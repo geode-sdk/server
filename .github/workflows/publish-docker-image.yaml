@@ -109,7 +109,7 @@ jobs:
           cache-from: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.suffix }}-${{ matrix.arch }}
           cache-to: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.suffix }}-${{ matrix.arch }},mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.suffix }}-${{ matrix.arch }},mode=max,ignore-error=true,compression=zstd
 
       - name: Export digest
         if: ${{ needs.resolve-tag.outputs.push == 'true' }}
