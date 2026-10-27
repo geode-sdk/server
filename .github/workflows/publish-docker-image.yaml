@@ -17,6 +17,7 @@ jobs:
       contents: read
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      push: ${{ steps.resolve.outputs.push }}
     steps:
       - name: Resolve tag
         id: resolve
@@ -25,9 +26,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
           else
             tag=$(gh release view --repo "${{ github.repository }}" --json tagName -q '.tagName')
             echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            echo "push=false" >> "$GITHUB_OUTPUT"
           fi
 
   # 1. Build each arch, push by digest, upload as artifact
@@ -89,12 +92,11 @@ jobs:
           echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
           echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push by digest
+      - name: Build and push (if release) by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
           platforms: ${{ matrix.platform }}
           build-args: |
             LIBC=${{ matrix.libc }}
@@ -103,15 +105,14 @@ jobs:
             BUILD_DATE=${{ steps.meta.outputs.date }}
           # Push to a digest-only ref (no tag) so the merge job can assemble
           # the final multi-arch manifest cleanly
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ needs.resolve-tag.outputs.push == 'true' }}
           cache-from: |
-            type=gha,scope=toolchain
-            type=gha,scope=${{ matrix.suffix }}-${{ matrix.arch }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.suffix }}-${{ matrix.arch }}
           cache-to: |
-            type=gha,mode=max,scope=toolchain
-            type=gha,mode=max,scope=${{ matrix.suffix }}-${{ matrix.arch }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-buildcache:${{ matrix.suffix }}-${{ matrix.arch }},mode=max,ignore-error=true,compression=zstd
 
       - name: Export digest
+        if: ${{ needs.resolve-tag.outputs.push == 'true' }}
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
@@ -119,6 +120,7 @@ jobs:
 
       - name: Upload digest artifact
         uses: actions/upload-artifact@v4
+        if: ${{ needs.resolve-tag.outputs.push == 'true' }}
         with:
           name: digest-${{ matrix.suffix }}-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -130,6 +132,7 @@ jobs:
     name: Merge (${{ matrix.suffix }})
     runs-on: ubuntu-24.04
     needs: [resolve-tag, build]
+    if: ${{ needs.resolve-tag.outputs.push == 'true' }}
     permissions:
       contents: read
       packages: write

@@ -5,13 +5,13 @@ use utoipa::{IntoParams, ToSchema};
 
 use sqlx::Acquire;
 
-use crate::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::s3_worker::S3WorkerTask;
 use crate::{
     config::AppData,
-    extractors::auth::Auth,
+    http::{extractors::auth::Auth, response::ApiResponse},
     types::{
-        api::{ApiResponse, PaginatedData},
+        api::PaginatedData,
         models::{
             gd_version_alias::GDVersionAlias,
             loader_version::{GetVersionsQuery, LoaderVersion, LoaderVersionCreate},
@@ -33,10 +33,15 @@ struct GetOnePath {
     version: String,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(get_one)
+        .service(create_version)
+        .service(get_many);
+}
+
 /// Get a specific loader version (or latest)
 #[utoipa::path(
-    get,
-    path = "/v1/loader/versions/{version}",
     tag = "loader",
     params(GetOnePath, GetOneQuery),
     responses(
@@ -44,7 +49,7 @@ struct GetOnePath {
         (status = 404, description = "Version not found")
     )
 )]
-#[get("v1/loader/versions/{version}")]
+#[get("/loader/versions/{version}")]
 #[tracing::instrument(skip_all, fields(version = %path.version))]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -95,8 +100,6 @@ struct CreateVersionBody {
 
 /// Create a new loader version (admin only)
 #[utoipa::path(
-    post,
-    path = "/v1/loader/versions",
     tag = "loader",
     request_body = CreateVersionBody,
     responses(
@@ -109,7 +112,7 @@ struct CreateVersionBody {
         ("bearer_token" = [])
     )
 )]
-#[post("v1/loader/versions")]
+#[post("/loader/versions")]
 #[tracing::instrument(skip_all, fields(tag = %payload.tag))]
 pub async fn create_version(
     data: web::Data<AppData>,
@@ -158,15 +161,13 @@ struct GetManyQuery {
 
 /// Get all loader versions with optional filtering
 #[utoipa::path(
-    get,
-    path = "/v1/loader/versions",
     tag = "loader",
     params(GetManyQuery),
     responses(
         (status = 200, description = "List of loader versions", body = inline(ApiResponse<PaginatedData<LoaderVersion>>))
     )
 )]
-#[get("v1/loader/versions")]
+#[get("/loader/versions")]
 #[tracing::instrument(skip_all)]
 pub async fn get_many(
     data: web::Data<AppData>,

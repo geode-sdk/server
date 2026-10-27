@@ -11,9 +11,12 @@ use crate::{
     config::AppData,
     database::repository::{auth_tokens, developers, refresh_tokens},
     email::EmailAddress,
-    endpoints::{ApiError, auth::TokensResponse},
-    types::api::ApiResponse,
+    http::{endpoints::auth::TokensResponse, error::ApiError, response::ApiResponse},
 };
+
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(login).service(forgot_password);
+}
 
 #[derive(ToSchema, Validate, Deserialize)]
 struct EmailLogin {
@@ -33,7 +36,7 @@ struct EmailLogin {
         (status = 500, description = "Server error")
     )
 )]
-#[post("v1/login")]
+#[post("/login")]
 #[tracing::instrument(skip_all)]
 pub async fn login(
     data: web::Data<AppData>,
@@ -96,7 +99,7 @@ struct ForgotPassword {
     )
 )]
 #[tracing::instrument(skip_all)]
-#[post("v1/forgot-password")]
+#[post("/forgot-password")]
 pub async fn forgot_password(
     data: web::Data<AppData>,
     json: web::Json<ForgotPassword>,

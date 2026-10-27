@@ -12,16 +12,17 @@ use crate::database::repository::mod_versions;
 use crate::database::repository::mods;
 use crate::database::repository::mods::ModLogo;
 use crate::database::repository::{dependencies, deprecations, mod_version_submissions};
-use crate::endpoints::ApiError;
+use crate::http::error::ApiError;
 use crate::events::mod_created::NewUnverifiedModVersionCreated;
 use crate::events::mod_feature::ModFeaturedEvent;
-use crate::extractors::auth::Auth;
+use crate::http::extractors::auth::Auth;
 use crate::mod_zip;
-use crate::types::api::{ApiResponse, PaginatedData};
+use crate::http::response::ApiResponse;
+use crate::types::api::PaginatedData;
 use crate::types::mod_json::ModJson;
 use crate::types::models;
 use crate::types::models::deprecations::Deprecation;
-use crate::types::models::mod_entity::{Mod, ModUpdate};
+use crate::types::models::mod_entity::{IndexQueryParams, Mod, ModUpdate};
 use crate::types::models::mod_gd_version::{GDVersionEnum, VerPlatform};
 use crate::types::models::mod_link::ModLinks;
 use crate::types::models::mod_version_status::ModVersionStatusEnum;
@@ -35,48 +36,25 @@ use validator::Validate;
 
 const MAX_UPDATE_BATCH_SIZE: usize = 200;
 
-#[derive(Deserialize, Default, Hash, Eq, PartialEq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum IndexSortType {
-    #[default]
-    Downloads,
-    RecentlyUpdated,
-    RecentlyPublished,
-    Oldest,
-    Name,
-    NameReverse,
-    Random,
-}
-
-#[derive(Deserialize, Hash, Eq, PartialEq, IntoParams)]
-pub struct IndexQueryParams {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
-    pub query: Option<String>,
-    #[serde(default)]
-    pub gd: Option<GDVersionEnum>,
-    #[serde(default)]
-    pub platforms: Option<String>,
-    #[serde(default)]
-    pub sort: IndexSortType,
-    pub geode: Option<String>,
-    pub developer: Option<String>,
-    pub tags: Option<String>,
-    pub featured: Option<bool>,
-    pub jitless: Option<bool>,
-    pub status: Option<ModVersionStatusEnum>,
-}
-
 #[derive(Deserialize, ToSchema, Validate)]
 pub struct CreateQueryParams {
     #[validate(length(max = 1024))]
     download_link: String,
 }
 
+// `get_mod_updates` must be registered before `get`, or "updates" is captured as `{id}`
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(index)
+        .service(get_mod_updates)
+        .service(get)
+        .service(create)
+        .service(update_mod)
+        .service(get_logo);
+}
+
 /// List all mods with optional filtering and pagination
 #[utoipa::path(
-    get,
-    path = "/v1/mods",
     tag = "mods",
     params(IndexQueryParams),
     responses(
@@ -85,7 +63,7 @@ pub struct CreateQueryParams {
         (status = 403, description = "Forbidden")
     )
 )]
-#[get("/v1/mods")]
+#[get("/mods")]
 #[tracing::instrument(skip_all)]
 pub async fn index(
     data: web::Data<AppData>,
@@ -127,8 +105,6 @@ pub async fn index(
 
 /// Get a specific mod by ID
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}",
     tag = "mods",
     params(
         ("id" = String, Path, description = "Mod ID")
@@ -138,7 +114,7 @@ pub async fn index(
         (status = 404, description = "Mod not found")
     )
 )]
-#[get("/v1/mods/{id}")]
+#[get("/mods/{id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %id))]
 pub async fn get(
     data: web::Data<AppData>,
@@ -199,8 +175,6 @@ pub async fn get(
 
 /// Create a new mod
 #[utoipa::path(
-    post,
-    path = "/v1/mods",
     tag = "mods",
     request_body = CreateQueryParams,
     responses(
@@ -213,7 +187,7 @@ pub async fn get(
         ("bearer_token" = [])
     )
 )]
-#[post("/v1/mods")]
+#[post("/mods")]
 #[tracing::instrument(skip_all)]
 pub async fn create(
     data: web::Data<AppData>,
@@ -234,11 +208,11 @@ pub async fn create(
     json.validate()?;
 
     let mut pool = data.db().acquire().await?;
-  
+
     if let Some(ban) = developers::check_ban(dev.id, &mut pool).await? {
         return Err(ApiError::Banned(ban.reason));
     }
-  
+
     let existing: Option<Mod> = mods::get_one(&json.id, false, &mut pool).await?;
 
     if json.id.starts_with("geode.") && !dev.admin {
@@ -351,8 +325,6 @@ enum UpdateQueryResponse {
 
 /// Get available mod updates for a list of installed mods
 #[utoipa::path(
-    get,
-    path = "/v1/mods/updates",
     tag = "mods",
     params(UpdateQueryParams),
     responses(
@@ -360,7 +332,7 @@ enum UpdateQueryResponse {
         (status = 400, description = "Bad request")
     )
 )]
-#[get("/v1/mods/updates")]
+#[get("/mods/updates")]
 #[tracing::instrument(skip_all, fields(ids = %query.ids, geode = %query.geode))]
 pub async fn get_mod_updates(
     data: web::Data<AppData>,
@@ -413,8 +385,6 @@ pub async fn get_mod_updates(
 
 /// Get the logo image for a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/logo",
     tag = "mods",
     params(
         ("id" = String, Path, description = "Mod ID")
@@ -424,7 +394,7 @@ pub async fn get_mod_updates(
         (status = 404, description = "Logo not found")
     )
 )]
-#[get("/v1/mods/{id}/logo")]
+#[get("/mods/{id}/logo")]
 #[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn get_logo(
     data: web::Data<AppData>,
@@ -450,8 +420,6 @@ struct UpdateModPayload {
 
 /// Update a mod (admin only)
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}",
     tag = "mods",
     params(
         ("id" = String, Path, description = "Mod ID")
@@ -467,7 +435,7 @@ struct UpdateModPayload {
         ("bearer_token" = [])
     )
 )]
-#[put("/v1/mods/{id}")]
+#[put("/mods/{id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn update_mod(
     data: web::Data<AppData>,

@@ -1,9 +1,9 @@
 use crate::{
     config::AppData,
     database::repository::{deprecations, developers, mods},
-    endpoints::ApiError,
-    extractors::auth::Auth,
-    types::api::ApiResponse,
+    http::error::ApiError,
+    http::extractors::auth::Auth,
+    http::response::ApiResponse,
     types::models::deprecations::Deprecation,
 };
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
@@ -36,10 +36,17 @@ struct UpdateDeprecationData {
 
 const MAX_MODS_PER_DEPRECATION: usize = 20;
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(index)
+        .service(store)
+        .service(update)
+        .service(clear_all)
+        .service(delete);
+}
+
 /// Fetch all deprecations for a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/deprecations",
     tag = "deprecations",
     params(ModPath),
     responses(
@@ -47,7 +54,7 @@ const MAX_MODS_PER_DEPRECATION: usize = 20;
         (status = 404, description = "Mod not found")
     )
 )]
-#[get("v1/mods/{id}/deprecations")]
+#[get("/mods/{id}/deprecations")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id))]
 pub async fn index(
     data: web::Data<AppData>,
@@ -68,8 +75,6 @@ pub async fn index(
 
 /// Insert one deprecation for a mod
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/deprecations",
     tag = "deprecations",
     params(ModPath),
     request_body = CreateDeprecationData,
@@ -84,7 +89,7 @@ pub async fn index(
         ("bearer_token" = [])
     )
 )]
-#[post("v1/mods/{id}/deprecations")]
+#[post("/mods/{id}/deprecations")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id))]
 pub async fn store(
     data: web::Data<AppData>,
@@ -117,8 +122,6 @@ pub async fn store(
 
 /// Update a deprecation
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}/deprecations/{deprecation_id}",
     tag = "deprecations",
     params(ModDeprecationPath),
     request_body = UpdateDeprecationData,
@@ -132,7 +135,7 @@ pub async fn store(
         ("bearer_token" = [])
     )
 )]
-#[put("v1/mods/{id}/deprecations/{deprecation_id}")]
+#[put("/mods/{id}/deprecations/{deprecation_id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, deprecation_id = %path.deprecation_id))]
 pub async fn update(
     data: web::Data<AppData>,
@@ -189,8 +192,6 @@ pub async fn update(
 
 /// Delete a deprecation
 #[utoipa::path(
-    delete,
-    path = "/v1/mods/{id}/deprecations/{deprecation_id}",
     tag = "deprecations",
     params(ModDeprecationPath),
     responses(
@@ -203,7 +204,7 @@ pub async fn update(
         ("bearer_token" = [])
     )
 )]
-#[delete("v1/mods/{id}/deprecations/{deprecation_id}")]
+#[delete("/mods/{id}/deprecations/{deprecation_id}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, deprecation_id = %path.deprecation_id))]
 pub async fn delete(
     data: web::Data<AppData>,
@@ -243,8 +244,6 @@ pub async fn delete(
 
 /// Delete all deprecations for a mod
 #[utoipa::path(
-    delete,
-    path = "/v1/mods/{id}/deprecations",
     tag = "deprecations",
     params(ModPath),
     responses(
@@ -257,7 +256,7 @@ pub async fn delete(
         ("bearer_token" = [])
     )
 )]
-#[delete("v1/mods/{id}/deprecations")]
+#[delete("/mods/{id}/deprecations")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id))]
 pub async fn clear_all(
     data: web::Data<AppData>,

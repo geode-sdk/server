@@ -11,20 +11,19 @@ use crate::database::repository::{
     dependencies, developers, incompatibilities, mod_downloads, mod_gd_versions, mod_links,
     mod_tags, mod_version_submissions, mod_versions, mods,
 };
-use crate::endpoints::ApiError;
 use crate::events::mod_created::{
     NewModAcceptedEvent, NewModVersionAcceptedEvent, NewModVersionVerification,
     NewUnverifiedModVersionCreated,
 };
+use crate::http::error::ApiError;
 use crate::mod_zip::{self, download_mod};
 use crate::s3_worker::S3WorkerTask;
 use crate::types::models;
 use crate::types::models::mod_version_submission::ModVersionSubmissionLock;
 use crate::webhook::discord::DiscordWebhook;
 use crate::{
-    extractors::auth::Auth,
+    http::{extractors::auth::Auth, response::ApiResponse},
     types::{
-        api::ApiResponse,
         mod_json::{ModJson, split_version_and_compare},
         models::{
             mod_gd_version::{GDVersionEnum, VerPlatform},
@@ -81,10 +80,16 @@ struct IndexQuery {
     compare: Option<String>,
 }
 
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_version_index)
+        .service(get_one)
+        .service(download_version)
+        .service(create_version)
+        .service(update_version);
+}
+
 /// List all versions for a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions",
     tag = "mod_versions",
     params(IndexPath, IndexQuery),
     responses(
@@ -92,7 +97,7 @@ struct IndexQuery {
         (status = 404, description = "Mod not found")
     )
 )]
-#[get("v1/mods/{id}/versions")]
+#[get("/mods/{id}/versions")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id))]
 pub async fn get_version_index(
     path: web::Path<IndexPath>,
@@ -144,8 +149,6 @@ pub async fn get_version_index(
 
 /// Get a specific version of a mod
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}",
     tag = "mod_versions",
     params(GetOnePath, GetOneQuery),
     responses(
@@ -153,7 +156,7 @@ pub async fn get_version_index(
         (status = 404, description = "Mod or version not found")
     )
 )]
-#[get("v1/mods/{id}/versions/{version}")]
+#[get("/mods/{id}/versions/{version}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn get_one(
     path: web::Path<GetOnePath>,
@@ -207,8 +210,6 @@ struct DownloadQuery {
 
 /// Download a specific version of a mod (redirects to download URL)
 #[utoipa::path(
-    get,
-    path = "/v1/mods/{id}/versions/{version}/download",
     tag = "mod_versions",
     params(GetOnePath, DownloadQuery),
     responses(
@@ -216,7 +217,7 @@ struct DownloadQuery {
         (status = 404, description = "Mod or version not found")
     )
 )]
-#[get("v1/mods/{id}/versions/{version}/download")]
+#[get("/mods/{id}/versions/{version}/download")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn download_version(
     path: web::Path<GetOnePath>,
@@ -286,8 +287,6 @@ pub async fn download_version(
 
 /// Create a new version for a mod
 #[utoipa::path(
-    post,
-    path = "/v1/mods/{id}/versions",
     tag = "mod_versions",
     params(
         ("id" = String, Path, description = "Mod ID")
@@ -304,7 +303,7 @@ pub async fn download_version(
         ("bearer_token" = [])
     )
 )]
-#[post("v1/mods/{id}/versions")]
+#[post("/mods/{id}/versions")]
 #[tracing::instrument(skip_all, fields(mod_id = %path))]
 pub async fn create_version(
     path: web::Path<String>,
@@ -515,8 +514,6 @@ pub async fn create_version(
 
 /// Update a mod version status (admin only)
 #[utoipa::path(
-    put,
-    path = "/v1/mods/{id}/versions/{version}",
     tag = "mod_versions",
     params(UpdateVersionPath),
     request_body = UpdatePayload,
@@ -531,7 +528,7 @@ pub async fn create_version(
         ("bearer_token" = [])
     )
 )]
-#[put("v1/mods/{id}/versions/{version}")]
+#[put("/mods/{id}/versions/{version}")]
 #[tracing::instrument(skip_all, fields(mod_id = %path.id, version = %path.version))]
 pub async fn update_version(
     path: web::Path<UpdateVersionPath>,
@@ -563,10 +560,11 @@ pub async fn update_version(
         return Ok(HttpResponse::NoContent());
     }
 
-    if payload.status == ModVersionStatusEnum::Pending {
-        return Err(ApiError::BadRequest(
-            "Cannot change version status to pending".into(),
-        ));
+    if !version.status.can_transition_to(payload.status) {
+        return Err(ApiError::BadRequest(format!(
+            "Cannot change version status from {} to {}",
+            version.status, payload.status
+        )));
     }
 
     let approved_count = ModVersion::get_accepted_count(version.mod_id.as_str(), &mut pool).await?;
@@ -582,8 +580,12 @@ pub async fn update_version(
     )
     .await?;
 
-    if old_status == ModVersionStatusEnum::Pending
-        && version.status == ModVersionStatusEnum::Accepted
+    let mut s3_task: Option<S3WorkerTask> = None;
+
+    if matches!(
+        old_status,
+        ModVersionStatusEnum::Pending | ModVersionStatusEnum::Rejected
+    ) && version.status == ModVersionStatusEnum::Accepted
     {
         if approved_count == 0 {
             // Used to push new mods to the top of the "Recently created" list
@@ -598,34 +600,37 @@ pub async fn update_version(
         )
         .await?;
 
-        let json = ModJson::from_zip(&bytes, &version.download_link, true)?;
+        if !mod_versions::has_newer_accepted(&mod_id, version.id, &mut tx).await? {
+            let json = ModJson::from_zip(&bytes, &version.download_link, true)?;
 
-        // Update links with data from mod.json
-        if let Some(links) = json.links.clone() {
-            mod_links::upsert(
-                &mod_id,
-                links.community,
-                links.homepage,
-                links.source,
-                &mut tx,
-            )
-            .await?;
-        } else {
-            mod_links::upsert(&mod_id, None, None, None, &mut tx).await?;
+            // Update links with data from mod.json
+            if let Some(links) = json.links.clone() {
+                mod_links::upsert(
+                    &mod_id,
+                    links.community,
+                    links.homepage,
+                    links.source,
+                    &mut tx,
+                )
+                .await?;
+            } else {
+                mod_links::upsert(&mod_id, None, None, None, &mut tx).await?;
+            }
+
+            // Update tags with data from mod.json
+            let tags = if let Some(tags) = &json.tags {
+                models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?
+            } else {
+                vec![]
+            };
+
+            mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
+
+            mods::update_with_json_moved(the_mod, json, &mut tx).await?;
         }
 
-        // Update tags with data from mod.json
-        let tags = if let Some(tags) = &json.tags {
-            models::tag::parse_tag_list(tags, &the_mod.id, &mut tx).await?
-        } else {
-            vec![]
-        };
-
-        mod_tags::update_for_mod(&the_mod.id, &tags, &mut tx).await?;
-
-        mods::update_with_json_moved(the_mod, json, &mut tx).await?;
-
-        data.send_s3_task(S3WorkerTask::UploadMod {
+        // Just send the file to s3, it gets cleaned up later anyway
+        s3_task = Some(S3WorkerTask::UploadMod {
             data: bytes,
             mod_id,
             version: version.version.clone(),
@@ -648,6 +653,10 @@ pub async fn update_version(
     }
 
     tx.commit().await?;
+
+    if let Some(task) = s3_task {
+        data.send_s3_task(task);
+    }
 
     if payload.status == ModVersionStatusEnum::Accepted {
         let is_update = approved_count > 0;

@@ -1,6 +1,9 @@
 use std::{ops::Add, str::FromStr};
 
-use actix_web::{HttpResponse, Responder, post, web};
+use actix_web::{
+    HttpResponse, Responder, post,
+    web::{self, ServiceConfig},
+};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use sqlx::Connection;
@@ -18,9 +21,7 @@ use crate::{
         mailer::{EmailBody, OutgoingEmail},
         templates::change_email,
     },
-    endpoints::ApiError,
-    extractors::auth::Auth,
-    types::api::ApiResponse,
+    http::{error::ApiError, extractors::auth::Auth, response::ApiResponse},
 };
 
 #[derive(Deserialize, Validate, ToSchema)]
@@ -29,6 +30,11 @@ struct StartEmailChangePayload {
     email: String,
     password: String,
     force: Option<bool>,
+}
+
+pub fn router_config(cfg: &mut ServiceConfig) {
+    cfg.service(start_email_change)
+        .service(finalize_email_change);
 }
 
 /// Finalize email configuration

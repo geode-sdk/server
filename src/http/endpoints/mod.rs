@@ -1,0 +1,12 @@
+pub mod auth;
+pub mod deprecations;
+pub mod developers;
+pub mod email_change_requests;
+pub mod health;
+pub mod loader;
+pub mod mod_status_badge;
+pub mod mod_version_submissions;
+pub mod mod_versions;
+pub mod mods;
+pub mod stats;
+pub mod tags;

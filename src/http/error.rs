@@ -1,21 +1,11 @@
 use crate::{
-    auth::password::PasswordError, email::mailer::MailerError, mod_zip::ModZipError, types::{api::ApiResponse, models::mod_gd_version::PlatformParseError},
+    auth::password::PasswordError, email::mailer::MailerError, http::response::ApiResponse,
+    mod_zip::ModZipError, types::models::mod_gd_version::PlatformParseError,
 };
-use actix_web::{HttpResponse, http::StatusCode};
+use actix_web::{HttpRequest, HttpResponse, error::QueryPayloadError, http::StatusCode};
+use image::ImageError;
 use validator::{ValidationError, ValidationErrors};
-
-pub mod auth;
-pub mod deprecations;
-pub mod developers;
-pub mod email_change_requests;
-pub mod health;
-pub mod loader;
-pub mod mod_status_badge;
-pub mod mod_version_submissions;
-pub mod mod_versions;
-pub mod mods;
-pub mod stats;
-pub mod tags;
+use zip::result::ZipError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
@@ -61,7 +51,7 @@ pub enum ApiError {
     #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
     Banned(Option<String>),
     #[error("{0}")]
-    Password(#[from] PasswordError)
+    Password(#[from] PasswordError),
 }
 
 impl ApiError {
@@ -85,7 +75,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Conflict(..) => StatusCode::CONFLICT,
             ApiError::NotImplemented => StatusCode::NOT_IMPLEMENTED,
             ApiError::Email(..) => StatusCode::BAD_REQUEST,
-            ApiError::ModZip(err) => err.status_code(),
+            ApiError::ModZip(err) => mod_zip_status_code(err),
             ApiError::PlatformParseError(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -94,6 +84,25 @@ impl actix_web::ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
         HttpResponse::build(self.status_code()).json(self.as_response())
     }
+}
+
+fn mod_zip_status_code(err: &ModZipError) -> StatusCode {
+    match err {
+        ModZipError::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ModZipError::ImageError(e) => match e {
+            ImageError::Limits(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        },
+        ModZipError::ZipError(e) => match e {
+            ZipError::InvalidArchive(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        },
+        _ => StatusCode::BAD_REQUEST,
+    }
+}
+
+pub fn query_error_handler(err: QueryPayloadError, _req: &HttpRequest) -> actix_web::Error {
+    ApiError::BadRequest(err.to_string()).into()
 }
 
 // validator errors

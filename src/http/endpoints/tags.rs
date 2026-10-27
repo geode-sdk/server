@@ -2,20 +2,24 @@ use actix_web::{Responder, get, web};
 
 use crate::config::AppData;
 use crate::database::repository::mod_tags;
-use crate::endpoints::ApiError;
-use crate::types::api::ApiResponse;
+use crate::http::error::ApiError;
+use crate::http::response::ApiResponse;
 use crate::types::models::tag::Tag;
+
+pub fn router_config(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(index)
+        .service(detailed_index);
+}
 
 /// Get all available tags
 #[utoipa::path(
-    get,
-    path = "/v1/tags",
     tag = "tags",
     responses(
         (status = 200, description = "List of tag names", body = inline(ApiResponse<Vec<String>>))
     )
 )]
-#[get("/v1/tags")]
+#[get("/tags")]
 #[tracing::instrument(skip_all)]
 pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
@@ -33,14 +37,12 @@ pub async fn index(data: web::Data<AppData>) -> Result<impl Responder, ApiError>
 
 /// Get all available tags with detailed information
 #[utoipa::path(
-    get,
-    path = "/v1/detailed-tags",
     tag = "tags",
     responses(
         (status = 200, description = "List of tags with details", body = inline(ApiResponse<Vec<Tag>>))
     )
 )]
-#[get("/v1/detailed-tags")]
+#[get("/detailed-tags")]
 #[tracing::instrument(skip_all)]
 pub async fn detailed_index(data: web::Data<AppData>) -> Result<impl Responder, ApiError> {
     let mut pool = data.db().acquire().await?;
