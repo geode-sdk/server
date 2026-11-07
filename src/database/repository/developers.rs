@@ -1,8 +1,10 @@
 use crate::database::DatabaseError;
+use crate::email::blocklist::ApprovedEmailAddress;
 use crate::types::api::PaginatedData;
-use crate::types::models::developer::{Developer, DeveloperBan, ModDeveloper};
+use crate::types::models::developer::{Developer, DeveloperBan, DeveloperEmailLogin, ModDeveloper};
+use chrono::Utc;
 use sqlx::PgConnection;
-use sqlx::types::chrono::{DateTime, Utc};
+use sqlx::types::chrono::DateTime;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -495,6 +497,31 @@ pub async fn has_accepted_mod(id: i32, conn: &mut PgConnection) -> Result<bool, 
     .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip_all, fields(email = %email))]
+pub async fn find_by_email(
+    email: &str,
+    conn: &mut PgConnection,
+) -> Result<Option<Developer>, DatabaseError> {
+    sqlx::query_as!(
+        Developer,
+        "SELECT
+            d.id,
+            d.username,
+            d.display_name,
+            d.verified,
+            d.admin,
+            d.github_user_id as github_id
+        FROM developers d
+        INNER JOIN developer_login_info login ON login.developer_id = d.id
+        WHERE LOWER(login.email) = LOWER($1)",
+        email
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
 pub async fn create_ban(
     dev_id: i32,
     admin_id: i32,
@@ -502,12 +529,16 @@ pub async fn create_ban(
     revoked_at: Option<DateTime<Utc>>,
     conn: &mut PgConnection,
 ) -> Result<DeveloperBan, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
+    sqlx::query_as!(
+        DeveloperBan,
         "INSERT INTO bans (developer_id, reason, admin_id, revoked_at)
             VALUES ($1, $2, $3, $4)
         RETURNING
             id, developer_id, reason, admin_id, created_at, revoked_at",
-        dev_id, reason, admin_id, revoked_at
+        dev_id,
+        reason,
+        admin_id,
+        revoked_at
     )
     .fetch_one(&mut *conn)
     .await
@@ -519,8 +550,62 @@ pub async fn check_ban(
     dev_id: i32,
     conn: &mut PgConnection,
 ) -> Result<Option<DeveloperBan>, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
-        "SELECT developer_id, reason, admin_id, created_at, id, revoked_at FROM bans WHERE developer_id=$1 AND (revoked_at > NOW() or revoked_at IS NULL) ORDER BY revoked_at DESC NULLS FIRST, id DESC LIMIT 1", dev_id
+    sqlx::query_as!(
+        DeveloperBan,
+        "SELECT
+            developer_id, reason, admin_id, created_at,
+            id, revoked_at
+        FROM bans
+        WHERE developer_id=$1
+        AND revoked_at > NOW()
+        OR revoked_at IS NULL
+        ORDER BY revoked_at DESC NULLS FIRST, id DESC
+        LIMIT 1",
+        dev_id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+#[tracing::instrument(skip_all, fields(id = %id))]
+pub async fn find_login_data_for_developer(
+    id: i32,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperEmailLogin>, DatabaseError> {
+    sqlx::query_as!(
+        DeveloperEmailLogin,
+        "SELECT
+            d.id,
+            login.email,
+            login.password as password_hash
+        FROM developers d
+        INNER JOIN developer_login_info login ON d.id = login.developer_id
+        WHERE d.id = $1",
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map_err(|e| e.into())
+}
+
+#[tracing::instrument(skip_all, fields(email = %email))]
+pub async fn find_login_data_by_email(
+    email: &str,
+    conn: &mut PgConnection,
+) -> Result<Option<DeveloperEmailLogin>, DatabaseError> {
+    sqlx::query_as!(
+        DeveloperEmailLogin,
+        "SELECT
+            d.id,
+            login.email,
+            login.password as password_hash
+        FROM developers d
+        INNER JOIN developer_login_info login ON d.id = login.developer_id
+        WHERE LOWER(email) = LOWER($1)",
+        email
     )
     .fetch_optional(&mut *conn)
     .await
@@ -541,19 +626,123 @@ pub async fn get_bans(
     .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip_all, fields(developer_id = %id))]
+pub async fn finalize_email_setup(
+    id: i32,
+    email: &ApprovedEmailAddress,
+    password: &str,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    let verified_at = Utc::now();
+    let email_str = email.email().to_string().to_lowercase();
+
+    sqlx::query!(
+        "INSERT INTO developer_login_info
+        (developer_id, email, email_verified_at, password)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (developer_id)
+        DO UPDATE
+            SET email = EXCLUDED.email,
+                email_verified_at = EXCLUDED.email_verified_at,
+                password = EXCLUDED.password",
+        id,
+        &email_str,
+        verified_at,
+        password
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "DELETE FROM email_setup_requests WHERE developer_id = $1",
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
+}
+
+pub async fn get_email(id: i32, conn: &mut PgConnection) -> Result<Option<String>, DatabaseError> {
+    sqlx::query!(
+        "SELECT email FROM developer_login_info
+        WHERE developer_id = $1",
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))
+    .map(|r| r.map(|r| r.email))
+    .map_err(|e| e.into())
+}
+
+/// Assumes developer_login_info exists for given ID.
+/// Also adds a history entry.
+#[tracing::instrument(skip_all, fields(developer_id = %id))]
+pub async fn change_email(
+    id: i32,
+    old_email: &str,
+    email: &ApprovedEmailAddress,
+    conn: &mut PgConnection,
+) -> Result<(), DatabaseError> {
+    let now = Utc::now();
+    let email_str = email.email().to_string().to_lowercase();
+
+    sqlx::query!(
+        "UPDATE developer_login_info
+        SET email = $1
+        WHERE developer_id = $2",
+        email_str,
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "DELETE FROM email_change_requests WHERE developer_id = $1",
+        id
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    sqlx::query!(
+        "INSERT INTO email_change_history
+        (developer_id, old_email, new_email, changed_at)
+        VALUES ($1, $2, $3, $4)",
+        id,
+        old_email,
+        email_str,
+        now
+    )
+    .execute(&mut *conn)
+    .await
+    .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    Ok(())
+}
+
 pub async fn update_ban(
     ban_id: i32,
     revoked_at: Option<DateTime<Utc>>,
     reason: Option<&str>,
     developer_id: i32,
-    conn: &mut PgConnection
+    conn: &mut PgConnection,
 ) -> Result<DeveloperBan, DatabaseError> {
-    sqlx::query_as!(DeveloperBan,
+    sqlx::query_as!(
+        DeveloperBan,
         "UPDATE bans
             SET revoked_at=$2, reason=$3, admin_id=$4 WHERE id=$1
         RETURNING
             id, developer_id, reason, admin_id, created_at, revoked_at",
-        ban_id, revoked_at, reason, developer_id)
+        ban_id,
+        revoked_at,
+        reason,
+        developer_id
+    )
     .fetch_one(&mut *conn)
     .await
     .inspect_err(|e| tracing::error!("{:?}", e))
@@ -562,9 +751,12 @@ pub async fn update_ban(
 
 pub async fn delete_ban(dev_id: i32, conn: &mut PgConnection) -> Result<(), DatabaseError> {
     if let Some(current_ban) = check_ban(dev_id, conn).await? {
-        sqlx::query!("UPDATE bans SET revoked_at=NOW() WHERE id=$1", current_ban.id)
-            .execute(conn)
-            .await
+        sqlx::query!(
+            "UPDATE bans SET revoked_at=NOW() WHERE id=$1",
+            current_ban.id
+        )
+        .execute(conn)
+        .await
         .inspect_err(|e| tracing::error!("{:?}", e))?;
     }
 

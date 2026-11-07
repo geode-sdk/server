@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     config::AppData,
     http::endpoints::{
-        auth, deprecations, developers, health, loader, mod_status_badge, mod_version_submissions,
+        auth, deprecations, developers, email_change_requests, health, loader, mod_status_badge, mod_version_submissions,
         mod_versions, mods, stats, tags,
     },
     http::{error::query_error_handler, openapi::ApiDoc},
@@ -43,6 +43,7 @@ fn router_config(cfg: &mut web::ServiceConfig) {
             .configure(developers::router_config)
             .configure(tags::router_config)
             .configure(stats::router_config)
+            .configure(email_change_requests::router_config)
             .configure(loader::router_config),
     )
     .configure(health::router_config);

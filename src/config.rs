@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -10,6 +11,9 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     auth::github::GithubClient,
     dns::ValidateDnsResolver,
+    email::{
+        SmtpConfig, SmtpSecurity, blocklist::Blocklist, lettre::LettreBackend, mailer::Mailer,
+    },
     http::{self, response::ApiResponse},
     s3_worker::{QueuedS3Task, S3WorkerTask},
     storage::{LocalBackend, PrivateDisk, PublicDisk, S3Backend, S3Configuration},
@@ -35,10 +39,13 @@ pub struct AppData {
     max_download_mb: u32,
     port: u16,
     debug: bool,
+    password_hash_pepper: Option<String>,
 
     mods_cache: Cache<IndexQueryParams, ApiResponse<PaginatedData<Mod>>>,
     http_client: reqwest::Client,
     check_dns_http_client: reqwest::Client,
+    mailer: Option<Mailer>,
+    email_blocklist: Option<Blocklist>,
 
     s3_sender: OnceLock<Sender<QueuedS3Task>>,
 }
@@ -68,6 +75,10 @@ pub struct AppDataBuilder {
     debug: Option<bool>,
     http_client: Option<reqwest::Client>,
     check_dns_http_client: Option<reqwest::Client>,
+    password_hash_pepper: Option<String>,
+    smtp_config: Option<SmtpConfig>,
+    mailer: Option<Mailer>,
+    email_blocklist: Option<Blocklist>,
 }
 
 impl AppDataBuilder {
@@ -91,6 +102,10 @@ impl AppDataBuilder {
             debug: None,
             http_client: None,
             check_dns_http_client: None,
+            password_hash_pepper: None,
+            smtp_config: None,
+            mailer: None,
+            email_blocklist: None,
         }
     }
 
@@ -128,6 +143,35 @@ impl AppDataBuilder {
         let check_dns_http_client = self
             .check_dns_http_client
             .map_or_else(AppDataBuilder::default_check_dns_http_client, Ok)?;
+        let debug = self.debug.unwrap_or(false);
+
+        if self.password_hash_pepper.is_none() {
+            tracing::warn!(
+                "IMPORTANT: no password hash pepper found, password storage will be LESS secure. Check https://en.wikipedia.org/wiki/Pepper_(cryptography) for more information."
+            );
+        }
+
+        if !debug
+            && self
+                .smtp_config
+                .as_ref()
+                .is_some_and(|x| x.security == SmtpSecurity::None)
+        {
+            tracing::warn!(
+                "You are using no SMTP security for sending emails with APP_DEBUG=0. You have been warned."
+            );
+        }
+
+        let mailer = self.mailer.or_else(|| {
+            let config = self.smtp_config?;
+            match LettreBackend::new(&config) {
+                Ok(backend) => Some(Mailer::new(Arc::new(backend))),
+                Err(e) => {
+                    tracing::warn!("failed to create SMTP backend: {e}");
+                    None
+                }
+            }
+        });
 
         Ok(AppData {
             db: self.db,
@@ -159,7 +203,8 @@ impl AppDataBuilder {
             disable_downloads: self.disable_downloads.unwrap_or(false),
             max_download_mb: self.max_download_mb.unwrap_or(250),
             port: self.port.unwrap_or(3000),
-            debug: self.debug.unwrap_or(false),
+            debug,
+            password_hash_pepper: self.password_hash_pepper,
             mods_cache: self.mods_cache.unwrap_or_else(|| {
                 Cache::builder()
                     .max_capacity(256)
@@ -169,6 +214,8 @@ impl AppDataBuilder {
             }),
             http_client,
             check_dns_http_client,
+            mailer,
+            email_blocklist: self.email_blocklist,
             s3_sender: OnceLock::new(),
         })
     }
@@ -256,6 +303,27 @@ impl AppDataBuilder {
         self.check_dns_http_client = Some(check_dns_http_client);
         self
     }
+
+    pub fn password_hash_pepper(mut self, password_hash_pepper: String) -> Self {
+        self.password_hash_pepper = Some(password_hash_pepper);
+        self
+    }
+
+    /// Used to build the default SMTP mailer. Ignored if a mailer is set with `mailer()`.
+    pub fn smtp_config(mut self, smtp_config: SmtpConfig) -> Self {
+        self.smtp_config = Some(smtp_config);
+        self
+    }
+
+    pub fn mailer(mut self, mailer: Mailer) -> Self {
+        self.mailer = Some(mailer);
+        self
+    }
+
+    pub fn email_blocklist(mut self, email_blocklist: Blocklist) -> Self {
+        self.email_blocklist = Some(email_blocklist);
+        self
+    }
 }
 
 fn env_bool(name: &str) -> anyhow::Result<Option<bool>> {
@@ -302,6 +370,12 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         })
         .transpose()?;
 
+    let smtp_config = SmtpConfig::from_env()?;
+    let email_blocklist = smtp_config.as_ref().map(|_| {
+        let path = dotenvy::var("EMAIL_BLOCKLIST_PATH").unwrap_or("./blocklist.conf".into());
+        Blocklist::load(PathBuf::from(path))
+    });
+
     AppData::builder(pool)
         .maybe(port, AppDataBuilder::port)
         .maybe(env_bool("APP_DEBUG")?, AppDataBuilder::debug)
@@ -323,6 +397,12 @@ pub async fn build_config() -> anyhow::Result<AppData> {
             AppDataBuilder::disable_downloads,
         )
         .maybe(max_download_mb, AppDataBuilder::max_download_mb)
+        .maybe(
+            dotenvy::var("PASSWORD_HASH_PEPPER").ok(),
+            AppDataBuilder::password_hash_pepper,
+        )
+        .maybe(smtp_config, AppDataBuilder::smtp_config)
+        .maybe(email_blocklist, AppDataBuilder::email_blocklist)
         .cdn_storage(cdn_storage)
         .build()
 }
@@ -368,6 +448,10 @@ impl AppData {
         self.debug
     }
 
+    pub fn password_hash_pepper(&self) -> Option<&String> {
+        self.password_hash_pepper.as_ref()
+    }
+
     pub fn static_storage(&self) -> &PublicDisk {
         &self.static_storage
     }
@@ -390,6 +474,14 @@ impl AppData {
 
     pub fn http_client(&self) -> &reqwest::Client {
         &self.http_client
+    }
+
+    pub fn mailer(&self) -> Option<&Mailer> {
+        self.mailer.as_ref()
+    }
+
+    pub fn email_blocklist(&self) -> Option<&Blocklist> {
+        self.email_blocklist.as_ref()
     }
 
     /// Client that validates passed host, denies all private resolved IP addresses.

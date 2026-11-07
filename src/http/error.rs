@@ -1,6 +1,6 @@
 use crate::{
-    http::response::ApiResponse, mod_zip::ModZipError,
-    types::models::mod_gd_version::PlatformParseError,
+    auth::password::PasswordError, email::mailer::MailerError, http::response::ApiResponse,
+    mod_zip::ModZipError, types::models::mod_gd_version::PlatformParseError,
 };
 use actix_web::{HttpRequest, HttpResponse, error::QueryPayloadError, http::StatusCode};
 use image::ImageError;
@@ -13,10 +13,14 @@ pub enum ApiError {
     Authentication(#[from] crate::auth::AuthenticationError),
     #[error("You do not have access to this resource")]
     Authorization,
+    #[error("Conflict: {0}")]
+    Conflict(String),
     #[error("{0}")]
     Database(#[from] crate::database::DatabaseError),
     #[error("{0}")]
     Storage(#[from] crate::storage::StorageError),
+    #[error("{0}")]
+    Email(#[from] crate::email::EmailError),
     #[error("{0}")]
     ModZip(#[from] ModZipError),
     #[error("Database error")]
@@ -32,6 +36,8 @@ pub enum ApiError {
     InternalError(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("this functionality is not available on this index instance")]
+    NotImplemented,
     #[error("Error: {0}")]
     PlatformParseError(#[from] PlatformParseError),
     #[error("Unable to unzip archive")]
@@ -40,8 +46,12 @@ pub enum ApiError {
     Reqwest(#[from] reqwest::Error),
     #[error("I/O error: {0}")]
     IO(#[from] std::io::Error),
+    #[error("failed to send email")]
+    Mailer(#[from] MailerError),
     #[error("You are banned from accessing this resource: {}", .0.as_deref().unwrap_or("No reason provided"))]
     Banned(Option<String>),
+    #[error("{0}")]
+    Password(#[from] PasswordError),
 }
 
 impl ApiError {
@@ -62,6 +72,9 @@ impl actix_web::ResponseError for ApiError {
             ApiError::TooManyRequests(..) => StatusCode::TOO_MANY_REQUESTS,
             ApiError::NotFound(_) => StatusCode::NOT_FOUND,
             ApiError::BadRequest(..) => StatusCode::BAD_REQUEST,
+            ApiError::Conflict(..) => StatusCode::CONFLICT,
+            ApiError::NotImplemented => StatusCode::NOT_IMPLEMENTED,
+            ApiError::Email(..) => StatusCode::BAD_REQUEST,
             ApiError::ModZip(err) => mod_zip_status_code(err),
             ApiError::PlatformParseError(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,

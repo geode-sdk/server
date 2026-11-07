@@ -1,4 +1,5 @@
 pub mod github;
+pub mod password;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AuthenticationError {
