@@ -1,5 +1,3 @@
-#![warn(unreachable_pub)]
-
 pub mod cli;
 pub mod config;
 pub mod logging;
