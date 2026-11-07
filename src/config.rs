@@ -3,9 +3,9 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use moka::future::Cache;
 use tokio::sync::mpsc::Sender;
-use tracing::field::debug;
 
 use crate::{
     auth::github::GithubClient,
@@ -54,7 +54,8 @@ pub struct AppDataBuilder {
     app_url: Option<String>,
     front_url: Option<String>,
     port: Option<u16>,
-    github_client: Option<GithubClient>,
+    github_client_id: Option<String>,
+    github_client_secret: Option<String>,
     webhook_url: Option<String>,
     index_admin_webhook_url: Option<String>,
     static_storage: Option<PublicDisk>,
@@ -76,7 +77,8 @@ impl AppDataBuilder {
             app_url: None,
             front_url: None,
             port: None,
-            github_client: None,
+            github_client_id: None,
+            github_client_secret: None,
             webhook_url: None,
             index_admin_webhook_url: None,
             static_storage: None,
@@ -110,6 +112,14 @@ impl AppDataBuilder {
             .build()
     }
 
+    /// Used for cleaner builder pattern, otherwise we'd define defaults twice
+    pub fn maybe<T>(self, value: Option<T>, set: impl FnOnce(Self, T) -> Self) -> Self {
+        match value {
+            Some(v) => set(self, v),
+            None => self,
+        }
+    }
+
     pub fn build(self) -> anyhow::Result<AppData> {
         let app_url = self.app_url.unwrap_or("http://localhost:8080".to_owned());
         let http_client = self
@@ -123,9 +133,11 @@ impl AppDataBuilder {
             db: self.db,
             app_url: app_url.clone(),
             front_url: self.front_url.unwrap_or("http://localhost:5173".to_owned()),
-            github_client: self.github_client.unwrap_or_else(|| {
-                GithubClient::new("".to_owned(), "".to_owned(), http_client.clone())
-            }),
+            github_client: GithubClient::new(
+                self.github_client_id.unwrap_or_default(),
+                self.github_client_secret.unwrap_or_default(),
+                http_client.clone(),
+            ),
             webhook_url: self.webhook_url.unwrap_or_default(),
             index_admin_webhook_url: self.index_admin_webhook_url.unwrap_or_default(),
             static_storage: self.static_storage.unwrap_or_else(|| {
@@ -146,7 +158,7 @@ impl AppDataBuilder {
             cdn_storage: self.cdn_storage,
             disable_downloads: self.disable_downloads.unwrap_or(false),
             max_download_mb: self.max_download_mb.unwrap_or(250),
-            port: self.port.unwrap_or(8080),
+            port: self.port.unwrap_or(3000),
             debug: self.debug.unwrap_or(false),
             mods_cache: self.mods_cache.unwrap_or_else(|| {
                 Cache::builder()
@@ -171,8 +183,9 @@ impl AppDataBuilder {
         self
     }
 
-    pub fn github_client(mut self, github_client: GithubClient) -> Self {
-        self.github_client = Some(github_client);
+    pub fn github_credentials(mut self, client_id: String, client_secret: String) -> Self {
+        self.github_client_id = Some(client_id);
+        self.github_client_secret = Some(client_secret);
         self
     }
 
@@ -245,6 +258,18 @@ impl AppDataBuilder {
     }
 }
 
+fn env_bool(name: &str) -> anyhow::Result<Option<bool>> {
+    let Ok(value) = dotenvy::var(name) else {
+        return Ok(None);
+    };
+
+    match value.trim().to_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Ok(Some(true)),
+        "0" | "false" | "no" | "n" | "off" | "" => Ok(Some(false)),
+        _ => anyhow::bail!("Invalid boolean value for {name}: {value:?}"),
+    }
+}
+
 pub async fn build_config() -> anyhow::Result<AppData> {
     let env_url = dotenvy::var("DATABASE_URL")?;
 
@@ -257,79 +282,49 @@ pub async fn build_config() -> anyhow::Result<AppData> {
         .connect(&env_url)
         .await?;
 
-    AppData::builder(pool)
-        .port(dotenvy::var("PORT").map_or(3000, |x: String| x.parse::<u16>().unwrap()))
-        .debug(dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1")
-        .app_url(dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string()))
-
-    let port =
-    let debug = dotenvy::var("APP_DEBUG").unwrap_or("0".to_string()) == "1";
-    let app_url = dotenvy::var("APP_URL").unwrap_or("http://localhost".to_string());
-    let front_url = dotenvy::var("FRONT_URL").unwrap_or("http://localhost".to_string());
-    let github_client = dotenvy::var("GITHUB_CLIENT_ID").unwrap_or("".to_string());
-    let github_secret = dotenvy::var("GITHUB_CLIENT_SECRET").unwrap_or("".to_string());
-    let webhook_url = dotenvy::var("DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let index_admin_webhook_url =
-        dotenvy::var("INDEX_ADMIN_DISCORD_WEBHOOK_URL").unwrap_or("".to_string());
-    let disable_downloads =
-        dotenvy::var("DISABLE_DOWNLOAD_COUNTS").unwrap_or("0".to_string()) == "1";
+    let port = dotenvy::var("PORT")
+        .ok()
+        .map(|s| s.parse::<u16>())
+        .transpose()
+        .context("Invalid PORT")?;
     let max_download_mb = dotenvy::var("MAX_MOD_FILESIZE_MB")
-        .unwrap_or("250".to_string())
-        .parse::<u32>()
-        .unwrap_or(250);
-    let mods_cache = Cache::builder()
-        .max_capacity(256)
-        .time_to_idle(Duration::from_mins(5))
-        .time_to_live(Duration::from_mins(10))
-        .build();
+        .ok()
+        .map(|s| s.parse::<u32>())
+        .transpose()
+        .context("Invalid MAX_MOD_FILESIZE_MB")?;
+    let github_credentials = dotenvy::var("GITHUB_CLIENT_ID")
+        .ok()
+        .zip(dotenvy::var("GITHUB_CLIENT_SECRET").ok());
+    let cdn_storage = S3Configuration::from_env()?
+        .map(|s3_config| -> anyhow::Result<PublicDisk> {
+            let backend = Arc::new(S3Backend::new(&s3_config)?);
+            Ok(PublicDisk::new(backend, s3_config.public_url))
+        })
+        .transpose()?;
 
-    let cdn_storage = if let Some(s3_config) = S3Configuration::from_env()? {
-        let backend = Arc::new(S3Backend::new(&s3_config)?);
-        Some(PublicDisk::new(backend, s3_config.public_url))
-    } else {
-        None
-    };
-
-    let check_dns_http_client = reqwest::Client::builder()
-        .dns_resolver(Arc::new(ValidateDnsResolver))
-        .pool_max_idle_per_host(4)
-        .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
-        .build()?;
-
-    let http_client = reqwest::Client::builder()
-        .pool_max_idle_per_host(4)
-        .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(30))
-        .build()?;
-
-    Ok(AppData {
-        db: pool,
-        app_url: app_url.clone(),
-        front_url,
-        github_client: GithubClient::new(github_client, github_secret, http_client.clone()),
-        webhook_url,
-        index_admin_webhook_url,
-        static_storage: PublicDisk::new(
-            Arc::new(LocalBackend::new("static")),
-            format!("{app_url}/static"),
-        ),
-        public_storage: PublicDisk::new(
-            Arc::new(LocalBackend::new("storage/public")),
-            format!("{app_url}/storage"),
-        ),
-        private_storage: PrivateDisk::new(Arc::new(LocalBackend::new("storage/private"))),
-        cdn_storage,
-        disable_downloads,
-        max_download_mb,
-        port,
-        debug,
-        mods_cache,
-        http_client,
-        check_dns_http_client,
-        s3_sender: OnceLock::new(),
-    })
+    AppData::builder(pool)
+        .maybe(port, AppDataBuilder::port)
+        .maybe(env_bool("APP_DEBUG")?, AppDataBuilder::debug)
+        .maybe(dotenvy::var("APP_URL").ok(), AppDataBuilder::app_url)
+        .maybe(dotenvy::var("FRONT_URL").ok(), AppDataBuilder::front_url)
+        .maybe(github_credentials, |builder, (id, secret)| {
+            builder.github_credentials(id, secret)
+        })
+        .maybe(
+            dotenvy::var("DISCORD_WEBHOOK_URL").ok(),
+            AppDataBuilder::webhook_url,
+        )
+        .maybe(
+            dotenvy::var("INDEX_ADMIN_DISCORD_WEBHOOK_URL").ok(),
+            AppDataBuilder::index_admin_webhook_url,
+        )
+        .maybe(
+            env_bool("DISABLE_DOWNLOAD_COUNTS")?,
+            AppDataBuilder::disable_downloads,
+        )
+        .maybe(max_download_mb, AppDataBuilder::max_download_mb)
+        .cdn_storage(cdn_storage)
+        .build()
 }
 
 impl AppData {
