@@ -50,6 +50,7 @@ pub struct IndexQueryParams {
     #[serde(default)]
     pub platforms: Option<String>,
     #[serde(default)]
+    #[param(inline)]
     pub sort: IndexSortType,
     pub geode: Option<String>,
     pub developer: Option<String>,

@@ -26,8 +26,8 @@ use crate::{
 
 #[derive(Deserialize, Validate, ToSchema)]
 struct StartEmailChangePayload {
-    #[validate(email, length(max = 512))]
-    email: String,
+    #[validate(length(max = 512))]
+    email: EmailAddress,
     password: String,
     force: Option<bool>,
 }
@@ -53,7 +53,7 @@ pub fn router_config(cfg: &mut ServiceConfig) {
     )
 )]
 #[tracing::instrument(skip_all)]
-#[post("v1/me/email/change")]
+#[post("/me/email/change")]
 pub async fn start_email_change(
     auth: Auth,
     json: web::Json<StartEmailChangePayload>,
@@ -71,11 +71,7 @@ pub async fn start_email_change(
     let developer = auth.developer()?;
     let now = Utc::now();
 
-    let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email.to_lowercase())
-            .map_err(|_| ApiError::BadRequest("Invalid email address".into()))?,
-        data.email_blocklist(),
-    )?;
+    let email = ApprovedEmailAddress::parse(json.email.clone(), data.email_blocklist())?;
 
     let existing_email_login = {
         let mut conn = data.db().acquire().await?;
@@ -168,7 +164,7 @@ struct FinalizeEmailChange {
     )
 )]
 #[tracing::instrument(skip_all)]
-#[post("v1/me/email/change/verify")]
+#[post("/me/email/change/verify")]
 pub async fn finalize_email_change(
     data: web::Data<AppData>,
     json: web::Json<FinalizeEmailChange>,
@@ -224,6 +220,7 @@ pub async fn finalize_email_change(
     )?;
 
     repository::developers::change_email(developer.id, &current_email, &email, &mut tx).await?;
+    repository::auth_tokens::remove_developer_tokens(developer.id, &mut tx).await?;
 
     tx.commit().await?;
 

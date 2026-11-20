@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use actix_web::{Responder, post, web};
 use serde::Deserialize;
 use sqlx::Connection;
@@ -20,15 +18,12 @@ pub fn router_config(cfg: &mut web::ServiceConfig) {
 
 #[derive(ToSchema, Validate, Deserialize)]
 struct EmailLogin {
-    #[validate(email)]
-    email: String,
+    email: EmailAddress,
     password: String,
 }
 
 /// Login using email
 #[utoipa::path(
-    post,
-    path = "/v1/login",
     tag = "auth",
     responses(
         (status = 200, description = "Authenticated", body = inline(ApiResponse<TokensResponse>)),
@@ -42,14 +37,12 @@ pub async fn login(
     data: web::Data<AppData>,
     json: web::Json<EmailLogin>,
 ) -> Result<impl Responder, ApiError> {
-    data.mailer().ok_or(ApiError::NotImplemented)?;
+    json.validate()?;
 
     let login_data = {
         let mut pool = data.db().acquire().await?;
 
-        let email = EmailAddress::from_str(&json.email)
-            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?
-            .to_string();
+        let email = json.email.to_string();
 
         developers::find_login_data_by_email(&email, &mut pool).await?
     };
@@ -86,8 +79,7 @@ pub async fn login(
 
 #[derive(ToSchema, Deserialize, Validate)]
 struct ForgotPassword {
-    #[validate(email)]
-    email: String,
+    email: EmailAddress,
 }
 
 /// Start forgot password flow
@@ -113,9 +105,7 @@ pub async fn forgot_password(
     let developer = {
         let mut conn = data.db().acquire().await?;
 
-        let email = EmailAddress::from_str(&json.email.to_lowercase())
-            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?
-            .to_string();
+        let email = json.email.to_string();
 
         developers::find_by_email(&email, &mut conn).await?
     };

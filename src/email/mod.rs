@@ -4,7 +4,11 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use idna::AsciiDenyList;
 use idna::uts46::Uts46;
-use validator::ValidateEmail;
+use serde::{Deserialize, Serialize};
+use utoipa::openapi::schema::Schema;
+use utoipa::openapi::{KnownFormat, ObjectBuilder, RefOr, SchemaFormat, Type};
+use utoipa::{PartialSchema, ToSchema};
+use validator::{ValidateEmail, ValidateLength};
 
 use crate::email::blocklist::BlocklistError;
 
@@ -28,7 +32,8 @@ pub enum EmailAddressParseError {
     InvalidEmail,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct EmailAddress {
     local_part: String,
     domain: String,
@@ -116,6 +121,33 @@ impl FromStr for EmailAddress {
         })
     }
 }
+
+impl TryFrom<String> for EmailAddress {
+    type Error = EmailAddressParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(&value)
+    }
+}
+
+impl ValidateLength<u64> for EmailAddress {
+    fn length(&self) -> Option<u64> {
+        Some((self.local_part.len() + 1 + self.domain.len()) as u64)
+    }
+}
+
+impl PartialSchema for EmailAddress {
+    fn schema() -> RefOr<Schema> {
+        RefOr::T(Schema::Object(
+            ObjectBuilder::new()
+                .schema_type(Type::String)
+                .format(Some(SchemaFormat::KnownFormat(KnownFormat::Email)))
+                .build(),
+        ))
+    }
+}
+
+impl ToSchema for EmailAddress {}
 
 impl EmailAddress {
     pub fn local_part(&self) -> &str {

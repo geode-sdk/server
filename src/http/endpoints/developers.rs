@@ -399,8 +399,7 @@ pub async fn get_me(auth: Auth, data: web::Data<AppData>) -> Result<impl Respond
 
 #[derive(Deserialize, ToSchema, Validate)]
 struct StartEmailConfigurationPayload {
-    #[validate(email)]
-    email: String,
+    email: EmailAddress,
     #[validate(
         length(min = 8),
         contains(pattern = "[0-9]", message = "password must contain at least 1 digit")
@@ -412,8 +411,6 @@ struct StartEmailConfigurationPayload {
 
 /// Start email configuration
 #[utoipa::path(
-    post,
-    path = "/v1/me/email/setup",
     request_body = StartEmailConfigurationPayload,
     tag = "developers",
     responses(
@@ -425,7 +422,7 @@ struct StartEmailConfigurationPayload {
         ("bearer_token" = [])
     )
 )]
-#[post("v1/me/email/setup")]
+#[post("/me/email/setup")]
 #[tracing::instrument(skip_all)]
 pub async fn setup_email(
     auth: Auth,
@@ -445,11 +442,7 @@ pub async fn setup_email(
 
     let developer = auth.developer()?;
 
-    let email = ApprovedEmailAddress::parse(
-        EmailAddress::from_str(&json.email.to_lowercase())
-            .map_err(|_| ApiError::BadRequest("invalid email address".into()))?,
-        data.email_blocklist(),
-    )?;
+    let email = ApprovedEmailAddress::parse(json.email.clone(), data.email_blocklist())?;
 
     // We're trying to keep the DB connection occupied as little as possible.
     // So do this chunk, send the email with no DB connection hogged,
@@ -535,8 +528,6 @@ struct VerifyEmailConfigurationPayload {
 
 /// Finalize email configuration
 #[utoipa::path(
-    post,
-    path = "/v1/me/email/setup/verify",
     request_body = VerifyEmailConfigurationPayload,
     tag = "developers",
     responses(
@@ -549,7 +540,7 @@ struct VerifyEmailConfigurationPayload {
         ("bearer_token" = [])
     )
 )]
-#[post("v1/me/email/setup/verify")]
+#[post("/me/email/setup/verify")]
 #[tracing::instrument(skip_all)]
 pub async fn verify_email_setup(
     data: web::Data<AppData>,

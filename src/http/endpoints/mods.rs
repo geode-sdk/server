@@ -310,6 +310,7 @@ pub async fn create(
 struct UpdateQueryParams {
     ids: String,
     gd: GDVersionEnum,
+    #[param(inline)]
     platform: VerPlatform,
     geode: String,
 }
