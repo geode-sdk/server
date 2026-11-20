@@ -12,7 +12,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    auth,
+    auth::{self, password::Password},
     config::AppData,
     database::repository,
     email::{
@@ -28,7 +28,8 @@ use crate::{
 struct StartEmailChangePayload {
     #[validate(length(max = 512))]
     email: EmailAddress,
-    password: String,
+    #[validate(length(max = auth::password::PASSWORD_MAX))]
+    password: Password,
     force: Option<bool>,
 }
 
@@ -60,6 +61,7 @@ pub async fn start_email_change(
     data: web::Data<AppData>,
 ) -> Result<impl Responder, ApiError> {
     json.validate()?;
+    let json = json.into_inner();
 
     let mailer = data.mailer().ok_or(ApiError::NotImplemented)?;
     let front_url = data.front_url();
@@ -110,7 +112,7 @@ pub async fn start_email_change(
     let password_hash = existing_email_login.password_hash.clone();
     let pepper = data.password_hash_pepper().cloned();
 
-    if !auth::password::verify(password_hash, json.password.clone(), pepper).await? {
+    if !auth::password::verify(password_hash, json.password, pepper).await? {
         return Err(ApiError::BadRequest("Invalid password".into()));
     }
 

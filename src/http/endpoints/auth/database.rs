@@ -5,7 +5,7 @@ use utoipa::ToSchema;
 use validator::Validate;
 
 use crate::{
-    auth,
+    auth::{self, password::Password},
     config::AppData,
     database::repository::{auth_tokens, developers, refresh_tokens},
     email::EmailAddress,
@@ -19,7 +19,8 @@ pub fn router_config(cfg: &mut web::ServiceConfig) {
 #[derive(ToSchema, Validate, Deserialize)]
 struct EmailLogin {
     email: EmailAddress,
-    password: String,
+    #[validate(length(max = auth::password::PASSWORD_MAX))]
+    password: Password,
 }
 
 /// Login using email
@@ -38,6 +39,7 @@ pub async fn login(
     json: web::Json<EmailLogin>,
 ) -> Result<impl Responder, ApiError> {
     json.validate()?;
+    let json = json.into_inner();
 
     let login_data = {
         let mut pool = data.db().acquire().await?;
@@ -50,7 +52,7 @@ pub async fn login(
     let password_hash = login_data.as_ref().map(|data| &data.password_hash).cloned();
     let pepper = data.password_hash_pepper().cloned();
 
-    if !auth::password::verify_or_dummy(password_hash, json.password.clone(), pepper).await? {
+    if !auth::password::verify_or_dummy(password_hash, json.password, pepper).await? {
         return Err(ApiError::BadRequest(
             "No user found with these credentials".into(),
         ));

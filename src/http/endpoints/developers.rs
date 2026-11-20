@@ -1,5 +1,4 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
-use argon2::PasswordHasher;
 use chrono::{DateTime, Utc};
 use phc::PasswordHash;
 use serde::Deserialize;
@@ -9,7 +8,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::auth;
+use crate::auth::{self, password::Password};
 use crate::config::AppData;
 use crate::database::repository::{
     auth_tokens, developers, email_setup_requests, mods, refresh_tokens,
@@ -400,11 +399,8 @@ pub async fn get_me(auth: Auth, data: web::Data<AppData>) -> Result<impl Respond
 #[derive(Deserialize, ToSchema, Validate)]
 struct StartEmailConfigurationPayload {
     email: EmailAddress,
-    #[validate(
-        length(min = 8),
-        contains(pattern = "[0-9]", message = "password must contain at least 1 digit")
-    )]
-    password: String,
+    #[validate(length(min = auth::password::PASSWORD_MIN, max = auth::password::PASSWORD_MAX))]
+    password: Password,
     /// Force remove the existing request if not expired
     force: Option<bool>,
 }
@@ -430,6 +426,7 @@ pub async fn setup_email(
     json: web::Json<StartEmailConfigurationPayload>,
 ) -> Result<impl Responder, ApiError> {
     json.validate()?;
+    let json = json.into_inner();
 
     let mailer = data.mailer().ok_or(ApiError::NotImplemented)?;
     let front_url = data.front_url();
@@ -478,19 +475,8 @@ pub async fn setup_email(
         }
     }
 
-    let password = json.password.clone();
     let pepper = data.password_hash_pepper().cloned();
-
-    let hash = tokio::task::spawn_blocking(move || {
-        auth::password::argon2(pepper.as_ref())
-            .hash_password(password.as_bytes())
-            .inspect_err(|e| tracing::error!("{:?}", e))
-            .map_err(|_| ApiError::InternalError("failed to hash password".into()))
-            .map(|hash| hash.to_string())
-    })
-    .await
-    .inspect_err(|e| tracing::error!("spawn_blocking failed: {e}"))
-    .map_err(|_| ApiError::InternalError("hashing task panicked".into()))??;
+    let hash = auth::password::hash(json.password, pepper).await?;
 
     let uuid = Uuid::new_v4();
 
