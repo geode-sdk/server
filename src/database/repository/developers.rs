@@ -557,8 +557,8 @@ pub async fn check_ban(
             id, revoked_at
         FROM bans
         WHERE developer_id=$1
-        AND revoked_at > NOW()
-        OR revoked_at IS NULL
+        AND (revoked_at > NOW()
+        OR revoked_at IS NULL)
         ORDER BY revoked_at DESC NULLS FIRST, id DESC
         LIMIT 1",
         dev_id
