@@ -522,6 +522,7 @@ impl ModVersion {
         version: &str,
         fetch_extras: bool,
         fetch_only_accepted: bool,
+        gd: Option<GDVersionEnum>,
         pool: &mut PgConnection,
     ) -> Result<Option<ModVersion>, DatabaseError> {
         let result = sqlx::query_as!(
@@ -553,9 +554,10 @@ impl ModVersion {
 
         if fetch_extras {
             version.gd = ModGDVersion::get_for_mod_version(version.id, pool).await?;
+            let geode = semver::Version::parse(&version.geode).ok();
             let ids = vec![version.id];
             version.dependencies = Some(
-                Dependency::get_for_mod_versions(&ids, None, None, None, pool)
+                Dependency::get_for_mod_versions(&ids, None, gd, geode.as_ref(), pool)
                     .await?
                     .get(&version.id)
                     .cloned()

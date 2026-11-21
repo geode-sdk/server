@@ -171,22 +171,22 @@ pub async fn get_one(
         _ => false,
     };
 
+    let gd: Option<GDVersionEnum> = match query.gd {
+        Some(ref gd) => Some(
+            GDVersionEnum::from_str(gd)
+                .or(Err(ApiError::BadRequest("Invalid gd".to_string())))?,
+        ),
+        None => None,
+    };
+
     let mut version = {
         if path.version == "latest" {
-            let gd: Option<GDVersionEnum> = match query.gd {
-                Some(ref gd) => Some(
-                    GDVersionEnum::from_str(gd)
-                        .or(Err(ApiError::BadRequest("Invalid gd".to_string())))?,
-                ),
-                None => None,
-            };
-
             let platform_string = query.platforms.clone().unwrap_or_default();
             let platforms = VerPlatform::parse_query_string(&platform_string)?;
 
             ModVersion::get_latest_for_mod(&path.id, gd, platforms, query.major, &mut pool).await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, true, false, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, true, false, gd, &mut pool).await?
         }
     }
     .ok_or(ApiError::NotFound(
@@ -233,7 +233,7 @@ pub async fn download_version(
             ModVersion::get_latest_for_mod(&path.id, query.gd, platforms, query.major, &mut pool)
                 .await?
         } else {
-            ModVersion::get_one(&path.id, &path.version, false, false, &mut pool).await?
+            ModVersion::get_one(&path.id, &path.version, false, false, query.gd, &mut pool).await?
         }
     }
     .ok_or(ApiError::NotFound(
