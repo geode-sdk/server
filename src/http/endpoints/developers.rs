@@ -1,12 +1,22 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
+use chrono::{DateTime, Utc};
+use phc::PasswordHash;
 use serde::Deserialize;
 use sqlx::Acquire;
+use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
-use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use validator::Validate;
 
-use crate::http::error::ApiError;
+use crate::auth::{self, password::Password};
 use crate::config::AppData;
-use crate::database::repository::{auth_tokens, developers, mods, refresh_tokens};
+use crate::database::repository::{
+    auth_tokens, developers, email_setup_requests, mods, refresh_tokens,
+};
+use crate::email::blocklist::ApprovedEmailAddress;
+use crate::email::mailer::{EmailBody, OutgoingEmail};
+use crate::email::{EmailAddress, templates};
+use crate::http::error::ApiError;
 use crate::http::response::ApiResponse;
 use crate::types::api::PaginatedData;
 use crate::types::models::developer::SelfDeveloper;
@@ -60,8 +70,7 @@ struct DeveloperBanPayload {
 }
 
 pub fn router_config(cfg: &mut web::ServiceConfig) {
-    cfg
-        .service(developer_index)
+    cfg.service(developer_index)
         .service(get_developer)
         .service(add_developer_to_mod)
         .service(remove_dev_from_mod)
@@ -73,7 +82,9 @@ pub fn router_config(cfg: &mut web::ServiceConfig) {
         .service(update_developer)
         .service(ban_developer)
         .service(unban_developer)
-        .service(get_developer_ban);
+        .service(get_developer_ban)
+        .service(setup_email)
+        .service(verify_email_setup);
 }
 
 /// List all developers with optional search and pagination
@@ -149,7 +160,9 @@ pub async fn add_developer_to_mod(
         )))?;
 
     if let Some(_) = developers::check_ban(target.id, &mut pool).await? {
-        return Err(ApiError::Banned(Some("The developer being added is banned".into())));
+        return Err(ApiError::Banned(Some(
+            "The developer being added is banned".into(),
+        )));
     }
 
     mods::assign_developer(&path.id, target.id, false, &mut pool).await?;
@@ -383,6 +396,203 @@ pub async fn get_me(auth: Auth, data: web::Data<AppData>) -> Result<impl Respond
     }))
 }
 
+#[derive(Deserialize, ToSchema, Validate)]
+struct StartEmailConfigurationPayload {
+    email: EmailAddress,
+    #[validate(length(min = auth::password::PASSWORD_MIN, max = auth::password::PASSWORD_MAX))]
+    password: Password,
+    /// Force remove the existing request if not expired
+    force: Option<bool>,
+}
+
+/// Start email configuration
+#[utoipa::path(
+    request_body = StartEmailConfigurationPayload,
+    tag = "developers",
+    responses(
+        (status = 201, description = "Email setup request started", body = inline(ApiResponse<String>)),
+        (status = 401, description = "Unauthorized"),
+        (status = 409, description = "Email already configured")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[post("/me/email/setup")]
+#[tracing::instrument(skip_all)]
+pub async fn setup_email(
+    auth: Auth,
+    data: web::Data<AppData>,
+    json: web::Json<StartEmailConfigurationPayload>,
+) -> Result<impl Responder, ApiError> {
+    json.validate()?;
+    let json = json.into_inner();
+
+    let mailer = data.mailer().ok_or(ApiError::NotImplemented)?;
+    let front_url = data.front_url();
+
+    // We need to redirect the user to a frontend URL.
+    // If by chance we don't have a base URL, let's just lock the implementation
+    if front_url.is_empty() {
+        return Err(ApiError::NotImplemented);
+    }
+
+    let developer = auth.developer()?;
+
+    let email = ApprovedEmailAddress::parse(json.email.clone(), data.email_blocklist())?;
+
+    // We're trying to keep the DB connection occupied as little as possible.
+    // So do this chunk, send the email with no DB connection hogged,
+    // then get another connection to finish the insert
+    {
+        let mut conn = data.db().acquire().await?;
+
+        let existing_email_login =
+            developers::find_login_data_for_developer(developer.id, &mut conn).await?;
+
+        if existing_email_login.is_some() {
+            return Err(ApiError::Conflict(
+                "You already have a configured email address. Use /v1/me/email/change for changing your email or /v1/me/password/change for changing your password".into(),
+            ));
+        }
+
+        // Prevent someone stealing an address
+        let existing = developers::find_by_email(&email.email().to_string(), &mut conn).await?;
+
+        if existing.is_some_and(|e| e.id != developer.id) {
+            return Err(ApiError::Conflict(
+                "Developer already exists with this email address".into(),
+            ));
+        }
+
+        let force = json.force.unwrap_or(false);
+        let existing = email_setup_requests::find_for_developer(developer.id, &mut conn).await?;
+
+        if existing.is_some() && !force {
+            return Err(ApiError::Conflict(
+                "User already has an active email setup request".into(),
+            ));
+        }
+    }
+
+    let pepper = data.password_hash_pepper().cloned();
+    let hash = auth::password::hash(json.password, pepper).await?;
+
+    let uuid = Uuid::new_v4();
+
+    let endpoint = format!("{}/email/setup/verify?token={}", data.front_url(), uuid);
+
+    let html = templates::change_email::setup_email(&endpoint).into_string();
+
+    let outgoing = OutgoingEmail {
+        to: email.clone(),
+        subject: "Email setup | Geode SDK".into(),
+        body: EmailBody::html_with_autogenerated_text(html)?,
+    };
+
+    mailer
+        .send(&outgoing)
+        .await
+        .inspect_err(|e| tracing::error!("{:?}", e))?;
+
+    let mut pool = data.db().acquire().await?;
+    let mut tx = pool.begin().await?;
+    email_setup_requests::delete_for_developer(developer.id, &mut tx).await?;
+    email_setup_requests::create(uuid, developer.id, &email, hash.to_string(), &mut tx).await?;
+    tx.commit().await?;
+
+    Ok(HttpResponse::Created().json(ApiResponse {
+        payload: "".to_string(),
+        error: "".into(),
+    }))
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+struct VerifyEmailConfigurationPayload {
+    request_id: String,
+}
+
+/// Finalize email configuration
+#[utoipa::path(
+    request_body = VerifyEmailConfigurationPayload,
+    tag = "developers",
+    responses(
+        (status = 204, description = "Email settings applied"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Setup request not found"),
+        (status = 409, description = "Email already configured")
+    ),
+    security(
+        ("bearer_token" = [])
+    )
+)]
+#[post("/me/email/setup/verify")]
+#[tracing::instrument(skip_all)]
+pub async fn verify_email_setup(
+    data: web::Data<AppData>,
+    json: web::Json<VerifyEmailConfigurationPayload>,
+    auth: Auth,
+) -> Result<impl Responder, ApiError> {
+    json.validate()?;
+
+    let developer = auth.developer()?;
+
+    let notfound_msg = "The request associated with this ID either does not exist or has expired";
+
+    let request_id =
+        Uuid::try_parse(&json.request_id).map_err(|_| ApiError::NotFound(notfound_msg.into()))?;
+
+    let mut conn = data.db().acquire().await?;
+    let mut tx = conn.begin().await?;
+
+    let request = email_setup_requests::find_for_token(request_id, &mut tx)
+        .await?
+        .ok_or(ApiError::NotFound(notfound_msg.into()))?;
+
+    if request.developer_id != developer.id {
+        // Let's be a little sneaky here... >:)
+        return Err(ApiError::NotFound(notfound_msg.into()));
+    }
+
+    let existing = developers::find_by_email(&request.email, &mut tx).await?;
+
+    if existing.is_some_and(|e| e.id != developer.id) {
+        return Err(ApiError::Conflict(
+            "Developer already exists with this email address".into(),
+        ));
+    }
+
+    // Who knows, maybe the blocklist gets updated while the request is running
+    let email = ApprovedEmailAddress::parse(
+        EmailAddress::from_str(&request.email.to_lowercase())
+            .inspect_err(|e| tracing::error!("failed to parse email from EmailSetupRequest: {e}"))
+            .map_err(|e| {
+                ApiError::InternalError(format!(
+                    "Failed to read email from email setup request: {e}"
+                ))
+            })?,
+        data.email_blocklist(),
+    )?;
+
+    let password = request.password;
+
+    // This should basically never fail, but just check we have a valid
+    // phc string in the buffer
+    if let Err(e) = PasswordHash::new(&password) {
+        tracing::error!("Invalid hashed password in EmailSetupRequest: {}", e);
+        email_setup_requests::delete(&request.token, &mut tx).await?;
+        tx.commit().await?;
+
+        return Err(ApiError::InternalError("Failed to read password from email setup request. Please try setting up your email address again.".into()));
+    }
+
+    developers::finalize_email_setup(developer.id, &email, &password, &mut tx).await?;
+
+    tx.commit().await?;
+
+    Ok(HttpResponse::NoContent())
+}
+
 #[derive(Deserialize, IntoParams)]
 struct GetDeveloperPath {
     id: i32,
@@ -479,7 +689,6 @@ pub async fn update_developer(
     }))
 }
 
-
 #[derive(Deserialize, IntoParams)]
 struct CreateDeveloperBanPath {
     id: i32,
@@ -529,15 +738,16 @@ pub async fn ban_developer(
             payload.revoked_at,
             payload.reason.as_deref(),
             dev.id,
-            &mut tx
-        ).await?;
+            &mut tx,
+        )
+        .await?;
 
         tx.commit().await?;
 
         return Ok(web::Json(ApiResponse {
             error: "".to_string(),
             payload: result,
-        }))
+        }));
     }
 
     let result = developers::create_ban(
@@ -586,11 +796,7 @@ pub async fn unban_developer(
 
     let mut pool = data.db().acquire().await?;
 
-    developers::delete_ban(
-        path.id,
-        &mut pool,
-    )
-    .await?;
+    developers::delete_ban(path.id, &mut pool).await?;
 
     Ok(HttpResponse::NoContent())
 }
@@ -625,10 +831,7 @@ pub async fn get_developer_ban(
 
     let mut pool = data.db().acquire().await?;
 
-    let result = developers::get_bans(
-        path.id,
-        &mut pool,
-    ).await?;
+    let result = developers::get_bans(path.id, &mut pool).await?;
 
     Ok(web::Json(ApiResponse {
         error: "".to_string(),

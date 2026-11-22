@@ -1,6 +1,6 @@
 use utoipa::OpenApi;
 
-use crate::{http, http::endpoints, types};
+use crate::http::endpoints;
 
 /// Routes served under the `/v1` scope. Their paths are relative to it, like the actix macros.
 #[derive(OpenApi)]
@@ -41,9 +41,13 @@ use crate::{http, http::endpoints, types};
         endpoints::developers::get_own_mods,
         endpoints::developers::get_me,
         endpoints::developers::update_developer,
+        endpoints::developers::setup_email,
+        endpoints::developers::verify_email_setup,
         endpoints::developers::ban_developer,
         endpoints::developers::unban_developer,
         endpoints::developers::get_developer_ban,
+        endpoints::email_change_requests::start_email_change,
+        endpoints::email_change_requests::finalize_email_change,
         endpoints::tags::index,
         endpoints::tags::detailed_index,
         endpoints::stats::get_stats,
@@ -51,6 +55,7 @@ use crate::{http, http::endpoints, types};
         endpoints::loader::create_version,
         endpoints::loader::get_many,
         endpoints::auth::refresh_token,
+        endpoints::auth::database::login,
         endpoints::auth::github::start_github_login,
         endpoints::auth::github::start_github_web_login,
         endpoints::auth::github::github_web_callback,
@@ -64,44 +69,6 @@ struct V1Api;
 #[openapi(
     paths(endpoints::health::health),
     nest((path = "/v1", api = V1Api)),
-    components(
-        schemas(
-            http::response::ApiResponse<String>,
-            types::api::PaginatedData<types::models::mod_entity::Mod>,
-            types::api::PaginatedData<types::models::developer::Developer>,
-            types::api::PaginatedData<types::models::loader_version::LoaderVersion>,
-            types::models::mod_entity::Mod,
-            types::models::mod_entity::ModUpdate,
-            types::models::mod_version::ModVersion,
-            types::models::developer::ModDeveloper,
-            types::models::developer::Developer,
-            types::models::deprecations::Deprecation,
-            types::models::tag::Tag,
-            types::models::stats::Stats,
-            types::models::mod_version_status::ModVersionStatusEnum,
-            types::models::mod_gd_version::GDVersionEnum,
-            types::models::mod_gd_version::VerPlatform,
-            types::models::mod_gd_version::DetailedGDVersion,
-            types::models::dependency::ResponseDependency,
-            types::models::dependency::ModVersionCompare,
-            types::models::dependency::DependencyImportance,
-            types::models::incompatibility::ResponseIncompatibility,
-            types::models::incompatibility::Replacement,
-            types::models::incompatibility::IncompatibilityImportance,
-            types::models::mod_link::ModLinks,
-            types::models::loader_version::LoaderVersion,
-            types::models::gd_version_alias::GDVersionAlias,
-            types::models::mod_version_submission::ModVersionSubmission,
-            types::models::mod_version_submission::ModVersionSubmissionComment,
-            types::models::mod_version_submission::UpdateSubmissionPayload,
-            types::models::mod_version_submission::CreateCommentPayload,
-            types::models::mod_version_submission::UpdateCommentPayload,
-            types::models::mod_version_submission::ModVersionSubmissionAttachment,
-            types::models::mod_entity::IndexSortType,
-            types::models::mod_entity::SimpleDevMod,
-            types::models::mod_entity::SimpleDevModVersion,
-        )
-    ),
     tags(
         (name = "mods", description = "Mod management endpoints"),
         (name = "mod_versions", description = "Mod version management endpoints"),

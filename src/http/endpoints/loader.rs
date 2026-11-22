@@ -22,6 +22,7 @@ use crate::{
 
 #[derive(Deserialize, IntoParams)]
 struct GetOneQuery {
+    #[param(inline)]
     platform: Option<VerPlatform>,
     gd: Option<String>,
     #[serde(default)]
@@ -153,6 +154,7 @@ pub async fn create_version(
 #[derive(Deserialize, IntoParams)]
 struct GetManyQuery {
     pub gd: Option<GDVersionEnum>,
+    #[param(inline)]
     pub platform: Option<VerPlatform>,
     pub per_page: Option<i64>,
     pub page: Option<i64>,

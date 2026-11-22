@@ -9,6 +9,7 @@ use sqlx::Acquire;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+pub mod database;
 pub mod github;
 
 #[derive(Serialize, ToSchema)]
@@ -25,6 +26,7 @@ struct RefreshBody {
 pub fn router_config(cfg: &mut web::ServiceConfig) {
     cfg
         .service(refresh_token)
+        .configure(database::router_config)
         .configure(github::router_config);
 }
 
