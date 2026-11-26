@@ -24,6 +24,7 @@ struct ModVersionRow {
     geode: String,
     early_load: bool,
     requires_patching: bool,
+    windows_platform: String,
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
@@ -46,6 +47,7 @@ impl ModVersionRow {
             geode: self.geode,
             early_load: self.early_load,
             requires_patching: self.requires_patching,
+            windows_platform: self.windows_platform,
             download_count: self.download_count.into(),
             api: self.api,
             mod_id: self.mod_id,
@@ -75,7 +77,7 @@ pub async fn get_by_version_str(
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
+            mv.early_load, mv.requires_patching, mv.windows_platform, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
@@ -104,7 +106,7 @@ pub async fn get_for_mod(
             mv.id, mv.name, mv.description, mv.version,
             mv.download_link, mv.managed_download_link, mv.download_count, mv.hash,
             format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-            mv.early_load, mv.requires_patching, mv.api, mv.mod_id,
+            mv.early_load, mv.requires_patching, mv.windows_platform, mv.api, mv.mod_id,
             mv.created_at, mv.updated_at,
             mvs.status as "status: _", mvs.info
         FROM mod_versions mv
@@ -190,18 +192,37 @@ pub async fn create_from_json(
         Some(geode.pre.to_string())
     };
 
+    let win_plat = json.requires.as_ref()
+        .and_then(|reqs| reqs.win.as_ref())
+        .map(|win| {
+            if win.iter().any(|item| item == "windows") {
+                "windows"
+            } else if win.iter().any(|item| item == "wine") {
+                "wine"
+            } else {
+                "either"
+            }
+        })
+        .unwrap_or("either");
+
+    let requires_patching = json.requires_patching ||
+        json.requires.as_ref()
+            .and_then(|member| member.ios.as_ref())
+            .map(|ios| ios.iter().any(|item| item == "patching"))
+            .unwrap_or(false);
+
     let row = sqlx::query!(
         "INSERT INTO mod_versions
         (name, version, description, download_link,
         hash, geode_major, geode_minor, geode_patch, geode_meta,
         early_load, api, mod_id, status_id, requires_patching,
-        created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13,
+        windows_platform, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13, $14,
         NOW(), NOW())
         RETURNING
             id, name, version, description,
             download_link, hash,
-            early_load, requires_patching, api, mod_id,
+            early_load, requires_patching, windows_platform, api, mod_id,
             created_at, updated_at",
         json.name,
         json.version,
@@ -215,7 +236,8 @@ pub async fn create_from_json(
         json.early_load,
         json.api.is_some(),
         json.id,
-        json.requires_patching
+        requires_patching,
+        win_plat,
     )
     .fetch_one(&mut *conn)
     .await
@@ -255,6 +277,7 @@ pub async fn create_from_json(
         download_count: 0.into(),
         early_load: row.early_load,
         requires_patching: row.requires_patching,
+        windows_platform: row.windows_platform,
         api: row.api,
         mod_id: row.mod_id,
         gd: Default::default(),
@@ -313,6 +336,7 @@ pub async fn update_pending_version(
             hash,
             early_load,
             requires_patching,
+            windows_platform,
             api,
             status_id,
             description,
@@ -360,6 +384,7 @@ pub async fn update_pending_version(
         download_count: row.download_count.into(),
         early_load: row.early_load,
         requires_patching: row.requires_patching,
+        windows_platform: row.windows_platform,
         api: row.api,
         mod_id: row.mod_id,
         gd: Default::default(),

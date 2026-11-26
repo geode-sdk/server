@@ -61,6 +61,8 @@ pub struct ModJson {
     pub early_load: bool,
     #[serde(default, rename = "requires-patching")]
     pub requires_patching: bool,
+    #[serde(default, rename = "requires")]
+    pub requires: Option<ModJsonRequires>,
     pub api: Option<serde_json::Value>,
     pub gd: DetailedGDVersion,
     #[serde(skip_deserializing, skip_serializing)]
@@ -176,6 +178,20 @@ pub struct OldModJsonIncompatibility {
     pub version: String,
     #[serde(default)]
     pub importance: IncompatibilityImportance,
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct ModJsonRequires {
+    pub win: Option<Vec<String>>,
+    pub android32: Option<Vec<String>>,
+    pub android64: Option<Vec<String>>,
+    #[serde(skip_serializing)]
+    pub mac: Option<Vec<String>>,
+    #[serde(rename = "mac-intel")]
+    pub mac_intel: Option<Vec<String>>,
+    #[serde(rename = "mac-arm")]
+    pub mac_arm: Option<Vec<String>>,
+    pub ios: Option<Vec<String>>,
 }
 
 impl ModJson {
