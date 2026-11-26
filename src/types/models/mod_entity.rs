@@ -56,6 +56,7 @@ pub struct IndexQueryParams {
     pub tags: Option<String>,
     pub featured: Option<bool>,
     pub jitless: Option<bool>,
+    pub wine: Option<bool>,
     pub status: Option<ModVersionStatusEnum>,
 }
 
@@ -140,6 +141,7 @@ struct ModRecordGetOne {
     geode: String,
     early_load: bool,
     requires_patching: bool,
+    windows_platform: String,
     api: bool,
     mod_id: String,
     status: ModVersionStatusEnum,
@@ -221,6 +223,11 @@ impl Mod {
         let status = query.status.unwrap_or(ModVersionStatusEnum::Accepted);
         // We only want to filter anything if jitless is true
         let requires_patching = query.jitless.filter(|&j| j).map(|_| false);
+        let windows_platform = query.wine.map(|w| if w {
+            "wine".to_owned()
+        } else {
+            "windows".to_owned()
+        });
 
         let developer = match &query.developer {
             Some(d) => match developers::get_one_by_username(d, pool).await? {
@@ -320,6 +327,15 @@ impl Mod {
 
             if let Some(rp) = requires_patching {
                 builder.push(" AND mv.requires_patching = ").push_bind(rp);
+            }
+
+            if let Some(wp) = windows_platform.clone() {
+                builder
+                    .push(" AND (mv.windows_platform = ")
+                    .push_bind(wp.clone())
+                    .push(" OR mv.windows_platform = 'either')")
+                    .push(" OR 'either' = ")
+                    .push_bind(wp);
             }
 
             if let Some(major) = geode_major {
@@ -446,6 +462,7 @@ impl Mod {
             platforms.as_deref(),
             geode.as_ref(),
             requires_patching,
+            windows_platform,
         )
         .await?;
         let mut developers = developers::get_all_for_mods(&ids, pool).await?;
@@ -638,7 +655,7 @@ impl Mod {
                 mv.id as version_id, mv.name, mv.description, mv.version, mv.download_link, mv.managed_download_link,
                 mv.download_count as mod_version_download_count, mv.created_at as mod_version_created_at, mv.updated_at as mod_version_updated_at, mv.hash,
                 format_semver(mv.geode_major, mv.geode_minor, mv.geode_patch, mv.geode_meta) as "geode!: _",
-                mv.early_load, mv.requires_patching, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
+                mv.early_load, mv.requires_patching, mv.windows_platform, mv.api, mv.mod_id, mvs.status as "status: _", mvs.info
             FROM mods m
             INNER JOIN mod_versions mv ON m.id = mv.mod_id
             INNER JOIN mod_version_statuses mvs ON mvs.mod_version_id = mv.id
@@ -670,6 +687,7 @@ impl Mod {
                 geode: x.geode.clone(),
                 early_load: x.early_load,
                 requires_patching: x.requires_patching,
+                windows_platform: x.windows_platform.clone(),
                 api: x.api,
                 status: x.status,
                 mod_id: x.mod_id.clone(),
